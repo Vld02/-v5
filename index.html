@@ -335,6 +335,12 @@
     authState.awaitingSnils = true;
     authState.login = login;
     authState.password = password;
+
+    const savedSnils = localStorage.getItem('savedSnils');
+    if (savedSnils && !dom.snils.value.trim()) {
+      dom.snils.value = formatSnilsInput(savedSnils);
+    }
+
     dom.snilsWrap.style.display = 'block';
     dom.snils.focus();
     dom.loading.innerText = '';
@@ -399,7 +405,9 @@
         localStorage.setItem('savedLogin', loginVal);
         localStorage.setItem('savedDate', dateInput.value);
         localStorage.setItem('isLoggedIn', '1');
-        resetSnilsStep();
+        authState.awaitingSnils = false;
+        authState.login = '';
+        authState.password = '';
         showDocsResult(response);
       })
       .checkLogin(loginVal, passwordForServer, clientInfo);
@@ -429,8 +437,12 @@
 
         localStorage.setItem('savedLogin', authState.login);
         localStorage.setItem('savedDate', dom.password.value);
+        localStorage.setItem('savedSnils', snilsFormatted);
         localStorage.setItem('isLoggedIn', '1');
-        resetSnilsStep();
+        authState.awaitingSnils = false;
+        authState.login = '';
+        authState.password = '';
+        dom.snilsWrap.style.display = 'block';
         showDocsResult(response);
       })
       .verifySnils(authState.login, authState.password, snilsFormatted, clientInfo);
@@ -475,8 +487,14 @@
   window.addEventListener('DOMContentLoaded', () => {
     const savedLogin = localStorage.getItem('savedLogin');
     const savedDate = localStorage.getItem('savedDate');
+    const savedSnils = localStorage.getItem('savedSnils');
+
     if (savedLogin) dom.login.value = savedLogin;
     if (savedDate) dom.password.value = formatDateInput(savedDate);
+    if (savedSnils) {
+      dom.snils.value = formatSnilsInput(savedSnils);
+      dom.snilsWrap.style.display = 'block';
+    }
   });
 
   const ENTRY_MAP = {
@@ -678,6 +696,9 @@
   dom.snils.addEventListener('input', function(e) {
     const formatted = formatSnilsInput(e.target.value);
     if (formatted !== e.target.value) e.target.value = formatted;
+    if (formatted.length === 14) {
+      localStorage.setItem('savedSnils', formatted);
+    }
   });
 
   dom.snils.addEventListener('keydown', function(e) {
