@@ -142,8 +142,9 @@
   }
   table {
     border-collapse: collapse;
-    width: min(100%, 760px);
-    table-layout: fixed;
+    width: 100%;
+    max-width: 100%;
+    table-layout: auto;
     margin: 0 auto;
   }
   th, td {
@@ -156,8 +157,7 @@
   }
   th { background: #eaeaea; }
   tbody tr:nth-child(even) { background: #f3f3f3; }
-  td.input { width: 40%; outline: none; }
-  td.result { width: 60%; }
+  td.input { outline: none; }
   .fio-list { display: flex; flex-wrap: wrap; gap: 6px; }
   .fio-option { padding: 4px 8px; border: 1px solid #999; border-radius: 4px; background: #fff; cursor: pointer; user-select: none; font-size: 13px; }
   .fio-option.selected { background: #cce5ff; border-color: #339; font-weight: bold; }
