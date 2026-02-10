@@ -225,7 +225,7 @@
     <input id="login" type="text" placeholder="Фамилия Имя Отчество" />
 
     <label>Дата рождения:</label>
-    <input id="password" type="text" inputmode="numeric" maxlength="10" placeholder="ДД.ММ.ГГГГ" />
+    <input id="password" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="10" autocomplete="off" placeholder="ДД.ММ.ГГГГ" />
 
     <button onclick="loginDocs()">Войти</button>
 
