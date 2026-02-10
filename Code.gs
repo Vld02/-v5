@@ -8,6 +8,7 @@ const CONFIG = Object.freeze({
   FORM_RESPONSES_SHEET_NAME: 'Ответы',
   FORM_USER_ID_HEADER: 'Фамилия Имя Отчество',
   FORM_SESSION_KEY_PREFIX: 'form_session_',
+  FORM_SESSION_QUERY_PARAM: 'session_token',
   GOOGLE_FORM_VIEW_URL: 'https://docs.google.com/forms/d/e/1FAIpQLSfLOcMYEWaOwF3qYuzsnSmaDbOSR6WGB7AUP7oYHBpzlo7npQ/viewform',
   YELLOW: '#ffff00',
   TIMEZONE: 'GMT+3',
@@ -105,6 +106,21 @@ function saveGatewaySession(fio) {
 }
 
 /**
+ * Добавляет session_token в URL формы.
+ * @param {string} url
+ * @param {string} token
+ * @returns {string}
+ */
+function addSessionTokenToUrl(url, token) {
+  const cleanUrl = String(url || '').trim();
+  const cleanToken = String(token || '').trim();
+  if (!cleanUrl || !cleanToken) return cleanUrl;
+
+  const separator = cleanUrl.includes('?') ? '&' : '?';
+  return `${cleanUrl}${separator}${CONFIG.FORM_SESSION_QUERY_PARAM}=${encodeURIComponent(cleanToken)}`;
+}
+
+/**
  * Рендерит страницу-прокладку перед переходом в форму.
  * @param {string} fio
  * @param {string} redirectUrl
@@ -120,7 +136,7 @@ function renderFormGatewayPage(fio, redirectUrl) {
   const target = requestedTarget.startsWith('https://docs.google.com/forms/')
     ? requestedTarget
     : CONFIG.GOOGLE_FORM_VIEW_URL;
-  saveGatewaySession(cleanFio);
+  const sessionToken = saveGatewaySession(cleanFio);
 
   const html = `<!doctype html>
 <html lang="ru">
@@ -141,7 +157,7 @@ function renderFormGatewayPage(fio, redirectUrl) {
     <div>Вы заполняете форму за:</div>
     <div class="fio">${escapeHtml(cleanFio)}</div>
     <p class="warn">Если это не вы — закройте страницу.</p>
-    <button type="button" onclick="window.location.href='${escapeHtml(target)}'">Перейти к форме</button>
+    <button type="button" onclick="window.location.href='${escapeHtml(addSessionTokenToUrl(target, sessionToken))}'">Перейти к форме</button>
   </div>
 </body>
 </html>`;
@@ -194,51 +210,65 @@ function logFormClick(login) {
 }
 
 /**
- * Извлекает и удаляет ближайшую сессию Web App для указанного времени отправки.
- * @param {Date} submittedAt
+ * Извлекает и удаляет ФИО по точному session_token.
+ * @param {string} sessionToken
  * @returns {string}
  */
-function consumeUserIdForSubmission(submittedAt) {
+function consumeUserIdForSessionToken(sessionToken) {
+  const token = String(sessionToken || '').trim();
+  if (!token) return '';
+
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
 
   try {
+    const key = `${CONFIG.FORM_SESSION_KEY_PREFIX}${token}`;
     const properties = PropertiesService.getScriptProperties();
-    const all = properties.getProperties();
-    const submitTs = submittedAt instanceof Date ? submittedAt.getTime() : Date.now();
+    const raw = properties.getProperty(key);
+    if (!raw) return '';
 
-    let selectedKey = '';
-    let selectedDelta = Number.POSITIVE_INFINITY;
+    let payload;
+    try {
+      payload = JSON.parse(raw);
+    } catch (_error) {
+      properties.deleteProperty(key);
+      return '';
+    }
 
-    Object.keys(all).forEach(key => {
-      if (!key.startsWith(CONFIG.FORM_SESSION_KEY_PREFIX)) return;
-
-      let payload;
-      try {
-        payload = JSON.parse(all[key]);
-      } catch (_error) {
-        return;
-      }
-
-      const fio = String(payload.fio || '').trim();
-      const createdAt = Number(payload.createdAt || 0);
-      if (!fio || !createdAt) return;
-
-      const delta = Math.abs(submitTs - createdAt);
-      if (delta < selectedDelta) {
-        selectedDelta = delta;
-        selectedKey = key;
-      }
-    });
-
-    if (!selectedKey) return '';
-
-    const payload = JSON.parse(all[selectedKey]);
-    properties.deleteProperty(selectedKey);
-    return String(payload.fio || '').trim();
+    const fio = String(payload.fio || '').trim();
+    properties.deleteProperty(key);
+    return fio;
   } finally {
     lock.releaseLock();
   }
+}
+
+/**
+ * Извлекает session_token из строки.
+ * @param {string} value
+ * @returns {string}
+ */
+function extractSessionToken(value) {
+  const queryParam = CONFIG.FORM_SESSION_QUERY_PARAM;
+  const re = new RegExp(`[?&#]${queryParam}=([^&#\\s]+)`);
+  const match = String(value || '').match(re);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
+/**
+ * Ищет session_token в данных отправленной строки.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @param {number} rowIndex
+ * @returns {string}
+ */
+function findSessionTokenForRow(sheet, rowIndex) {
+  const rowValues = sheet.getRange(rowIndex, 1, 1, sheet.getLastColumn()).getValues()[0];
+  for (let i = 0; i < rowValues.length; i++) {
+    const token = extractSessionToken(rowValues[i]);
+    if (token) return token;
+  }
+
+  return '';
 }
 
 /**
@@ -263,10 +293,15 @@ function onFormSubmit(e) {
   const currentValue = String(sheet.getRange(rowIndex, idCol + 1).getValue() || '').trim();
   if (currentValue) return;
 
-  const submitDate = sheet.getRange(rowIndex, 1).getValue();
-  const fio = consumeUserIdForSubmission(submitDate instanceof Date ? submitDate : new Date());
+  const sessionToken = findSessionTokenForRow(sheet, rowIndex);
+  if (!sessionToken) {
+    console.error(`SESSION_TOKEN_NOT_FOUND_FOR_ROW: ${rowIndex}`);
+    return;
+  }
+
+  const fio = consumeUserIdForSessionToken(sessionToken);
   if (!fio) {
-    console.error(`FIO_NOT_RESOLVED_FOR_ROW: ${rowIndex}`);
+    console.error(`FIO_NOT_RESOLVED_FOR_TOKEN: ${sessionToken}`);
     return;
   }
 
