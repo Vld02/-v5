@@ -5,6 +5,10 @@ const CONFIG = Object.freeze({
   SPREADSHEET_ID: '1PITVXQ48g0hwtx4YSWB7OOy37zvujj9hhts-7eGR1aQ',
   RESULT_SHEET_NAME: 'Результат',
   LOG_SHEET_NAME: 'Входы',
+  FORM_RESPONSES_SHEET_NAME: 'Ответы',
+  FORM_USER_ID_HEADER: 'Фамилия Имя Отчество',
+  FORM_USER_ID_FALLBACK_HEADER: 'Фамилия Имя Отчество (С)',
+  GOOGLE_FORM_ID: '1FAIpQLSfLOcMYEWaOwF3qYuzsnSmaDbOSR6WGB7AUP7oYHBpzlo7npQ',
   YELLOW: '#ffff00',
   TIMEZONE: 'GMT+3',
   DATE_FORMAT: 'dd.MM.yyyy',
@@ -91,6 +95,56 @@ function logAccess({ login = '', password = '', clientInfo = {}, status }) {
  */
 function logFormClick(login) {
   logAccess({ login, status: 'Нажал: Заполнить форму' });
+}
+
+/**
+ * Возвращает параметр Google Form (entry.<id>) для служебного поля ФИО.
+ * @returns {{entryParam: string}}
+ */
+function getFormUserIdEntryParam() {
+  const form = FormApp.openById(CONFIG.GOOGLE_FORM_ID);
+  const title = CONFIG.FORM_USER_ID_HEADER;
+
+  const item = form
+    .getItems()
+    .find(current => String(current.getTitle() || '').trim() === title);
+
+  if (!item) {
+    throw new Error(`FORM_ITEM_NOT_FOUND: ${title}`);
+  }
+
+  return { entryParam: `entry.${item.getId()}` };
+}
+
+/**
+ * Заполняет в листе "Ответы" колонку "Фамилия Имя Отчество" после отправки Google Form.
+ * Должно вызываться installable-триггером формы "On form submit".
+ * @param {GoogleAppsScript.Events.SheetsOnFormSubmit} e
+ */
+function onFormSubmit(e) {
+  if (!e || !e.range || !e.source) return;
+
+  const sheet = e.range.getSheet();
+  if (!sheet || sheet.getName() !== CONFIG.FORM_RESPONSES_SHEET_NAME) return;
+
+  const header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
+  const idCol = header.indexOf(CONFIG.FORM_USER_ID_HEADER);
+  if (idCol === -1) return;
+
+  const rowIndex = e.range.getRow();
+  const currentValue = String(sheet.getRange(rowIndex, idCol + 1).getValue() || '').trim();
+  if (currentValue) return;
+
+  const namedValues = e.namedValues || {};
+  const formUserId = (
+    namedValues[CONFIG.FORM_USER_ID_HEADER]?.[0]
+    || namedValues[CONFIG.FORM_USER_ID_FALLBACK_HEADER]?.[0]
+    || ''
+  ).trim();
+
+  if (formUserId) {
+    sheet.getRange(rowIndex, idCol + 1).setValue(formUserId);
+  }
 }
 
 /*************************************************
