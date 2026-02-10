@@ -7,7 +7,8 @@ const CONFIG = Object.freeze({
   LOG_SHEET_NAME: 'Входы',
   FORM_RESPONSES_SHEET_NAME: 'Ответы',
   FORM_USER_ID_HEADER: 'Фамилия Имя Отчество',
-  FORM_LINK_USER_ID_PARAM: 'dbv5_user_id',
+  FORM_SESSION_KEY_PREFIX: 'form_session_',
+  GOOGLE_FORM_VIEW_URL: 'https://docs.google.com/forms/d/e/1FAIpQLSfLOcMYEWaOwF3qYuzsnSmaDbOSR6WGB7AUP7oYHBpzlo7npQ/viewform',
   YELLOW: '#ffff00',
   TIMEZONE: 'GMT+3',
   DATE_FORMAT: 'dd.MM.yyyy',
@@ -38,7 +39,14 @@ function getSheet(name, createIfMissing = false) {
  * ТОЧКА ВХОДА WEB-APP
  *************************************************/
 /** Рендерит интерфейс веб-приложения. */
-function doGet() {
+function doGet(e) {
+  const fio = String((e && e.parameter && e.parameter.fio) || '').trim();
+  if (fio) {
+    const target = String((e && e.parameter && e.parameter.target) || '').trim();
+    const redirectUrl = target || CONFIG.GOOGLE_FORM_VIEW_URL;
+    return renderFormGatewayPage(fio, redirectUrl);
+  }
+
   return HtmlService
     .createHtmlOutputFromFile('index')
     .setTitle('ДБВv5')
@@ -52,6 +60,95 @@ function doGet() {
  */
 function getHtmlFile(name) {
   return HtmlService.createHtmlOutputFromFile(name).getContent();
+}
+
+
+/**
+ * Возвращает URL текущего Web App.
+ * @returns {{url:string}}
+ */
+function getWebAppUrl() {
+  return { url: ScriptApp.getService().getUrl() || '' };
+}
+
+/**
+ * Экранирует HTML-строку.
+ * @param {string} value
+ * @returns {string}
+ */
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+/**
+ * Сохраняет связку session_token -> ФИО.
+ * @param {string} fio
+ * @returns {string}
+ */
+function saveGatewaySession(fio) {
+  const token = Utilities.getUuid();
+  const payload = {
+    fio: String(fio || '').trim(),
+    createdAt: Date.now()
+  };
+
+  PropertiesService
+    .getScriptProperties()
+    .setProperty(`${CONFIG.FORM_SESSION_KEY_PREFIX}${token}`, JSON.stringify(payload));
+
+  return token;
+}
+
+/**
+ * Рендерит страницу-прокладку перед переходом в форму.
+ * @param {string} fio
+ * @param {string} redirectUrl
+ * @returns {GoogleAppsScript.HTML.HtmlOutput}
+ */
+function renderFormGatewayPage(fio, redirectUrl) {
+  const cleanFio = String(fio || '').trim();
+  if (!cleanFio) {
+    return HtmlService.createHtmlOutput('<h3>Не указан пользователь.</h3>');
+  }
+
+  const requestedTarget = String(redirectUrl || '').trim();
+  const target = requestedTarget.startsWith('https://docs.google.com/forms/')
+    ? requestedTarget
+    : CONFIG.GOOGLE_FORM_VIEW_URL;
+  saveGatewaySession(cleanFio);
+
+  const html = `<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Подтверждение пользователя</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#f5f5f5; margin:0; }
+    .card { max-width:640px; margin:60px auto; background:#fff; border-radius:12px; padding:24px; box-shadow:0 8px 24px rgba(0,0,0,.08); }
+    .fio { font-size:22px; font-weight:700; margin:10px 0 18px; }
+    .warn { color:#a40000; margin:0 0 18px; }
+    button { background:#7f0000; color:#fff; border:none; border-radius:8px; padding:12px 18px; cursor:pointer; font-size:16px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div>Вы заполняете форму за:</div>
+    <div class="fio">${escapeHtml(cleanFio)}</div>
+    <p class="warn">Если это не вы — закройте страницу.</p>
+    <button type="button" onclick="window.location.href='${escapeHtml(target)}'">Перейти к форме</button>
+  </div>
+</body>
+</html>`;
+
+  return HtmlService.createHtmlOutput(html)
+    .setTitle('Подтверждение пользователя')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
 /*************************************************
@@ -97,39 +194,56 @@ function logFormClick(login) {
 }
 
 /**
- * Находит ФИО пользователя по последнему клику «Заполнить форму».
- * @param {Date} [submittedAt] Время отправки формы.
+ * Извлекает и удаляет ближайшую сессию Web App для указанного времени отправки.
+ * @param {Date} submittedAt
  * @returns {string}
  */
-function findUserIdFromAccessLog(submittedAt) {
-  const logSheet = getSheet(CONFIG.LOG_SHEET_NAME);
-  if (!logSheet || logSheet.getLastRow() < 2) return '';
+function consumeUserIdForSubmission(submittedAt) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
 
-  const logs = logSheet.getRange(2, 1, logSheet.getLastRow() - 1, 7).getValues();
-  const submitTs = submittedAt instanceof Date ? submittedAt.getTime() : Date.now();
-  const maxDeltaMs = 6 * 60 * 60 * 1000;
+  try {
+    const properties = PropertiesService.getScriptProperties();
+    const all = properties.getProperties();
+    const submitTs = submittedAt instanceof Date ? submittedAt.getTime() : Date.now();
 
-  for (let i = logs.length - 1; i >= 0; i--) {
-    const [logDate, login, _password, _ip, _device, _browser, status] = logs[i];
-    if (String(status || '').trim() !== 'Нажал: Заполнить форму') continue;
+    let selectedKey = '';
+    let selectedDelta = Number.POSITIVE_INFINITY;
 
-    const userId = String(login || '').trim();
-    if (!userId) continue;
+    Object.keys(all).forEach(key => {
+      if (!key.startsWith(CONFIG.FORM_SESSION_KEY_PREFIX)) return;
 
-    const logTs = logDate instanceof Date ? logDate.getTime() : NaN;
-    if (!Number.isFinite(logTs)) return userId;
+      let payload;
+      try {
+        payload = JSON.parse(all[key]);
+      } catch (_error) {
+        return;
+      }
 
-    const delta = submitTs - logTs;
-    if (delta >= 0 && delta <= maxDeltaMs) return userId;
+      const fio = String(payload.fio || '').trim();
+      const createdAt = Number(payload.createdAt || 0);
+      if (!fio || !createdAt) return;
+
+      const delta = Math.abs(submitTs - createdAt);
+      if (delta < selectedDelta) {
+        selectedDelta = delta;
+        selectedKey = key;
+      }
+    });
+
+    if (!selectedKey) return '';
+
+    const payload = JSON.parse(all[selectedKey]);
+    properties.deleteProperty(selectedKey);
+    return String(payload.fio || '').trim();
+  } finally {
+    lock.releaseLock();
   }
-
-  return '';
 }
 
 /**
  * Заполняет в листе "Ответы" колонку "Фамилия Имя Отчество" после отправки Google Form.
  * Должно вызываться installable-триггером формы "On form submit".
- * Значение ФИО берётся из серверного лога кликов, а не из полей формы.
  * @param {GoogleAppsScript.Events.SheetsOnFormSubmit} e
  */
 function onFormSubmit(e) {
@@ -140,17 +254,23 @@ function onFormSubmit(e) {
 
   const header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
   const idCol = header.indexOf(CONFIG.FORM_USER_ID_HEADER);
-  if (idCol === -1) return;
+  if (idCol === -1) {
+    console.error('COLUMN_NOT_FOUND: Фамилия Имя Отчество');
+    return;
+  }
 
   const rowIndex = e.range.getRow();
   const currentValue = String(sheet.getRange(rowIndex, idCol + 1).getValue() || '').trim();
   if (currentValue) return;
 
   const submitDate = sheet.getRange(rowIndex, 1).getValue();
-  const formUserId = findUserIdFromAccessLog(submitDate instanceof Date ? submitDate : undefined);
-  if (!formUserId) return;
+  const fio = consumeUserIdForSubmission(submitDate instanceof Date ? submitDate : new Date());
+  if (!fio) {
+    console.error(`FIO_NOT_RESOLVED_FOR_ROW: ${rowIndex}`);
+    return;
+  }
 
-  sheet.getRange(rowIndex, idCol + 1).setValue(formUserId);
+  sheet.getRange(rowIndex, idCol + 1).setValue(fio);
 }
 
 /*************************************************

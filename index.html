@@ -315,6 +315,10 @@
     password: ''
   };
 
+  const formState = {
+    webAppUrl: ''
+  };
+
 
   function formatSnilsInput(value) {
     const digits = (value || '').replace(/\D/g, '').slice(0, 11);
@@ -345,6 +349,17 @@
     dom.snilsWrap.style.display = 'block';
     dom.snils.focus();
     dom.loading.innerText = '';
+  }
+
+  function loadWebAppUrl() {
+    google.script.run
+      .withSuccessHandler(({ url }) => {
+        formState.webAppUrl = String(url || '').trim();
+      })
+      .withFailureHandler(() => {
+        formState.webAppUrl = '';
+      })
+      .getWebAppUrl();
   }
 
   function parseDateString(value) {
@@ -508,6 +523,7 @@
       dom.snilsWrap.style.display = 'block';
     }
 
+    loadWebAppUrl();
   });
 
   const ENTRY_MAP = {
@@ -591,10 +607,10 @@
 
   function addUserIdToFormUrl(formUrl, userId) {
     const normalizedUserId = String(userId || '').trim();
-    if (!normalizedUserId) return formUrl;
+    if (!normalizedUserId || !formState.webAppUrl) return formUrl;
 
-    const separator = formUrl.includes('?') ? '&' : '?';
-    return `${formUrl}${separator}dbv5_user_id=${encodeURIComponent(normalizedUserId)}`;
+    const separator = formState.webAppUrl.includes('?') ? '&' : '?';
+    return `${formState.webAppUrl}${separator}fio=${encodeURIComponent(normalizedUserId)}&target=${encodeURIComponent(formUrl)}`;
   }
 
   function showDocsResult(response) {
