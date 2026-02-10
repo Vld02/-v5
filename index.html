@@ -385,7 +385,18 @@
       return;
     }
 
+    const snilsFormatted = formatSnilsInput(dom.snils.value);
+    dom.snils.value = snilsFormatted;
+
     if (authState.awaitingSnils) {
+      verifySnilsDocs();
+      return;
+    }
+
+    // Если СНИЛС уже введён, сразу проверяем все 3 фактора в одном запросе.
+    if (snilsFormatted.length === 14) {
+      authState.login = loginVal;
+      authState.password = passwordForServer;
       verifySnilsDocs();
       return;
     }
