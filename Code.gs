@@ -183,6 +183,20 @@ function prepareRowForClient(row, header, backgrounds, allowedCols) {
 }
 
 /**
+ * Добавляет к данным ответа ID пользователя (достоверное ФИО).
+ * @param {Object} payload Данные для клиента.
+ * @param {Array<*>} row Исходная строка таблицы.
+ * @param {number} loginCol Индекс колонки ФИО пользователя.
+ * @returns {Object}
+ */
+function withUserId(payload, row, loginCol) {
+  return {
+    ...payload,
+    userIdFio: formatCellValue(row[loginCol]).trim()
+  };
+}
+
+/**
  * Проверяет логин/дату рождения и возвращает персональные данные для UI.
  * @param {string} login ФИО.
  * @param {string} password Дата рождения в формате ДД.ММ.ГГГГ.
@@ -235,7 +249,11 @@ function checkLogin(login, password, clientInfo = {}) {
       }
 
       logAccess({ login, password, clientInfo, status: 'Удачный вход' });
-      return prepareRowForClient(row, header, backgrounds[i], allowedCols);
+      return withUserId(
+        prepareRowForClient(row, header, backgrounds[i], allowedCols),
+        row,
+        authCols.loginCol
+      );
     }
   }
 
@@ -295,7 +313,11 @@ function verifySnils(login, password, snils, clientInfo = {}) {
       const rowSnils = normalizeSnils(row[snilsCol]);
       if (!rowSnils) {
         logAccess({ login, password, clientInfo, status: 'Удачный вход без СНИЛС' });
-        return prepareRowForClient(row, header, backgrounds[i], allowedCols);
+        return withUserId(
+          prepareRowForClient(row, header, backgrounds[i], allowedCols),
+          row,
+          authCols.loginCol
+        );
       }
 
       if (rowSnils !== expectedSnils) {
@@ -304,7 +326,11 @@ function verifySnils(login, password, snils, clientInfo = {}) {
       }
 
       logAccess({ login, password, clientInfo, status: 'Удачный вход по СНИЛС' });
-      return prepareRowForClient(row, header, backgrounds[i], allowedCols);
+      return withUserId(
+        prepareRowForClient(row, header, backgrounds[i], allowedCols),
+        row,
+        authCols.loginCol
+      );
     }
   }
 

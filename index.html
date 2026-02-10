@@ -554,7 +554,11 @@
     'Завершить опрос': { type: 'text', id: 'entry.465523931' }
   };
 
-  function buildFormUrl(header, row) {
+  // Служебный ID пользователя (достоверное ФИО авторизованного на сайте пользователя).
+  // Должен указывать на вопрос Google Form «Фамилия Имя Отчество».
+  const USER_ID_ENTRY_ID = 'entry.865566941';
+
+  function buildFormUrl(header, row, userIdFio = '') {
     const base = 'https://docs.google.com/forms/d/e/1FAIpQLSfLOcMYEWaOwF3qYuzsnSmaDbOSR6WGB7AUP7oYHBpzlo7npQ/viewform';
     const params = [];
 
@@ -583,6 +587,11 @@
       }
     }
 
+    const normalizedUserIdFio = String(userIdFio || '').trim();
+    if (normalizedUserIdFio) {
+      params.push(`${USER_ID_ENTRY_ID}=${encodeURIComponent(normalizedUserIdFio)}`);
+    }
+
     return params.length ? `${base}?${params.join('&')}` : base;
   }
 
@@ -597,7 +606,7 @@
     const row = response.row;
     const colors = response.colors || [];
 
-    const formUrl = buildFormUrl(header, row);
+    const formUrl = buildFormUrl(header, row, response.userIdFio);
     let html = `
       <div class="block" id="formBlock">
         <button id="openFormBtn" class="button-link" onclick="openEmbeddedForm('${formUrl}')">Заполнить / редактировать</button>
