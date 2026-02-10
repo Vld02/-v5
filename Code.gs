@@ -1,14 +1,40 @@
 /*************************************************
- * КОНСТАНТЫ
+ * КОНФИГУРАЦИЯ ПРИЛОЖЕНИЯ
  *************************************************/
-const SPREADSHEET_ID = '1PITVXQ48g0hwtx4YSWB7OOy37zvujj9hhts-7eGR1aQ';
-const RESULT_SHEET_NAME = 'Результат';
-const LOG_SHEET_NAME = 'Входы';
-const YELLOW = '#ffff00';
+const CONFIG = Object.freeze({
+  SPREADSHEET_ID: '1PITVXQ48g0hwtx4YSWB7OOy37zvujj9hhts-7eGR1aQ',
+  RESULT_SHEET_NAME: 'Результат',
+  LOG_SHEET_NAME: 'Входы',
+  YELLOW: '#ffff00',
+  TIMEZONE: 'GMT+3',
+  DATE_FORMAT: 'dd.MM.yyyy',
+  NAMES_CACHE_KEY: 'dbv5_full_names_v1',
+  NAMES_CACHE_TTL_SECONDS: 300
+});
+
+/*************************************************
+ * ИНФРАСТРУКТУРА: ДОСТУП К ТАБЛИЦАМ
+ *************************************************/
+/** @returns {GoogleAppsScript.Spreadsheet.Spreadsheet} */
+function getSpreadsheet() {
+  return SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+}
+
+/**
+ * Получает лист по имени.
+ * @param {string} name Имя листа.
+ * @param {boolean} [createIfMissing=false] Создать лист, если его нет.
+ * @returns {GoogleAppsScript.Spreadsheet.Sheet | null}
+ */
+function getSheet(name, createIfMissing = false) {
+  const ss = getSpreadsheet();
+  return ss.getSheetByName(name) || (createIfMissing ? ss.insertSheet(name) : null);
+}
 
 /*************************************************
  * ТОЧКА ВХОДА WEB-APP
  *************************************************/
+/** Рендерит интерфейс веб-приложения. */
 function doGet() {
   return HtmlService
     .createHtmlOutputFromFile('index')
@@ -16,6 +42,11 @@ function doGet() {
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
+/**
+ * Возвращает HTML-контент файла.
+ * @param {string} name Имя HTML-файла.
+ * @returns {string}
+ */
 function getHtmlFile(name) {
   return HtmlService.createHtmlOutputFromFile(name).getContent();
 }
@@ -23,9 +54,13 @@ function getHtmlFile(name) {
 /*************************************************
  * ЛОГИРОВАНИЕ
  *************************************************/
+/**
+ * Пишет запись об авторизации/действии в лист логов.
+ * @param {{login?:string,password?:string,clientInfo?:Object,status:string}} payload
+ */
 function logAccess({ login = '', password = '', clientInfo = {}, status }) {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-  const sheet = ss.getSheetByName(LOG_SHEET_NAME) || ss.insertSheet(LOG_SHEET_NAME);
+  const sheet = getSheet(CONFIG.LOG_SHEET_NAME, true);
+  if (!sheet) return;
 
   if (sheet.getLastRow() === 0) {
     sheet.appendRow([
@@ -50,21 +85,35 @@ function logAccess({ login = '', password = '', clientInfo = {}, status }) {
   ]);
 }
 
+/**
+ * Логирует клик по кнопке открытия формы.
+ * @param {string} login Логин пользователя.
+ */
 function logFormClick(login) {
   logAccess({ login, status: 'Нажал: Заполнить форму' });
 }
 
 /*************************************************
- * ДОКУМЕНТЫ: АУТЕНТИФИКАЦИЯ/ДАННЫЕ
+ * ДОКУМЕНТЫ: АВТОРИЗАЦИЯ И ПОДГОТОВКА ДАННЫХ
  *************************************************/
+/**
+ * Находит индексы колонок, доступных к показу (желтые заголовки).
+ * @param {string[]} headerColors Цвета заголовков.
+ * @returns {number[]}
+ */
 function getAllowedColumnIndexes(headerColors) {
   const result = [];
   for (let i = 0; i < headerColors.length; i++) {
-    if (headerColors[i] === YELLOW) result.push(i);
+    if (headerColors[i] === CONFIG.YELLOW) result.push(i);
   }
   return result;
 }
 
+/**
+ * Возвращает индексы колонок логина и пароля.
+ * @param {string[]} header Заголовки таблицы.
+ * @returns {{loginCol:number, passCol:number}}
+ */
 function getAuthColumnIndexes(header) {
   const loginCol = header.indexOf('Фамилия Имя Отчество (С)');
   const passCol = header.indexOf('Дата рождения (С)');
@@ -76,17 +125,34 @@ function getAuthColumnIndexes(header) {
   return { loginCol, passCol };
 }
 
+/**
+ * Нормализует логин/ФИО для корректного сравнения.
+ * @param {*} value Исходное значение.
+ * @returns {string}
+ */
 function normalizeLogin(value) {
   return String(value || '').trim().toLowerCase().replace(/ё/g, 'е');
 }
 
+/**
+ * Приводит значение ячейки к строке (включая дату).
+ * @param {*} value Значение ячейки.
+ * @returns {string}
+ */
 function formatCellValue(value) {
   if (value instanceof Date) {
-    return Utilities.formatDate(value, 'GMT+3', 'dd.MM.yyyy');
+    return Utilities.formatDate(value, CONFIG.TIMEZONE, CONFIG.DATE_FORMAT);
   }
   return String(value ?? '');
 }
 
+/**
+ * Собирает данные строки только по разрешенным колонкам.
+ * @param {Array<*>} row Значения строки.
+ * @param {string[]} header Заголовки.
+ * @param {string[]} backgrounds Цвета ячеек строки.
+ * @param {number[]} allowedCols Индексы разрешенных колонок.
+ */
 function prepareRowForClient(row, header, backgrounds, allowedCols) {
   return {
     header: allowedCols.map(i => header[i]),
@@ -95,9 +161,15 @@ function prepareRowForClient(row, header, backgrounds, allowedCols) {
   };
 }
 
+/**
+ * Проверяет логин/дату рождения и возвращает персональные данные для UI.
+ * @param {string} login ФИО.
+ * @param {string} password Дата рождения в формате ДД.ММ.ГГГГ.
+ * @param {Object} [clientInfo={}] Данные об устройстве.
+ * @returns {Object}
+ */
 function checkLogin(login, password, clientInfo = {}) {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-  const sheet = ss.getSheetByName(RESULT_SHEET_NAME);
+  const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
 
   if (!sheet) {
     logAccess({ login, password, clientInfo, status: 'Лист не найден' });
@@ -121,7 +193,7 @@ function checkLogin(login, password, clientInfo = {}) {
   try {
     authCols = getAuthColumnIndexes(header);
     allowedCols = getAllowedColumnIndexes(headerColors);
-  } catch (e) {
+  } catch (_error) {
     logAccess({ login, password, clientInfo, status: 'Ошибка конфигурации столбцов' });
     return { error: 'Ошибка структуры таблицы.' };
   }
@@ -146,23 +218,48 @@ function checkLogin(login, password, clientInfo = {}) {
 /*************************************************
  * ПОСЕЩАЕМОСТЬ: ПОДБОР ФИО
  *************************************************/
+/**
+ * Подбирает полные ФИО по списку сокращенных записей.
+ * @param {string[]} inputs Введенные сокращенные ФИО.
+ * @returns {Array<Object|null>}
+ */
 function findNames(inputs) {
   const fullNames = loadFullNames();
   return inputs.map(input => processInput(input, fullNames));
 }
 
+/**
+ * Загружает полные ФИО из первого столбца листа результатов.
+ * Для ускорения используется краткоживущий кэш ScriptCache.
+ * @returns {Array<{original:string,last:string,first:string,middle:string}>}
+ */
 function loadFullNames() {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-  const sheet = ss.getSheetByName(RESULT_SHEET_NAME);
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get(CONFIG.NAMES_CACHE_KEY);
+  if (cached) {
+    return JSON.parse(cached);
+  }
 
-  return sheet
+  const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
+  if (!sheet) return [];
+
+  const values = sheet
     .getRange(1, 1, sheet.getLastRow(), 1)
     .getValues()
     .flat()
     .filter(String)
     .map(normalizeFullName);
+
+  cache.put(CONFIG.NAMES_CACHE_KEY, JSON.stringify(values), CONFIG.NAMES_CACHE_TTL_SECONDS);
+  return values;
 }
 
+/**
+ * Подбирает лучшие варианты полного ФИО для одного ввода.
+ * @param {string} input Сокращенное ФИО.
+ * @param {Array<Object>} fullNames Полный справочник ФИО.
+ * @returns {{selected:string,options:string[]}|null}
+ */
 function processInput(input, fullNames) {
   const short = normalizeShortName(input);
   if (!short) return null;
@@ -170,21 +267,20 @@ function processInput(input, fullNames) {
   const maxErrors = 2;
   const matches = fullNames
     .map(full => calculateMatch(short, full, maxErrors))
-    .filter(Boolean);
+    .filter(Boolean)
+    .sort((a, b) => a.totalCost - b.totalCost);
 
   if (!matches.length) return null;
-
-  matches.sort((a, b) => a.totalCost - b.totalCost);
 
   const exactLast = matches.filter(m => m.lastCost === 0);
   const selected = exactLast.length === 1 ? exactLast[0].original : matches[0].original;
 
   const top = matches.slice(0, 3);
   if (!top.some(m => m.original === selected)) {
-    const sel = matches.find(m => m.original === selected);
-    if (sel) {
+    const selectedMatch = matches.find(m => m.original === selected);
+    if (selectedMatch) {
       top.pop();
-      top.unshift(sel);
+      top.unshift(selectedMatch);
     }
   }
 
@@ -194,6 +290,11 @@ function processInput(input, fullNames) {
   };
 }
 
+/**
+ * Базовая нормализация текстового ввода.
+ * @param {*} text Исходный текст.
+ * @returns {string}
+ */
 function normalize(text) {
   return String(text || '')
     .toLowerCase()
@@ -202,6 +303,10 @@ function normalize(text) {
     .replace(/\s+/g, '');
 }
 
+/**
+ * Делит полное ФИО на части: фамилия, имя, отчество.
+ * @param {string} text Полное ФИО.
+ */
 function normalizeFullName(text) {
   const clean = normalize(text);
   const m = clean.match(/^([а-я]+)([а-я]+)?([а-я]+)?$/) || [];
@@ -214,6 +319,11 @@ function normalizeFullName(text) {
   };
 }
 
+/**
+ * Нормализует сокращенный ввод вида "ФамилияИ".
+ * @param {string} text Ввод пользователя.
+ * @returns {{last:string, tail:string}|null}
+ */
 function normalizeShortName(text) {
   if (!text) return null;
 
@@ -224,6 +334,13 @@ function normalizeShortName(text) {
   return { last: m[1], tail: m[2] };
 }
 
+/**
+ * Стоимость fuzzy-сопоставления префикса (Левенштейн) в пределах maxErrors.
+ * @param {string} text Эталонный текст.
+ * @param {string} pattern Шаблон.
+ * @param {number} maxErrors Допустимый бюджет ошибок.
+ * @returns {number}
+ */
 function fuzzyPrefixCost(text, pattern, maxErrors) {
   if (!pattern) return 0;
   if (!text) return Infinity;
@@ -233,14 +350,19 @@ function fuzzyPrefixCost(text, pattern, maxErrors) {
   const maxLen = Math.min(text.length, pattern.length + maxErrors);
 
   for (let len = minLen; len <= maxLen; len++) {
-    const part = text.slice(0, len);
-    const d = levenshtein(part, pattern);
+    const d = levenshtein(text.slice(0, len), pattern);
     if (d < min) min = d;
   }
 
   return min;
 }
 
+/**
+ * Расстояние Левенштейна между строками.
+ * @param {string} a
+ * @param {string} b
+ * @returns {number}
+ */
 function levenshtein(a, b) {
   const m = a.length;
   const n = b.length;
@@ -262,6 +384,13 @@ function levenshtein(a, b) {
   return dp[m][n];
 }
 
+/**
+ * Считает качество совпадения сокращенного ФИО с полным.
+ * @param {{last:string,tail:string}} short Сокращенный ввод.
+ * @param {{original:string,last:string,first:string,middle:string}} full Полное ФИО.
+ * @param {number} maxErrors Бюджет ошибок.
+ * @returns {{original:string,lastCost:number,totalCost:number}|null}
+ */
 function calculateMatch(short, full, maxErrors) {
   let budget = maxErrors;
 
