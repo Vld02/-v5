@@ -565,7 +565,15 @@
     return tr;
   }
 
-  function caretPos(el) { return window.getSelection().focusOffset; }
+  function caretPos(el) {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return 0;
+
+    const range = sel.getRangeAt(0).cloneRange();
+    range.selectNodeContents(el);
+    range.setEnd(sel.focusNode, sel.focusOffset);
+    return range.toString().length;
+  }
 
   function setCaret(el, pos) {
     const r = document.createRange();
@@ -617,6 +625,26 @@
       row.remove();
       setCaret(p, len);
       scheduleMatch();
+    }
+
+    if (e.key === 'Delete' && pos === text.length) {
+      const next = row.nextElementSibling;
+      if (!next) return;
+      e.preventDefault();
+      const n = next.cells[0];
+      const len = cell.innerText.length;
+      cell.innerText += n.innerText;
+      next.remove();
+      setCaret(cell, len);
+      scheduleMatch();
+    }
+
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      const targetRow = e.key === 'ArrowUp' ? row.previousElementSibling : row.nextElementSibling;
+      if (!targetRow) return;
+      e.preventDefault();
+      const targetCell = targetRow.cells[0];
+      setCaret(targetCell, Math.min(pos, targetCell.innerText.length));
     }
   });
 
