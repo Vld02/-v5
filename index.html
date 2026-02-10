@@ -554,9 +554,19 @@
     'Завершить опрос': { type: 'text', id: 'entry.465523931' }
   };
 
-  function buildFormUrl(header, row) {
+  // Поле Google-формы для фиксации ФИО авторизованного пользователя
+  // в колонку "Фамилия Имя Отчество" листа "Ответы".
+  // При изменении ID поля в форме достаточно обновить значение ниже.
+  const FORM_RESPONDER_FIO_ENTRY_ID = 'entry.1756448525';
+
+  function buildFormUrl(header, row, authorizedFio = '') {
     const base = 'https://docs.google.com/forms/d/e/1FAIpQLSfLOcMYEWaOwF3qYuzsnSmaDbOSR6WGB7AUP7oYHBpzlo7npQ/viewform';
     const params = [];
+
+    const responderFio = String(authorizedFio || '').trim();
+    if (responderFio) {
+      params.push(`${FORM_RESPONDER_FIO_ENTRY_ID}=${encodeURIComponent(responderFio)}`);
+    }
 
     for (let i = 0; i < header.length; i++) {
       const title = header[i];
@@ -597,7 +607,8 @@
     const row = response.row;
     const colors = response.colors || [];
 
-    const formUrl = buildFormUrl(header, row);
+    const authorizedFio = dom.login.value || localStorage.getItem('savedLogin') || '';
+    const formUrl = buildFormUrl(header, row, authorizedFio);
     let html = `
       <div class="block" id="formBlock">
         <button id="openFormBtn" class="button-link" onclick="openEmbeddedForm('${formUrl}')">Заполнить / редактировать</button>
