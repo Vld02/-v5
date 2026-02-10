@@ -312,7 +312,8 @@
   const authState = {
     awaitingSnils: false,
     login: '',
-    password: ''
+    password: '',
+    fillerId: ''
   };
 
   function formatSnilsInput(value) {
@@ -327,6 +328,7 @@
     authState.awaitingSnils = false;
     authState.login = '';
     authState.password = '';
+    authState.fillerId = '';
     dom.snils.value = '';
     dom.snilsWrap.style.display = 'none';
   }
@@ -509,6 +511,7 @@
   });
 
   const ENTRY_MAP = {
+    'Фамилия Имя Отчество': { type: 'text', id: 'entry.2065032718' },
     'Фамилия Имя Отчество (С)': { type: 'text', id: 'entry.839624196' },
     'Дата рождения (С)': { type: 'dateParts', id: 'entry.486784767' },
     'Школа автоматический итоговый результат': { type: 'text', id: 'entry.940501672' },
@@ -554,7 +557,7 @@
     'Завершить опрос': { type: 'text', id: 'entry.465523931' }
   };
 
-  function buildFormUrl(header, row) {
+  function buildFormUrl(header, row, fillerId) {
     const base = 'https://docs.google.com/forms/d/e/1FAIpQLSfLOcMYEWaOwF3qYuzsnSmaDbOSR6WGB7AUP7oYHBpzlo7npQ/viewform';
     const params = [];
 
@@ -583,6 +586,13 @@
       }
     }
 
+    if (fillerId) {
+      const fillerMap = ENTRY_MAP['Фамилия Имя Отчество'];
+      if (fillerMap) {
+        params.push(`${fillerMap.id}=${encodeURIComponent(fillerId)}`);
+      }
+    }
+
     return params.length ? `${base}?${params.join('&')}` : base;
   }
 
@@ -596,8 +606,11 @@
     const header = response.header;
     const row = response.row;
     const colors = response.colors || [];
+    const fillerId = (response.fillerId || '').trim();
 
-    const formUrl = buildFormUrl(header, row);
+    authState.fillerId = fillerId;
+
+    const formUrl = buildFormUrl(header, row, fillerId);
     let html = `
       <div class="block" id="formBlock">
         <button id="openFormBtn" class="button-link" onclick="openEmbeddedForm('${formUrl}')">Заполнить / редактировать</button>
