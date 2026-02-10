@@ -315,9 +315,6 @@
     password: ''
   };
 
-  const formState = {
-    userIdEntryParam: ''
-  };
 
   function formatSnilsInput(value) {
     const digits = (value || '').replace(/\D/g, '').slice(0, 11);
@@ -348,18 +345,6 @@
     dom.snilsWrap.style.display = 'block';
     dom.snils.focus();
     dom.loading.innerText = '';
-  }
-
-
-  function loadFormUserIdEntryParam() {
-    google.script.run
-      .withSuccessHandler(({ entryParam }) => {
-        formState.userIdEntryParam = entryParam || '';
-      })
-      .withFailureHandler(() => {
-        formState.userIdEntryParam = '';
-      })
-      .getFormUserIdEntryParam();
   }
 
   function parseDateString(value) {
@@ -523,7 +508,6 @@
       dom.snilsWrap.style.display = 'block';
     }
 
-    loadFormUserIdEntryParam();
   });
 
   const ENTRY_MAP = {
@@ -572,7 +556,7 @@
     'Завершить опрос': { type: 'text', id: 'entry.465523931' }
   };
 
-  function buildFormUrl(header, row, userId) {
+  function buildFormUrl(header, row) {
     const base = 'https://docs.google.com/forms/d/e/1FAIpQLSfLOcMYEWaOwF3qYuzsnSmaDbOSR6WGB7AUP7oYHBpzlo7npQ/viewform';
     const params = [];
 
@@ -601,12 +585,16 @@
       }
     }
 
-    const normalizedUserId = String(userId || '').trim();
-    if (normalizedUserId && formState.userIdEntryParam) {
-      params.push(`${formState.userIdEntryParam}=${encodeURIComponent(normalizedUserId)}`);
-    }
 
     return params.length ? `${base}?${params.join('&')}` : base;
+  }
+
+  function addUserIdToFormUrl(formUrl, userId) {
+    const normalizedUserId = String(userId || '').trim();
+    if (!normalizedUserId) return formUrl;
+
+    const separator = formUrl.includes('?') ? '&' : '?';
+    return `${formUrl}${separator}dbv5_user_id=${encodeURIComponent(normalizedUserId)}`;
   }
 
   function showDocsResult(response) {
@@ -620,7 +608,7 @@
     const row = response.row;
     const colors = response.colors || [];
 
-    const formUrl = buildFormUrl(header, row, dom.login.value);
+    const formUrl = addUserIdToFormUrl(buildFormUrl(header, row), dom.login.value);
     let html = `
       <div class="block" id="formBlock">
         <button id="openFormBtn" class="button-link" onclick="openEmbeddedForm('${formUrl}')">Заполнить / редактировать</button>

@@ -7,8 +7,7 @@ const CONFIG = Object.freeze({
   LOG_SHEET_NAME: 'Входы',
   FORM_RESPONSES_SHEET_NAME: 'Ответы',
   FORM_USER_ID_HEADER: 'Фамилия Имя Отчество',
-  FORM_USER_ID_FALLBACK_HEADER: 'Фамилия Имя Отчество (С)',
-  GOOGLE_FORM_ID: '1FAIpQLSfLOcMYEWaOwF3qYuzsnSmaDbOSR6WGB7AUP7oYHBpzlo7npQ',
+  FORM_LINK_USER_ID_PARAM: 'dbv5_user_id',
   YELLOW: '#ffff00',
   TIMEZONE: 'GMT+3',
   DATE_FORMAT: 'dd.MM.yyyy',
@@ -98,31 +97,43 @@ function logFormClick(login) {
 }
 
 /**
- * Возвращает параметр Google Form (entry.<id>) для служебного поля ФИО.
- * @returns {{entryParam: string}}
+ * Находит ФИО пользователя по последнему клику «Заполнить форму».
+ * @param {Date} [submittedAt] Время отправки формы.
+ * @returns {string}
  */
-function getFormUserIdEntryParam() {
-  const form = FormApp.openById(CONFIG.GOOGLE_FORM_ID);
-  const title = CONFIG.FORM_USER_ID_HEADER;
+function findUserIdFromAccessLog(submittedAt) {
+  const logSheet = getSheet(CONFIG.LOG_SHEET_NAME);
+  if (!logSheet || logSheet.getLastRow() < 2) return '';
 
-  const item = form
-    .getItems()
-    .find(current => String(current.getTitle() || '').trim() === title);
+  const logs = logSheet.getRange(2, 1, logSheet.getLastRow() - 1, 7).getValues();
+  const submitTs = submittedAt instanceof Date ? submittedAt.getTime() : Date.now();
+  const maxDeltaMs = 6 * 60 * 60 * 1000;
 
-  if (!item) {
-    throw new Error(`FORM_ITEM_NOT_FOUND: ${title}`);
+  for (let i = logs.length - 1; i >= 0; i--) {
+    const [logDate, login, _password, _ip, _device, _browser, status] = logs[i];
+    if (String(status || '').trim() !== 'Нажал: Заполнить форму') continue;
+
+    const userId = String(login || '').trim();
+    if (!userId) continue;
+
+    const logTs = logDate instanceof Date ? logDate.getTime() : NaN;
+    if (!Number.isFinite(logTs)) return userId;
+
+    const delta = submitTs - logTs;
+    if (delta >= 0 && delta <= maxDeltaMs) return userId;
   }
 
-  return { entryParam: `entry.${item.getId()}` };
+  return '';
 }
 
 /**
  * Заполняет в листе "Ответы" колонку "Фамилия Имя Отчество" после отправки Google Form.
  * Должно вызываться installable-триггером формы "On form submit".
+ * Значение ФИО берётся из серверного лога кликов, а не из полей формы.
  * @param {GoogleAppsScript.Events.SheetsOnFormSubmit} e
  */
 function onFormSubmit(e) {
-  if (!e || !e.range || !e.source) return;
+  if (!e || !e.range) return;
 
   const sheet = e.range.getSheet();
   if (!sheet || sheet.getName() !== CONFIG.FORM_RESPONSES_SHEET_NAME) return;
@@ -135,16 +146,11 @@ function onFormSubmit(e) {
   const currentValue = String(sheet.getRange(rowIndex, idCol + 1).getValue() || '').trim();
   if (currentValue) return;
 
-  const namedValues = e.namedValues || {};
-  const formUserId = (
-    namedValues[CONFIG.FORM_USER_ID_HEADER]?.[0]
-    || namedValues[CONFIG.FORM_USER_ID_FALLBACK_HEADER]?.[0]
-    || ''
-  ).trim();
+  const submitDate = sheet.getRange(rowIndex, 1).getValue();
+  const formUserId = findUserIdFromAccessLog(submitDate instanceof Date ? submitDate : undefined);
+  if (!formUserId) return;
 
-  if (formUserId) {
-    sheet.getRange(rowIndex, idCol + 1).setValue(formUserId);
-  }
+  sheet.getRange(rowIndex, idCol + 1).setValue(formUserId);
 }
 
 /*************************************************
