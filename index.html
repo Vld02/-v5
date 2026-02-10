@@ -554,7 +554,7 @@
     'Завершить опрос': { type: 'text', id: 'entry.465523931' }
   };
 
-  function buildFormUrl(header, row) {
+  function buildFormUrl(header, row, fillerName = '', fillerEntryId = '') {
     const base = 'https://docs.google.com/forms/d/e/1FAIpQLSfLOcMYEWaOwF3qYuzsnSmaDbOSR6WGB7AUP7oYHBpzlo7npQ/viewform';
     const params = [];
 
@@ -583,6 +583,10 @@
       }
     }
 
+    if (fillerEntryId && fillerName) {
+      params.push(`${fillerEntryId}=${encodeURIComponent(fillerName.trim())}`);
+    }
+
     return params.length ? `${base}?${params.join('&')}` : base;
   }
 
@@ -597,7 +601,8 @@
     const row = response.row;
     const colors = response.colors || [];
 
-    const formUrl = buildFormUrl(header, row);
+    const authorizedFio = (localStorage.getItem('savedLogin') || dom.login.value || '').trim();
+    const formUrl = buildFormUrl(header, row, authorizedFio, response.formFillerEntryId);
     let html = `
       <div class="block" id="formBlock">
         <button id="openFormBtn" class="button-link" onclick="openEmbeddedForm('${formUrl}')">Заполнить / редактировать</button>

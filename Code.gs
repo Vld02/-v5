@@ -3,13 +3,17 @@
  *************************************************/
 const CONFIG = Object.freeze({
   SPREADSHEET_ID: '1PITVXQ48g0hwtx4YSWB7OOy37zvujj9hhts-7eGR1aQ',
+  DOCS_FORM_ID: '1FAIpQLSfLOcMYEWaOwF3qYuzsnSmaDbOSR6WGB7AUP7oYHBpzlo7npQ',
+  DOCS_FORM_FILLER_TITLE: 'Фамилия Имя Отчество',
   RESULT_SHEET_NAME: 'Результат',
   LOG_SHEET_NAME: 'Входы',
   YELLOW: '#ffff00',
   TIMEZONE: 'GMT+3',
   DATE_FORMAT: 'dd.MM.yyyy',
   NAMES_CACHE_KEY: 'dbv5_full_names_v1',
-  NAMES_CACHE_TTL_SECONDS: 300
+  NAMES_CACHE_TTL_SECONDS: 300,
+  FORM_FILLER_ENTRY_CACHE_KEY: 'dbv5_form_filler_entry_v1',
+  FORM_FILLER_ENTRY_CACHE_TTL_SECONDS: 21600
 });
 
 /*************************************************
@@ -178,8 +182,38 @@ function prepareRowForClient(row, header, backgrounds, allowedCols) {
   return {
     header: allowedCols.map(i => header[i]),
     row: allowedCols.map(i => formatCellValue(row[i])),
-    colors: allowedCols.map(i => backgrounds[i])
+    colors: allowedCols.map(i => backgrounds[i]),
+    formFillerEntryId: getDocsFormFillerEntryId()
   };
+}
+
+/**
+ * Возвращает prefill-параметр Google Forms для поля с ФИО заполняющего.
+ * @returns {string}
+ */
+function getDocsFormFillerEntryId() {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get(CONFIG.FORM_FILLER_ENTRY_CACHE_KEY);
+  if (cached) return cached;
+
+  try {
+    const form = FormApp.openById(CONFIG.DOCS_FORM_ID);
+    const item = form
+      .getItems()
+      .find(x => (x.getTitle() || '').trim() === CONFIG.DOCS_FORM_FILLER_TITLE);
+
+    const entryId = item ? `entry.${item.getId()}` : '';
+    if (entryId) {
+      cache.put(
+        CONFIG.FORM_FILLER_ENTRY_CACHE_KEY,
+        entryId,
+        CONFIG.FORM_FILLER_ENTRY_CACHE_TTL_SECONDS
+      );
+    }
+    return entryId;
+  } catch (_error) {
+    return '';
+  }
 }
 
 /**
