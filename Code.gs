@@ -125,6 +125,27 @@ function getAuthColumnIndexes(header) {
   return { loginCol, passCol };
 }
 
+
+/**
+ * Возвращает индекс колонки СНИЛС.
+ * @param {string[]} header Заголовки таблицы.
+ * @returns {number}
+ */
+function getSnilsColumnIndex(header) {
+  return header.indexOf('Снилс: номер');
+}
+
+/**
+ * Нормализует СНИЛС к формату 000-000-000-00.
+ * @param {*} value Исходный СНИЛС.
+ * @returns {string}
+ */
+function normalizeSnils(value) {
+  const digits = String(value || '').replace(/\D/g, '').slice(0, 11);
+  if (digits.length !== 11) return '';
+  return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 9)}-${digits.slice(9, 11)}`;
+}
+
 /**
  * Нормализует логин/ФИО для корректного сравнения.
  * @param {*} value Исходное значение.
@@ -199,6 +220,7 @@ function checkLogin(login, password, clientInfo = {}) {
   }
 
   const normalizedLogin = normalizeLogin(login);
+  const snilsCol = getSnilsColumnIndex(header);
 
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
@@ -206,13 +228,87 @@ function checkLogin(login, password, clientInfo = {}) {
     const rowPassword = formatCellValue(row[authCols.passCol]).trim();
 
     if (rowLogin === normalizedLogin && rowPassword === password) {
+      const rowSnils = snilsCol >= 0 ? normalizeSnils(row[snilsCol]) : '';
+      if (rowSnils) {
+        logAccess({ login, password, clientInfo, status: 'Требуется ввод СНИЛС' });
+        return { requiresSnils: true };
+      }
+
       logAccess({ login, password, clientInfo, status: 'Удачный вход' });
       return prepareRowForClient(row, header, backgrounds[i], allowedCols);
     }
   }
 
-  logAccess({ login, password, clientInfo, status: 'Неудачный вход' });
-  return { error: 'Неверный логин или дата рождения.' };
+  logAccess({ login, password, clientInfo, status: 'Неудачный вход: ФИО/дата' });
+  return { error: 'Неправильно введены ФИО или дата рождения.' };
+}
+
+
+/**
+ * Второй фактор: проверка СНИЛС после успешного совпадения ФИО и даты рождения.
+ * @param {string} login ФИО.
+ * @param {string} password Дата рождения.
+ * @param {string} snils СНИЛС из формы.
+ * @param {Object} [clientInfo={}] Данные клиента.
+ * @returns {Object}
+ */
+function verifySnils(login, password, snils, clientInfo = {}) {
+  const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
+  if (!sheet) {
+    return { error: 'Лист с результатами не найден.' };
+  }
+
+  const range = sheet.getDataRange();
+  const data = range.getValues();
+  const backgrounds = range.getBackgrounds();
+
+  if (data.length < 2) {
+    return { error: 'Таблица пуста.' };
+  }
+
+  const header = data[0].map(String);
+  const headerColors = backgrounds[0];
+
+  let authCols;
+  let allowedCols;
+  try {
+    authCols = getAuthColumnIndexes(header);
+    allowedCols = getAllowedColumnIndexes(headerColors);
+  } catch (_error) {
+    return { error: 'Ошибка структуры таблицы.' };
+  }
+
+  const snilsCol = getSnilsColumnIndex(header);
+  if (snilsCol === -1) {
+    return { error: 'Ошибка структуры таблицы.' };
+  }
+
+  const normalizedLogin = normalizeLogin(login);
+  const expectedSnils = normalizeSnils(snils);
+
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const rowLogin = normalizeLogin(row[authCols.loginCol]);
+    const rowPassword = formatCellValue(row[authCols.passCol]).trim();
+
+    if (rowLogin === normalizedLogin && rowPassword === password) {
+      const rowSnils = normalizeSnils(row[snilsCol]);
+      if (!rowSnils) {
+        logAccess({ login, password, clientInfo, status: 'Удачный вход без СНИЛС' });
+        return prepareRowForClient(row, header, backgrounds[i], allowedCols);
+      }
+
+      if (rowSnils !== expectedSnils) {
+        logAccess({ login, password, clientInfo, status: 'Неудачный вход: СНИЛС' });
+        return { error: 'Неправильно введён СНИЛС' };
+      }
+
+      logAccess({ login, password, clientInfo, status: 'Удачный вход по СНИЛС' });
+      return prepareRowForClient(row, header, backgrounds[i], allowedCols);
+    }
+  }
+
+  return { error: 'Неправильно введены ФИО или дата рождения.' };
 }
 
 /*************************************************

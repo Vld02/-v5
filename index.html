@@ -227,6 +227,11 @@
     <label>Дата рождения:</label>
     <input id="password" name="birthDateText" type="text" inputmode="numeric" maxlength="10" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="ДД.ММ.ГГГГ" />
 
+    <div id="snilsWrap" style="display:none;">
+      <label>СНИЛС:</label>
+      <input id="snils" type="text" inputmode="numeric" maxlength="14" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="000-000-000-00" />
+    </div>
+
     <button onclick="loginDocs()">Войти</button>
 
     <div id="error"></div>
@@ -273,6 +278,8 @@
     loading: document.getElementById('loading'),
     login: document.getElementById('login'),
     password: document.getElementById('password'),
+    snils: document.getElementById('snils'),
+    snilsWrap: document.getElementById('snilsWrap'),
     docsFlag: document.getElementById('flag-docs'),
     attendanceFlag: document.getElementById('flag-attendance'),
     gearFlag: document.getElementById('flag-gear')
@@ -302,6 +309,37 @@
   /*************************************************
    * ДОКУМЕНТЫ: РАБОТА С ДАТОЙ И АВТОРИЗАЦИЯ
    *************************************************/
+  const authState = {
+    awaitingSnils: false,
+    login: '',
+    password: ''
+  };
+
+  function formatSnilsInput(value) {
+    const digits = (value || '').replace(/\D/g, '').slice(0, 11);
+    if (digits.length <= 3) return digits;
+    if (digits.length <= 6) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+    if (digits.length <= 9) return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+    return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 9)}-${digits.slice(9)}`;
+  }
+
+  function resetSnilsStep() {
+    authState.awaitingSnils = false;
+    authState.login = '';
+    authState.password = '';
+    dom.snils.value = '';
+    dom.snilsWrap.style.display = 'none';
+  }
+
+  function startSnilsStep(login, password) {
+    authState.awaitingSnils = true;
+    authState.login = login;
+    authState.password = password;
+    dom.snilsWrap.style.display = 'block';
+    dom.snils.focus();
+    dom.loading.innerText = '';
+  }
+
   function parseDateString(value) {
     if (!value) return null;
     value = value.trim();
@@ -341,16 +379,61 @@
       return;
     }
 
+    if (authState.awaitingSnils) {
+      verifySnilsDocs();
+      return;
+    }
+
     dom.loading.innerText = 'Аутентификация...';
-    localStorage.setItem('savedLogin', loginVal);
-    localStorage.setItem('savedDate', dateInput.value);
-    localStorage.setItem('isLoggedIn', '1');
 
     const clientInfo = await getClientInfo();
 
     google.script.run
-      .withSuccessHandler(showDocsResult)
+      .withSuccessHandler(response => {
+        if (response && response.requiresSnils) {
+          startSnilsStep(loginVal, passwordForServer);
+          dom.error.textContent = 'Для входа введите СНИЛС.';
+          return;
+        }
+
+        localStorage.setItem('savedLogin', loginVal);
+        localStorage.setItem('savedDate', dateInput.value);
+        localStorage.setItem('isLoggedIn', '1');
+        resetSnilsStep();
+        showDocsResult(response);
+      })
       .checkLogin(loginVal, passwordForServer, clientInfo);
+  }
+
+  async function verifySnilsDocs() {
+    dom.error.textContent = '';
+
+    const snilsFormatted = formatSnilsInput(dom.snils.value);
+    dom.snils.value = snilsFormatted;
+
+    if (snilsFormatted.length !== 14) {
+      dom.error.textContent = 'Введите СНИЛС в формате 000-000-000-00.';
+      return;
+    }
+
+    dom.loading.innerText = 'Проверка СНИЛС...';
+    const clientInfo = await getClientInfo();
+
+    google.script.run
+      .withSuccessHandler(response => {
+        if (response && response.error) {
+          dom.error.textContent = response.error;
+          dom.loading.innerText = '';
+          return;
+        }
+
+        localStorage.setItem('savedLogin', authState.login);
+        localStorage.setItem('savedDate', dom.password.value);
+        localStorage.setItem('isLoggedIn', '1');
+        resetSnilsStep();
+        showDocsResult(response);
+      })
+      .verifySnils(authState.login, authState.password, snilsFormatted, clientInfo);
   }
 
   async function getClientInfo() {
@@ -568,6 +651,10 @@
       .replace(/'/g, '&#039;');
   }
 
+  dom.login.addEventListener('input', function() {
+    if (authState.awaitingSnils) resetSnilsStep();
+  });
+
   dom.login.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -576,6 +663,7 @@
   });
 
   dom.password.addEventListener('input', function(e) {
+    if (authState.awaitingSnils) resetSnilsStep();
     const formatted = formatDateInput(e.target.value);
     if (formatted !== e.target.value) e.target.value = formatted;
   });
@@ -584,6 +672,18 @@
     if (e.key === 'Enter') {
       e.preventDefault();
       loginDocs();
+    }
+  });
+
+  dom.snils.addEventListener('input', function(e) {
+    const formatted = formatSnilsInput(e.target.value);
+    if (formatted !== e.target.value) e.target.value = formatted;
+  });
+
+  dom.snils.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      verifySnilsDocs();
     }
   });
 
