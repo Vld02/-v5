@@ -312,8 +312,11 @@
   const authState = {
     awaitingSnils: false,
     login: '',
-    password: ''
+    password: '',
+    authenticatedFio: ''
   };
+
+  const FORM_FILLER_ID_ENTRY = 'entry.286976530';
 
   function formatSnilsInput(value) {
     const digits = (value || '').replace(/\D/g, '').slice(0, 11);
@@ -329,6 +332,13 @@
     authState.password = '';
     dom.snils.value = '';
     dom.snilsWrap.style.display = 'none';
+  }
+
+  function setAuthenticatedFio(response) {
+    const value = String(response?.authenticatedFio || '').trim();
+    if (!value) return;
+    authState.authenticatedFio = value;
+    localStorage.setItem('authenticatedFio', value);
   }
 
   function startSnilsStep(login, password) {
@@ -416,6 +426,7 @@
         localStorage.setItem('savedLogin', loginVal);
         localStorage.setItem('savedDate', dateInput.value);
         localStorage.setItem('isLoggedIn', '1');
+        setAuthenticatedFio(response);
         authState.awaitingSnils = false;
         authState.login = '';
         authState.password = '';
@@ -450,6 +461,7 @@
         localStorage.setItem('savedDate', dom.password.value);
         localStorage.setItem('savedSnils', snilsFormatted);
         localStorage.setItem('isLoggedIn', '1');
+        setAuthenticatedFio(response);
         authState.awaitingSnils = false;
         authState.login = '';
         authState.password = '';
@@ -499,6 +511,7 @@
     const savedLogin = localStorage.getItem('savedLogin');
     const savedDate = localStorage.getItem('savedDate');
     const savedSnils = localStorage.getItem('savedSnils');
+    const authenticatedFio = localStorage.getItem('authenticatedFio');
 
     if (savedLogin) dom.login.value = savedLogin;
     if (savedDate) dom.password.value = formatDateInput(savedDate);
@@ -506,6 +519,7 @@
       dom.snils.value = formatSnilsInput(savedSnils);
       dom.snilsWrap.style.display = 'block';
     }
+    if (authenticatedFio) authState.authenticatedFio = authenticatedFio;
   });
 
   const ENTRY_MAP = {
@@ -554,7 +568,7 @@
     'Завершить опрос': { type: 'text', id: 'entry.465523931' }
   };
 
-  function buildFormUrl(header, row) {
+  function buildFormUrl(header, row, authenticatedFio = '') {
     const base = 'https://docs.google.com/forms/d/e/1FAIpQLSfLOcMYEWaOwF3qYuzsnSmaDbOSR6WGB7AUP7oYHBpzlo7npQ/viewform';
     const params = [];
 
@@ -583,6 +597,11 @@
       }
     }
 
+    const idValue = String(authenticatedFio || '').trim();
+    if (idValue) {
+      params.push(`${FORM_FILLER_ID_ENTRY}=${encodeURIComponent(idValue)}`);
+    }
+
     return params.length ? `${base}?${params.join('&')}` : base;
   }
 
@@ -597,7 +616,8 @@
     const row = response.row;
     const colors = response.colors || [];
 
-    const formUrl = buildFormUrl(header, row);
+    setAuthenticatedFio(response);
+    const formUrl = buildFormUrl(header, row, authState.authenticatedFio);
     let html = `
       <div class="block" id="formBlock">
         <button id="openFormBtn" class="button-link" onclick="openEmbeddedForm('${formUrl}')">Заполнить / редактировать</button>

@@ -174,11 +174,12 @@ function formatCellValue(value) {
  * @param {string[]} backgrounds Цвета ячеек строки.
  * @param {number[]} allowedCols Индексы разрешенных колонок.
  */
-function prepareRowForClient(row, header, backgrounds, allowedCols) {
+function prepareRowForClient(row, header, backgrounds, allowedCols, authenticatedFio = '') {
   return {
     header: allowedCols.map(i => header[i]),
     row: allowedCols.map(i => formatCellValue(row[i])),
-    colors: allowedCols.map(i => backgrounds[i])
+    colors: allowedCols.map(i => backgrounds[i]),
+    authenticatedFio
   };
 }
 
@@ -235,7 +236,13 @@ function checkLogin(login, password, clientInfo = {}) {
       }
 
       logAccess({ login, password, clientInfo, status: 'Удачный вход' });
-      return prepareRowForClient(row, header, backgrounds[i], allowedCols);
+      return prepareRowForClient(
+        row,
+        header,
+        backgrounds[i],
+        allowedCols,
+        formatCellValue(row[authCols.loginCol]).trim()
+      );
     }
   }
 
@@ -295,7 +302,13 @@ function verifySnils(login, password, snils, clientInfo = {}) {
       const rowSnils = normalizeSnils(row[snilsCol]);
       if (!rowSnils) {
         logAccess({ login, password, clientInfo, status: 'Удачный вход без СНИЛС' });
-        return prepareRowForClient(row, header, backgrounds[i], allowedCols);
+        return prepareRowForClient(
+          row,
+          header,
+          backgrounds[i],
+          allowedCols,
+          formatCellValue(row[authCols.loginCol]).trim()
+        );
       }
 
       if (rowSnils !== expectedSnils) {
@@ -304,7 +317,13 @@ function verifySnils(login, password, snils, clientInfo = {}) {
       }
 
       logAccess({ login, password, clientInfo, status: 'Удачный вход по СНИЛС' });
-      return prepareRowForClient(row, header, backgrounds[i], allowedCols);
+      return prepareRowForClient(
+        row,
+        header,
+        backgrounds[i],
+        allowedCols,
+        formatCellValue(row[authCols.loginCol]).trim()
+      );
     }
   }
 
