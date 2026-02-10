@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>ДБВv5</title>
+<style>
+  :root {
+    --card-bg: rgba(255, 255, 255, 0.92);
+    --primary: #1a73e8;
+    --border: #d8d8d8;
+  }
+
+  body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-image: url("data:image/jpeg;base64,s4IYUoz//2Q==");
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+  }
+
+  .page {
+    max-width: 960px;
+    margin: 24px auto;
+    padding: 20px;
+    background: var(--card-bg);
+    border-radius: 16px;
+  }
+
+  .tabs {
+    position: sticky;
+    top: 8px;
+    left: 0;
+    display: flex;
+    gap: 10px;
+    z-index: 5;
+    margin-bottom: 14px;
+  }
+
+  .tab-flag {
+    min-width: 74px;
+    min-height: 74px;
+    border: 2px solid #3b3b3b;
+    border-radius: 14px;
+    font-size: 30px;
+    background: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,.15);
+  }
+
+  .tab-flag.active {
+    background: #e7f0ff;
+    border-color: var(--primary);
+  }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .logo-wrapper { text-align: center; display: block; }
+  .logo-wrapper img { max-width: 260px; }
+
+  h2 { text-align: center; }
+  label { display: block; margin-top: 10px; }
+  input { padding: 8px; margin: 6px 0; width: 100%; box-sizing: border-box; }
+  button { padding: 10px 16px; margin-top: 10px; cursor: pointer; }
+
+  .block {
+    margin-top: 20px;
+    padding: 15px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fafafa;
+  }
+
+  .button-link {
+    display: inline-block;
+    padding: 10px 16px;
+    background: #4285f4;
+    color: #fff;
+    text-decoration: none;
+    border-radius: 6px;
+    margin-left: 50%;
+    transform: translateX(-50%);
+    margin-bottom: 8px;
+    border: none;
+    cursor: pointer;
+  }
+
+  .button-link.disabled {
+    background: #9e9e9e;
+    cursor: default;
+    pointer-events: none;
+  }
+
+  .item { display: flex; border-bottom: 1px solid #ddd; padding: 6px 0; }
+  .item-title { font-weight: bold; width: 45%; }
+  .item-value { width: 55%; }
+
+  #error { color: red; margin-top: 12px; font-weight: bold; text-align: center; }
+
+  .controls { display: flex; justify-content: center; margin-bottom: 10px; }
+  .table-wrapper { display: flex; justify-content: center; }
+  table { border-collapse: collapse; min-width: 420px; }
+  th, td { border: 1px solid #ccc; padding: 6px 8px; vertical-align: top; }
+  th { background: #eaeaea; }
+  tbody tr:nth-child(even) { background: #f3f3f3; }
+  td.input { min-width: 160px; outline: none; }
+  td.result { min-width: 240px; }
+  .fio-list { display: flex; flex-wrap: wrap; gap: 6px; }
+  .fio-option { padding: 4px 8px; border: 1px solid #999; border-radius: 4px; background: #fff; cursor: pointer; user-select: none; font-size: 13px; }
+  .fio-option.selected { background: #cce5ff; border-color: #339; font-weight: bold; }
+
+  .placeholder {
+    text-align: center;
+    padding: 48px 14px;
+    border: 2px dashed #aaa;
+    border-radius: 10px;
+    font-size: 20px;
+    color: #444;
+    background: #fff;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="tabs" aria-label="Навигация вкладок">
+    <button class="tab-flag active" data-tab="docs" title="ДБВv5 Документы">🚩1</button>
+    <button class="tab-flag" data-tab="attendance" title="ДБВv5 Посещаемость">🚩2</button>
+    <button class="tab-flag" data-tab="gear" title="ДБВv5 Снаряжение">🚩3</button>
+  </div>
+
+  <section id="tab-docs" class="tab-panel active">
+    <a href="https://t.me/+CujwPnZKNHs0Zjgy" target="_blank" class="logo-wrapper">
+      <img src="data:image/png;base64,iVjiDYiaAEBzVm4Y4AADyPCfkT7CCDus5Z2oUl/c+qqpn0zbEY8PSKwJBH4/71NhrM4Aef2AAAAAElFTkSuQmCC" alt="Logo" />
+    </a>
+    <h2>ДБВv5 Документы</h2>
+
+    <label>ФИО занимающегося:</label>
+    <input id="login" type="text" placeholder="Фамилия Имя Отчество" />
+
+    <label>Дата рождения:</label>
+    <input id="password" type="date" />
+
+    <button onclick="loginDocs()">Войти</button>
+
+    <div id="error"></div>
+    <div id="loading" style="margin-top:10px;color:#555;"></div>
+    <div id="result"></div>
+    <div id="formContainer" style="margin-top:20px;"></div>
+  </section>
+
+  <section id="tab-attendance" class="tab-panel">
+    <h2>ДБВv5 Посещаемость</h2>
+    <div class="controls">
+      <button onclick="openAttendanceForm()">Заполнить форму</button>
+    </div>
+    <div class="table-wrapper">
+      <table id="fioTable">
+        <thead>
+          <tr>
+            <th>Сокращённое ФИО</th>
+            <th>Полное ФИО</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="input" contenteditable="true"></td>
+            <td class="result"></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="tab-gear" class="tab-panel">
+    <h2>ДБВv5 Снаряжение</h2>
+    <div class="placeholder">Раздел в разработке.</div>
+  </section>
+</div>
+
+<script>
+  const tabFlags = [...document.querySelectorAll('.tab-flag')];
+  const tabPanels = {
+    docs: document.getElementById('tab-docs'),
+    attendance: document.getElementById('tab-attendance'),
+    gear: document.getElementById('tab-gear')
+  };
+
+  tabFlags.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.tab;
+      tabFlags.forEach(x => x.classList.toggle('active', x === btn));
+      Object.entries(tabPanels).forEach(([name, panel]) => {
+        panel.classList.toggle('active', name === key);
+      });
+    });
+  });
+
+  function parseDateString(value) {
+    if (!value) return null;
+    value = value.trim();
+    const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) return { year: isoMatch[1], month: String(Number(isoMatch[2])), day: String(Number(isoMatch[3])) };
+    const dotMatch = value.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+    if (dotMatch) return { year: dotMatch[3], month: String(Number(dotMatch[2])), day: String(Number(dotMatch[1])) };
+    return null;
+  }
+
+  async function loginDocs() {
+    document.getElementById('error').textContent = '';
+    document.getElementById('loading').innerText = '';
+
+    const loginVal = document.getElementById('login').value.trim();
+    const dateRaw = document.getElementById('password').value;
+    if (!loginVal || !dateRaw) {
+      document.getElementById('error').textContent = 'Введите ФИО и дату рождения.';
+      return;
+    }
+
+    document.getElementById('loading').innerText = 'Аутентификация...';
+    localStorage.setItem('savedLogin', loginVal);
+    localStorage.setItem('savedDate', dateRaw);
+    localStorage.setItem('isLoggedIn', '1');
+
+    const parts = dateRaw.split('-');
+    const passwordForServer = `${parts[2]}.${parts[1]}.${parts[0]}`;
+    const clientInfo = await getClientInfo();
+
+    google.script.run
+      .withSuccessHandler(showDocsResult)
+      .checkLogin(loginVal, passwordForServer, clientInfo);
+  }
+
+  async function getClientInfo() {
+    const ip = await fetch('https://api.ipify.org?format=json')
+      .then(r => r.json())
+      .then(j => j.ip)
+      .catch(() => 'не определён');
+
+    const ua = navigator.userAgent.toLowerCase();
+    let device = 'ПК';
+    if (ua.includes('mobile')) device = 'Мобильный';
+    if (ua.includes('tablet') || ua.includes('ipad')) device = 'Планшет';
+
+    let browser = 'Неизвестный';
+    if (ua.includes('chrome')) browser = 'Chrome';
+    if (ua.includes('safari') && !ua.includes('chrome')) browser = 'Safari';
+    if (ua.includes('firefox')) browser = 'Firefox';
+    if (ua.includes('yabrowser')) browser = 'Yandex';
+    if (ua.includes('edge')) browser = 'Edge';
+
+    return { ip, device, browser };
+  }
+
+  function loadDataSilently() {
+    const loginVal = localStorage.getItem('savedLogin');
+    const dateRaw = localStorage.getItem('savedDate');
+    if (!loginVal || !dateRaw) return;
+
+    const parts = dateRaw.split('-');
+    const passwordForServer = `${parts[2]}.${parts[1]}.${parts[0]}`;
+    google.script.run.checkLogin(loginVal, passwordForServer, { silent: true });
+  }
+
+  function logFormClickClient() {
+    const loginVal = localStorage.getItem('savedLogin') || 'неизвестно';
+    google.script.run.logFormClick(loginVal);
+  }
+
+  window.addEventListener('DOMContentLoaded', () => {
+    const savedLogin = localStorage.getItem('savedLogin');
+    const savedDate = localStorage.getItem('savedDate');
+    if (savedLogin) document.getElementById('login').value = savedLogin;
+    if (savedDate) document.getElementById('password').value = savedDate;
+  });
+
+  const ENTRY_MAP = {
+    'Фамилия Имя Отчество (С)': { type: 'text', id: 'entry.839624196' },
+    'Дата рождения (С)': { type: 'dateParts', id: 'entry.486784767' },
+    'Школа автоматический итоговый результат': { type: 'text', id: 'entry.940501672' },
+    'Класс / курс': { type: 'text', id: 'entry.821953319' },
+    'Литера класса (буква)': { type: 'text', id: 'entry.684875902' },
+    'Директор школы: Фамилия Имя Отчество': { type: 'text', id: 'entry.2072597319' },
+    'Адрес регистрации / Прописка (С)': { type: 'text', id: 'entry.865566941' },
+    'Телефон +7 (С)': { type: 'text', id: 'entry.970307056' },
+    'Электронная почта (С)': { type: 'text', id: 'entry.3304605' },
+    'Свидетельство: Серия, номер (С)': { type: 'text', id: 'entry.1514966749' },
+    'Паспорт: Код подразделения (С)': { type: 'text', id: 'entry.1581252849' },
+    'Снилс: номер': { type: 'text', id: 'entry.937341347' },
+    'Полис: Страховая компания': { type: 'otherOption', id: 'entry.146274222' },
+    'Мед полис: номер': { type: 'text', id: 'entry.1917395961' },
+    'Паспорт или Свидетельство: Кем выдан (С)': { type: 'otherOption', id: 'entry.698271959' },
+    'Паспорт или Свидетельство: Когда выдан (С)': { type: 'dateParts', id: 'entry.1532804302' },
+    'Отец - Основные данные': { type: 'text', id: 'entry.1469131559' },
+    'Фамилия Имя Отчество (П)': { type: 'text', id: 'entry.1058110522' },
+    'Телефон +7 (П)': { type: 'text', id: 'entry.1049937641' },
+    'Электронная почта (П)': { type: 'text', id: 'entry.1782553661' },
+    'Дополн. данные отца (документы)': { type: 'text', id: 'entry.1221032392' },
+    'Дата рождения (П)': { type: 'dateParts', id: 'entry.8454711' },
+    'Паспорт: Серия, номер (П)': { type: 'text', id: 'entry.244093263' },
+    'Паспорт: Кем выдан (П)': { type: 'otherOption', id: 'entry.1906456441' },
+    'Паспорт: Когда выдан (П)': { type: 'dateParts', id: 'entry.1455656355' },
+    'Паспорт: Прописка (П)': { type: 'text', id: 'entry.646278185' },
+    'Паспорт: Код подразделения (П)': { type: 'text', id: 'entry.1694042252' },
+    'Марка автомобиля (П)': { type: 'text', id: 'entry.578806920' },
+    'гос. номер автомобиля (П)': { type: 'text', id: 'entry.2102422380' },
+    'Мать - Основные данные': { type: 'text', id: 'entry.1523036313' },
+    'Фамилия Имя Отчество (М)': { type: 'text', id: 'entry.1648441516' },
+    'Телефон +7 (М)': { type: 'text', id: 'entry.1584003848' },
+    'Электронная почта (М)': { type: 'text', id: 'entry.1072346272' },
+    'Дополн. данные Матери (документы)': { type: 'text', id: 'entry.806876438' },
+    'Дата рождения (М)': { type: 'dateParts', id: 'entry.1093632809' },
+    'Паспорт: Серия, номер (М)': { type: 'text', id: 'entry.1956661242' },
+    'Паспорт: Кем выдан (М)': { type: 'otherOption', id: 'entry.1932909788' },
+    'Паспорт: Когда выдан (М)': { type: 'dateParts', id: 'entry.1988590081' },
+    'Паспорт: Прописка (М)': { type: 'text', id: 'entry.1118515654' },
+    'Паспорт: Код подразделения (М)': { type: 'text', id: 'entry.630042479' },
+    'Марка автомобиля (М)': { type: 'text', id: 'entry.197033163' },
+    'гос. номер автомобиля (М)': { type: 'text', id: 'entry.709907584' },
+    'Завершить опрос': { type: 'text', id: 'entry.465523931' }
+  };
+
+  function buildFormUrl(header, row) {
+    const base = 'https://docs.google.com/forms/d/e/1FAIpQLSfLOcMYEWaOwF3qYuzsnSmaDbOSR6WGB7AUP7oYHBpzlo7npQ/viewform';
+    const params = [];
+
+    for (let i = 0; i < header.length; i++) {
+      const title = header[i];
+      let value = row[i];
+      if (value === undefined || value === null) continue;
+      value = String(value).trim();
+      if (!value) continue;
+
+      const map = ENTRY_MAP[title];
+      if (!map) continue;
+
+      if (map.type === 'text') {
+        params.push(`${map.id}=${encodeURIComponent(value)}`);
+      } else if (map.type === 'otherOption') {
+        params.push(`${map.id}=__other_option__`);
+        params.push(`${map.id}.other_option_response=${encodeURIComponent(value)}`);
+      } else if (map.type === 'dateParts') {
+        const d = parseDateString(value);
+        if (d) {
+          params.push(`${map.id}_year=${encodeURIComponent(d.year)}`);
+          params.push(`${map.id}_month=${encodeURIComponent(d.month)}`);
+          params.push(`${map.id}_day=${encodeURIComponent(d.day)}`);
+        }
+      }
+    }
+
+    return params.length ? `${base}?${params.join('&')}` : base;
+  }
+
+  function showDocsResult(response) {
+    if (response.error) {
+      document.getElementById('error').textContent = response.error;
+      document.getElementById('loading').innerText = '';
+      return;
+    }
+
+    const header = response.header;
+    const row = response.row;
+    const colors = response.colors || [];
+
+    const formUrl = buildFormUrl(header, row);
+    let html = `
+      <div class="block" id="formBlock">
+        <button id="openFormBtn" class="button-link" onclick="openEmbeddedForm('${formUrl}')">Заполнить / редактировать</button>
+        <div id="externalFormBtnWrapper" style="display:none;margin-top:10px;">
+          <button class="button-link" onclick="openFormInNewWindow('${formUrl}')">Открыть форму в отдельной вкладке</button>
+        </div>
+      </div>`;
+
+    const SECTION_STARTS = {
+      'Фамилия Имя Отчество (С)': 'Спортсмен',
+      'Фамилия Имя Отчество (П)': 'Отец',
+      'Фамилия Имя Отчество (М)': 'Мать',
+      'Фамилия Имя Отчество (Д)': 'Другой законный представитель'
+    };
+
+    const sectionKeys = Object.keys(SECTION_STARTS);
+    const sectionPositions = [];
+
+    for (let i = 0; i < header.length; i++) {
+      if (sectionKeys.includes(header[i])) sectionPositions.push(i);
+    }
+    sectionPositions.push(header.length);
+
+    for (let s = 0; s < sectionPositions.length - 1; s++) {
+      const startIndex = sectionPositions[s];
+      const endIndex = sectionPositions[s + 1];
+      const sectionTitle = SECTION_STARTS[header[startIndex]];
+
+      let hasValue = false;
+      for (let i = startIndex; i < endIndex; i++) {
+        if ((row[i] ?? '').trim() !== '') {
+          hasValue = true;
+          break;
+        }
+      }
+      if (!hasValue) continue;
+
+      html += `<div style="margin-top:20px;margin-bottom:10px;font-weight:bold;font-size:20px;text-align:center;border-bottom:2px solid #000;padding-bottom:6px;">${sectionTitle}</div>`;
+
+      for (let i = startIndex; i < endIndex; i++) {
+        const cleanedTitle = header[i].replace(/\(С\)|\(П\)|\(М\)|\(Д\)/g, '').trim();
+        const bg = colors[i] || '';
+        const style = bg ? `background:${bg};padding:4px;border-radius:4px;` : '';
+        html += `<div class="item" style="margin-bottom:6px;"><div class="item-title">${escapeHtml(cleanedTitle)}</div><div class="item-value" style="${style}">${escapeHtml(row[i] ?? '')}</div></div>`;
+      }
+    }
+
+    document.getElementById('result').innerHTML = html;
+    document.getElementById('loading').innerText = '';
+  }
+
+  function openEmbeddedForm(formUrl) {
+    logFormClickClient();
+
+    const btn = document.getElementById('openFormBtn');
+    if (btn) {
+      btn.classList.add('disabled');
+      btn.textContent = 'Форма открыта';
+    }
+
+    const externalBtn = document.getElementById('externalFormBtnWrapper');
+    if (externalBtn) externalBtn.style.display = 'block';
+
+    const container = document.getElementById('formContainer');
+    container.innerHTML = `<iframe src="${formUrl}&embedded=true" width="100%" height="1000" frameborder="0">Загрузка…</iframe>`;
+    container.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  function openFormInNewWindow(formUrl) {
+    window.open(formUrl, '_blank', 'noopener');
+  }
+
+  function escapeHtml(s) {
+    if (s === undefined || s === null) return '';
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  document.getElementById('login').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      document.getElementById('password').focus();
+    }
+  });
+
+  document.getElementById('password').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      loginDocs();
+    }
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    if (localStorage.getItem('isLoggedIn') !== '1') return;
+    loadDataSilently();
+  });
+
+  const tbody = document.querySelector('#fioTable tbody');
+  let debounceTimer = null;
+
+  function createRow(left = '') {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="input" contenteditable="true">${left}</td><td class="result"></td>`;
+    return tr;
+  }
+
+  function caretPos(el) { return window.getSelection().focusOffset; }
+
+  function setCaret(el, pos) {
+    const r = document.createRange();
+    const s = window.getSelection();
+    r.selectNodeContents(el);
+    r.collapse(true);
+    r.setStart(el.firstChild || el, pos);
+    s.removeAllRanges();
+    s.addRange(r);
+    el.focus();
+  }
+
+  function extractLinesFromCell(cell) {
+    const html = cell.innerHTML
+      .replace(/<div>/gi, '\n')
+      .replace(/<\/div>/gi, '')
+      .replace(/<br\s*\/?>/gi, '\n');
+
+    return html
+      .split(/\n+/)
+      .map(s => s.replace(/&nbsp;/g, ' ').trim())
+      .filter(Boolean);
+  }
+
+  tbody.addEventListener('keydown', e => {
+    if (!e.target.classList.contains('input')) return;
+
+    const cell = e.target;
+    const row = cell.parentElement;
+    const pos = caretPos(cell);
+    const text = cell.innerText;
+
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      cell.innerText = text.slice(0, pos);
+      const r = createRow(text.slice(pos));
+      row.after(r);
+      setCaret(r.cells[0], 0);
+      scheduleMatch();
+    }
+
+    if (e.key === 'Backspace' && pos === 0) {
+      const prev = row.previousElementSibling;
+      if (!prev) return;
+      e.preventDefault();
+      const p = prev.cells[0];
+      const len = p.innerText.length;
+      p.innerText += text;
+      row.remove();
+      setCaret(p, len);
+      scheduleMatch();
+    }
+  });
+
+  tbody.addEventListener('input', e => {
+    if (!e.target.classList.contains('input')) return;
+
+    const cell = e.target;
+    const row = cell.parentElement;
+    const lines = extractLinesFromCell(cell);
+
+    if (lines.length <= 1) {
+      const last = tbody.lastElementChild;
+      if (last.cells[0].innerText.trim()) tbody.appendChild(createRow());
+      scheduleMatch();
+      return;
+    }
+
+    cell.innerText = lines[0];
+    let currentRow = row;
+    for (let i = 1; i < lines.length; i++) {
+      const r = createRow(lines[i]);
+      currentRow.after(r);
+      currentRow = r;
+    }
+
+    setCaret(currentRow.cells[0], currentRow.cells[0].innerText.length);
+    scheduleMatch();
+  });
+
+  tbody.addEventListener('paste', e => {
+    if (!e.target.classList.contains('input')) return;
+    e.preventDefault();
+
+    const lines = e.clipboardData.getData('text').split(/\r?\n/).filter(Boolean);
+    let row = e.target.parentElement;
+
+    lines.forEach((line, i) => {
+      if (i === 0) {
+        e.target.innerText = line;
+      } else {
+        const r = createRow(line);
+        row.after(r);
+        row = r;
+      }
+    });
+
+    scheduleMatch();
+  });
+
+  function scheduleMatch() {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(runMatch, 400);
+  }
+
+  function renderResult(cell, data) {
+    cell.innerHTML = '';
+
+    if (!data || !data.options || data.options.length === 0 || data.options.length > 3) {
+      cell.innerText = '—';
+      return;
+    }
+
+    const wrap = document.createElement('div');
+    wrap.className = 'fio-list';
+
+    data.options.forEach(fio => {
+      const btn = document.createElement('div');
+      btn.className = 'fio-option';
+      btn.innerText = fio;
+      if (fio === data.selected) btn.classList.add('selected');
+
+      btn.addEventListener('click', () => {
+        [...wrap.children].forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+      });
+
+      wrap.appendChild(btn);
+    });
+
+    cell.appendChild(wrap);
+  }
+
+  function runMatch() {
+    const rows = [...tbody.rows];
+    const inputs = rows.map(r => r.cells[0].innerText.trim());
+
+    google.script.run
+      .withSuccessHandler(results => {
+        results.forEach((data, i) => {
+          if (rows[i]) renderResult(rows[i].cells[1], data);
+        });
+      })
+      .findNames(inputs);
+  }
+
+  function openAttendanceForm() {
+    const rows = [...tbody.rows];
+    const values = rows
+      .map(r => {
+        const selected = r.querySelector('.fio-option.selected');
+        const first = r.querySelector('.fio-option');
+        return selected ? selected.innerText : first ? first.innerText : '';
+      })
+      .filter(Boolean);
+
+    if (!values.length) {
+      alert('Нет данных для заполнения формы');
+      return;
+    }
+
+    const prefillValue = encodeURIComponent(values.join('\n'));
+    const url = 'https://docs.google.com/forms/d/e/1FAIpQLSdGwQQhPaY3wXjT90TX2daQx7U-mjnfkoL_7VZ9nJ8NUqbKtw/viewform?entry.286976530=' + prefillValue;
+    window.open(url, '_blank');
+  }
+</script>
+</body>
+</html>
