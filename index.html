@@ -225,7 +225,7 @@
     <input id="login" type="text" placeholder="Фамилия Имя Отчество" />
 
     <label>Дата рождения:</label>
-    <input id="password" type="date" />
+    <input id="password" type="text" inputmode="numeric" maxlength="10" placeholder="ДД.ММ.ГГГГ" />
 
     <button onclick="loginDocs()">Войти</button>
 
@@ -296,24 +296,40 @@
     return null;
   }
 
+  function formatDateInput(value) {
+    const digits = (value || '').replace(/\D/g, '').slice(0, 8);
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 4) return `${digits.slice(0, 2)}.${digits.slice(2)}`;
+    return `${digits.slice(0, 2)}.${digits.slice(2, 4)}.${digits.slice(4)}`;
+  }
+
+  function toServerDate(value) {
+    const parsed = parseDateString(value);
+    if (!parsed) return '';
+    const day = String(parsed.day).padStart(2, '0');
+    const month = String(parsed.month).padStart(2, '0');
+    return `${day}.${month}.${parsed.year}`;
+  }
+
   async function loginDocs() {
     document.getElementById('error').textContent = '';
     document.getElementById('loading').innerText = '';
 
     const loginVal = document.getElementById('login').value.trim();
-    const dateRaw = document.getElementById('password').value;
-    if (!loginVal || !dateRaw) {
-      document.getElementById('error').textContent = 'Введите ФИО и дату рождения.';
+    const dateInput = document.getElementById('password');
+    dateInput.value = formatDateInput(dateInput.value);
+    const passwordForServer = toServerDate(dateInput.value);
+
+    if (!loginVal || !passwordForServer) {
+      document.getElementById('error').textContent = 'Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.';
       return;
     }
 
     document.getElementById('loading').innerText = 'Аутентификация...';
     localStorage.setItem('savedLogin', loginVal);
-    localStorage.setItem('savedDate', dateRaw);
+    localStorage.setItem('savedDate', dateInput.value);
     localStorage.setItem('isLoggedIn', '1');
 
-    const parts = dateRaw.split('-');
-    const passwordForServer = `${parts[2]}.${parts[1]}.${parts[0]}`;
     const clientInfo = await getClientInfo();
 
     google.script.run
@@ -347,8 +363,8 @@
     const dateRaw = localStorage.getItem('savedDate');
     if (!loginVal || !dateRaw) return;
 
-    const parts = dateRaw.split('-');
-    const passwordForServer = `${parts[2]}.${parts[1]}.${parts[0]}`;
+    const passwordForServer = toServerDate(dateRaw);
+    if (!passwordForServer) return;
     google.script.run.checkLogin(loginVal, passwordForServer, { silent: true });
   }
 
@@ -361,7 +377,7 @@
     const savedLogin = localStorage.getItem('savedLogin');
     const savedDate = localStorage.getItem('savedDate');
     if (savedLogin) document.getElementById('login').value = savedLogin;
-    if (savedDate) document.getElementById('password').value = savedDate;
+    if (savedDate) document.getElementById('password').value = formatDateInput(savedDate);
   });
 
   const ENTRY_MAP = {
@@ -541,6 +557,11 @@
       e.preventDefault();
       document.getElementById('password').focus();
     }
+  });
+
+  document.getElementById('password').addEventListener('input', function(e) {
+    const formatted = formatDateInput(e.target.value);
+    if (formatted !== e.target.value) e.target.value = formatted;
   });
 
   document.getElementById('password').addEventListener('keydown', function(e) {
