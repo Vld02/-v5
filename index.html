@@ -427,6 +427,17 @@
   async function verifySnilsDocs() {
     dom.error.textContent = '';
 
+    if (!authState.login || !authState.password) {
+      const loginVal = dom.login.value.trim();
+      const passwordForServer = toServerDate(formatDateInput(dom.password.value));
+      if (!loginVal || !passwordForServer) {
+        dom.error.textContent = 'Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.';
+        return;
+      }
+      authState.login = loginVal;
+      authState.password = passwordForServer;
+    }
+
     const snilsFormatted = formatSnilsInput(dom.snils.value);
     dom.snils.value = snilsFormatted;
 
@@ -715,7 +726,7 @@
   dom.snils.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') {
       e.preventDefault();
-      verifySnilsDocs();
+      loginDocs();
     }
   });
 
