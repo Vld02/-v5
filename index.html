@@ -393,14 +393,6 @@
       return;
     }
 
-    // Если СНИЛС уже введён, сразу проверяем все 3 фактора в одном запросе.
-    if (snilsFormatted.length === 14) {
-      authState.login = loginVal;
-      authState.password = passwordForServer;
-      verifySnilsDocs();
-      return;
-    }
-
     dom.loading.innerText = 'Аутентификация...';
 
     const clientInfo = await getClientInfo();
@@ -409,6 +401,10 @@
       .withSuccessHandler(response => {
         if (response && response.requiresSnils) {
           startSnilsStep(loginVal, passwordForServer);
+          if (snilsFormatted.length === 14) {
+            verifySnilsDocs();
+            return;
+          }
           dom.error.textContent = 'Для входа введите СНИЛС.';
           return;
         }
