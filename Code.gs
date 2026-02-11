@@ -5,6 +5,11 @@ const CONFIG = Object.freeze({
   SPREADSHEET_ID: '1PITVXQ48g0hwtx4YSWB7OOy37zvujj9hhts-7eGR1aQ',
   RESULT_SHEET_NAME: 'Результат',
   LOG_SHEET_NAME: 'Входы',
+  FORM_RESPONSES_SHEET_NAME: 'Ответы',
+  FORM_USER_ID_HEADER: 'Фамилия Имя Отчество',
+  FORM_SESSION_KEY_PREFIX: 'form_session_',
+  FORM_SESSION_QUERY_PARAM: 'session_token',
+  GOOGLE_FORM_VIEW_URL: 'https://docs.google.com/forms/d/e/1FAIpQLSfLOcMYEWaOwF3qYuzsnSmaDbOSR6WGB7AUP7oYHBpzlo7npQ/viewform',
   YELLOW: '#ffff00',
   TIMEZONE: 'GMT+3',
   DATE_FORMAT: 'dd.MM.yyyy',
@@ -35,7 +40,14 @@ function getSheet(name, createIfMissing = false) {
  * ТОЧКА ВХОДА WEB-APP
  *************************************************/
 /** Рендерит интерфейс веб-приложения. */
-function doGet() {
+function doGet(e) {
+  const fio = String((e && e.parameter && e.parameter.fio) || '').trim();
+  if (fio) {
+    const target = String((e && e.parameter && e.parameter.target) || '').trim();
+    const redirectUrl = target || CONFIG.GOOGLE_FORM_VIEW_URL;
+    return renderFormGatewayPage(fio, redirectUrl);
+  }
+
   return HtmlService
     .createHtmlOutputFromFile('index')
     .setTitle('ДБВv5')
@@ -49,6 +61,110 @@ function doGet() {
  */
 function getHtmlFile(name) {
   return HtmlService.createHtmlOutputFromFile(name).getContent();
+}
+
+
+/**
+ * Возвращает URL текущего Web App.
+ * @returns {{url:string}}
+ */
+function getWebAppUrl() {
+  return { url: ScriptApp.getService().getUrl() || '' };
+}
+
+/**
+ * Экранирует HTML-строку.
+ * @param {string} value
+ * @returns {string}
+ */
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+/**
+ * Сохраняет связку session_token -> ФИО.
+ * @param {string} fio
+ * @returns {string}
+ */
+function saveGatewaySession(fio) {
+  const token = Utilities.getUuid();
+  const payload = {
+    fio: String(fio || '').trim(),
+    createdAt: Date.now()
+  };
+
+  PropertiesService
+    .getScriptProperties()
+    .setProperty(`${CONFIG.FORM_SESSION_KEY_PREFIX}${token}`, JSON.stringify(payload));
+
+  return token;
+}
+
+/**
+ * Добавляет session_token в URL формы.
+ * @param {string} url
+ * @param {string} token
+ * @returns {string}
+ */
+function addSessionTokenToUrl(url, token) {
+  const cleanUrl = String(url || '').trim();
+  const cleanToken = String(token || '').trim();
+  if (!cleanUrl || !cleanToken) return cleanUrl;
+
+  const separator = cleanUrl.includes('?') ? '&' : '?';
+  return `${cleanUrl}${separator}${CONFIG.FORM_SESSION_QUERY_PARAM}=${encodeURIComponent(cleanToken)}`;
+}
+
+/**
+ * Рендерит страницу-прокладку перед переходом в форму.
+ * @param {string} fio
+ * @param {string} redirectUrl
+ * @returns {GoogleAppsScript.HTML.HtmlOutput}
+ */
+function renderFormGatewayPage(fio, redirectUrl) {
+  const cleanFio = String(fio || '').trim();
+  if (!cleanFio) {
+    return HtmlService.createHtmlOutput('<h3>Не указан пользователь.</h3>');
+  }
+
+  const requestedTarget = String(redirectUrl || '').trim();
+  const target = requestedTarget.startsWith('https://docs.google.com/forms/')
+    ? requestedTarget
+    : CONFIG.GOOGLE_FORM_VIEW_URL;
+  const sessionToken = saveGatewaySession(cleanFio);
+
+  const html = `<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Подтверждение пользователя</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#f5f5f5; margin:0; }
+    .card { max-width:640px; margin:60px auto; background:#fff; border-radius:12px; padding:24px; box-shadow:0 8px 24px rgba(0,0,0,.08); }
+    .fio { font-size:22px; font-weight:700; margin:10px 0 18px; }
+    .warn { color:#a40000; margin:0 0 18px; }
+    button { background:#7f0000; color:#fff; border:none; border-radius:8px; padding:12px 18px; cursor:pointer; font-size:16px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div>Вы заполняете форму за:</div>
+    <div class="fio">${escapeHtml(cleanFio)}</div>
+    <p class="warn">Если это не вы — закройте страницу.</p>
+    <button type="button" onclick="window.location.href='${escapeHtml(addSessionTokenToUrl(target, sessionToken))}'">Перейти к форме</button>
+  </div>
+</body>
+</html>`;
+
+  return HtmlService.createHtmlOutput(html)
+    .setTitle('Подтверждение пользователя')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
 /*************************************************
@@ -91,6 +207,105 @@ function logAccess({ login = '', password = '', clientInfo = {}, status }) {
  */
 function logFormClick(login) {
   logAccess({ login, status: 'Нажал: Заполнить форму' });
+}
+
+/**
+ * Извлекает и удаляет ФИО по точному session_token.
+ * @param {string} sessionToken
+ * @returns {string}
+ */
+function consumeUserIdForSessionToken(sessionToken) {
+  const token = String(sessionToken || '').trim();
+  if (!token) return '';
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
+  try {
+    const key = `${CONFIG.FORM_SESSION_KEY_PREFIX}${token}`;
+    const properties = PropertiesService.getScriptProperties();
+    const raw = properties.getProperty(key);
+    if (!raw) return '';
+
+    let payload;
+    try {
+      payload = JSON.parse(raw);
+    } catch (_error) {
+      properties.deleteProperty(key);
+      return '';
+    }
+
+    const fio = String(payload.fio || '').trim();
+    properties.deleteProperty(key);
+    return fio;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Извлекает session_token из строки.
+ * @param {string} value
+ * @returns {string}
+ */
+function extractSessionToken(value) {
+  const queryParam = CONFIG.FORM_SESSION_QUERY_PARAM;
+  const re = new RegExp(`[?&#]${queryParam}=([^&#\\s]+)`);
+  const match = String(value || '').match(re);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
+/**
+ * Ищет session_token в данных отправленной строки.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @param {number} rowIndex
+ * @returns {string}
+ */
+function findSessionTokenForRow(sheet, rowIndex) {
+  const rowValues = sheet.getRange(rowIndex, 1, 1, sheet.getLastColumn()).getValues()[0];
+  for (let i = 0; i < rowValues.length; i++) {
+    const token = extractSessionToken(rowValues[i]);
+    if (token) return token;
+  }
+
+  return '';
+}
+
+/**
+ * Заполняет в листе "Ответы" колонку "Фамилия Имя Отчество" после отправки Google Form.
+ * Должно вызываться installable-триггером формы "On form submit".
+ * @param {GoogleAppsScript.Events.SheetsOnFormSubmit} e
+ */
+function onFormSubmit(e) {
+  if (!e || !e.range) return;
+
+  const sheet = e.range.getSheet();
+  if (!sheet || sheet.getName() !== CONFIG.FORM_RESPONSES_SHEET_NAME) return;
+
+  const header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
+  const idCol = header.indexOf(CONFIG.FORM_USER_ID_HEADER);
+  if (idCol === -1) {
+    console.error('COLUMN_NOT_FOUND: Фамилия Имя Отчество');
+    return;
+  }
+
+  const rowIndex = e.range.getRow();
+  const currentValue = String(sheet.getRange(rowIndex, idCol + 1).getValue() || '').trim();
+  if (currentValue) return;
+
+  const sessionToken = findSessionTokenForRow(sheet, rowIndex);
+  if (!sessionToken) {
+    console.error(`SESSION_TOKEN_NOT_FOUND_FOR_ROW: ${rowIndex}`);
+    return;
+  }
+
+  const fio = consumeUserIdForSessionToken(sessionToken);
+  if (!fio) {
+    console.error(`FIO_NOT_RESOLVED_FOR_TOKEN: ${sessionToken}`);
+    return;
+  }
+
+  sheet.getRange(rowIndex, idCol + 1).setValue(fio);
 }
 
 /*************************************************

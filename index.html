@@ -315,6 +315,11 @@
     password: ''
   };
 
+  const formState = {
+    webAppUrl: ''
+  };
+
+
   function formatSnilsInput(value) {
     const digits = (value || '').replace(/\D/g, '').slice(0, 11);
     if (digits.length <= 3) return digits;
@@ -344,6 +349,17 @@
     dom.snilsWrap.style.display = 'block';
     dom.snils.focus();
     dom.loading.innerText = '';
+  }
+
+  function loadWebAppUrl() {
+    google.script.run
+      .withSuccessHandler(({ url }) => {
+        formState.webAppUrl = String(url || '').trim();
+      })
+      .withFailureHandler(() => {
+        formState.webAppUrl = '';
+      })
+      .getWebAppUrl();
   }
 
   function parseDateString(value) {
@@ -506,6 +522,8 @@
       dom.snils.value = formatSnilsInput(savedSnils);
       dom.snilsWrap.style.display = 'block';
     }
+
+    loadWebAppUrl();
   });
 
   const ENTRY_MAP = {
@@ -583,7 +601,16 @@
       }
     }
 
+
     return params.length ? `${base}?${params.join('&')}` : base;
+  }
+
+  function addUserIdToFormUrl(formUrl, userId) {
+    const normalizedUserId = String(userId || '').trim();
+    if (!normalizedUserId || !formState.webAppUrl) return formUrl;
+
+    const separator = formState.webAppUrl.includes('?') ? '&' : '?';
+    return `${formState.webAppUrl}${separator}fio=${encodeURIComponent(normalizedUserId)}&target=${encodeURIComponent(formUrl)}`;
   }
 
   function showDocsResult(response) {
@@ -597,7 +624,7 @@
     const row = response.row;
     const colors = response.colors || [];
 
-    const formUrl = buildFormUrl(header, row);
+    const formUrl = addUserIdToFormUrl(buildFormUrl(header, row), dom.login.value);
     let html = `
       <div class="block" id="formBlock">
         <button id="openFormBtn" class="button-link" onclick="openEmbeddedForm('${formUrl}')">Заполнить / редактировать</button>
