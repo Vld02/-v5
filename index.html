@@ -393,14 +393,6 @@
       return;
     }
 
-    // Если СНИЛС уже введён, сразу проверяем все 3 фактора в одном запросе.
-    if (snilsFormatted.length === 14) {
-      authState.login = loginVal;
-      authState.password = passwordForServer;
-      verifySnilsDocs();
-      return;
-    }
-
     dom.loading.innerText = 'Аутентификация...';
 
     const clientInfo = await getClientInfo();
@@ -409,6 +401,10 @@
       .withSuccessHandler(response => {
         if (response && response.requiresSnils) {
           startSnilsStep(loginVal, passwordForServer);
+          if (snilsFormatted.length === 14) {
+            verifySnilsDocs();
+            return;
+          }
           dom.error.textContent = 'Для входа введите СНИЛС.';
           return;
         }
@@ -426,6 +422,17 @@
 
   async function verifySnilsDocs() {
     dom.error.textContent = '';
+
+    if (!authState.login || !authState.password) {
+      const loginVal = dom.login.value.trim();
+      const passwordForServer = toServerDate(formatDateInput(dom.password.value));
+      if (!loginVal || !passwordForServer) {
+        dom.error.textContent = 'Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.';
+        return;
+      }
+      authState.login = loginVal;
+      authState.password = passwordForServer;
+    }
 
     const snilsFormatted = formatSnilsInput(dom.snils.value);
     dom.snils.value = snilsFormatted;
@@ -715,7 +722,7 @@
   dom.snils.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') {
       e.preventDefault();
-      verifySnilsDocs();
+      loginDocs();
     }
   });
 
