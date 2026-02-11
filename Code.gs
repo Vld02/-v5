@@ -511,3 +511,306 @@ function calculateMatch(short, full, maxErrors) {
     totalCost: lastCost + tailCost
   };
 }
+
+/*************************************************
+ * СИНХРОНИЗАЦИЯ GOOGLE FORM ИЗ ЛИСТА "Списки данных"
+ *************************************************/
+// @ts-ignore
+function syncFormFromSheet() {
+  const FORM_ID = '1_em0kZ8lzw1blqKpDWslBlowb-lXtqxovOfSuZiRqhk';
+  const SHEET_ID = '1PITVXQ48g0hwtx4YSWB7OOy37zvujj9hhts-7eGR1aQ';
+  const DATA_SHEET = 'Списки данных';
+
+  const form = FormApp.openById(FORM_ID);
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(DATA_SHEET);
+
+  if (!sheet) {
+    Logger.log('❌ Лист "Списки данных" не найден');
+    return;
+  }
+
+  Logger.log('▶ Старт синхронизации формы');
+
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+
+  Logger.log('📋 Заголовки таблицы:');
+  headers.forEach((h, i) => Logger.log(`  [${i}] "${h}"`));
+
+  const getCol = name => headers.indexOf(name);
+
+  function getColumnValues(name) {
+    const idx = getCol(name);
+    if (idx === -1) {
+      Logger.log(`❌ Столбец не найден: "${name}"`);
+      return null;
+    }
+    const values = data.slice(1).map(r => r[idx]).filter(v => v && v !== '×');
+    if (!values.length) {
+      Logger.log(`⚠ Столбец "${name}" найден, но данных нет`);
+    }
+    return values;
+  }
+
+  const items = form.getItems();
+  const sections = items.filter(i => i.getType() === FormApp.ItemType.PAGE_BREAK);
+
+  /* =======================================================
+     1. Тренер присутствовал:
+  ======================================================= */
+
+  const trainerQ = items.find(i => i.getTitle() === 'Тренер присутствовал:');
+
+  if (trainerQ && trainerQ.getType() === FormApp.ItemType.CHECKBOX) {
+    const values = sheet
+      .getRange('F2:F')
+      .getValues()
+      .flat()
+      .filter(v => v && v !== '×');
+
+    if (values.length) {
+      const q = trainerQ.asCheckboxItem();
+      q.setChoices(values.map(v => q.createChoice(v)));
+      Logger.log(`✅ "Тренер присутствовал:" (${values.length})`);
+    } else {
+      Logger.log('⚠ Диапазон F2:F не содержит данных для "Тренер присутствовал:"');
+    }
+  } else {
+    Logger.log('⚠ Вопрос "Тренер присутствовал:" не найден или имеет неверный тип');
+  }
+
+  /* =======================================================
+     2. Группы по расписанию
+  ======================================================= */
+
+  const groupQ = items.find(i =>
+    i.getTitle() === 'Группы у которых проходила тренировка по расписанию'
+  );
+
+  if (groupQ && groupQ.getType() === FormApp.ItemType.CHECKBOX) {
+    const values = getColumnValues('Группы тренировки');
+    if (values?.length) {
+      const q = groupQ.asCheckboxItem();
+      q.setChoices(values.map(v => q.createChoice(v)));
+      Logger.log(`✅ "Группы по расписанию" (${values.length})`);
+    }
+  }
+
+  /* =======================================================
+   3–4. Разделы 5–14 (один вопрос, множественный выбор)
+======================================================= */
+
+  const partColIdx = getCol('Части тренировок и группы');
+  let partNames = [];
+
+  if (partColIdx === -1) {
+    Logger.log('❌ Столбец "Части тренировок и группы" не найден');
+  } else {
+    // строки 3–12 → названия вопросов 5–14
+    partNames = data.slice(2, 12).map(r => r[partColIdx]).filter(Boolean);
+    Logger.log(`ℹ Названия вопросов (5–14): ${partNames.length}`);
+  }
+
+  const sectionTitles = [
+    '1 группа начальной подготовки',
+    '2 группа начальной подготовки',
+    '3 группа начальной подготовки',
+    '4 группа начальной подготовки',
+    '5 группа начальной подготовки',
+    '1 тренировочная группа',
+    '2 тренировочная группа',
+    '3 тренировочная группа',
+    '4 тренировочная группа',
+    '5 тренировочная группа'
+  ];
+
+  sectionTitles.forEach((title, idx) => {
+    const section = sections.find(s => s.getTitle() === title);
+    if (!section) {
+      Logger.log(`⚠ Раздел не найден: "${title}"`);
+      return;
+    }
+
+    // берем первый вопрос после PAGE_BREAK
+    const qItem = items[items.indexOf(section) + 1];
+    if (!qItem) {
+      Logger.log(`⚠ В разделе "${title}" нет вопроса`);
+      return;
+    }
+    if (qItem.getType() !== FormApp.ItemType.CHECKBOX) {
+      Logger.log(`⚠ Вопрос в разделе "${title}" не CHECKBOX`);
+      return;
+    }
+
+    // берем варианты из колонки с названием раздела
+    const colIdx = getCol(title);
+    if (colIdx === -1) {
+      Logger.log(`⚠ Колонка для раздела "${title}" не найдена`);
+      return;
+    }
+
+    const values = data.slice(1).map(r => r[colIdx]).filter(v => v && v !== '×');
+    if (!values.length) {
+      Logger.log(`⚠ В разделе "${title}" нет данных для вариантов`);
+      return;
+    }
+
+    const q = qItem.asCheckboxItem();
+
+    // меняем название вопроса, если есть соответствующее значение из partNames
+    if (partNames[idx]) q.setTitle(partNames[idx]);
+
+    // выставляем варианты
+    q.setChoices(values.map(v => q.createChoice(v)));
+
+    Logger.log(`✅ Раздел "${title}" обновлен (${values.length} вариантов)`);
+  });
+
+
+  /* =======================================================
+   Навигация для "Части тренировок и группы" (ИСПРАВЛЕНО)
+======================================================= */
+
+  const navQ = items.find(i => i.getTitle() === 'Части тренировок и группы');
+
+  if (!navQ || navQ.getType() !== FormApp.ItemType.MULTIPLE_CHOICE) {
+    Logger.log('❌ Навигационный вопрос не найден или имеет неверный тип');
+  } else {
+
+    const values = getColumnValues('Части тренировок и группы');
+    if (!values || !values.length) {
+      Logger.log('⏭ Навигация пропущена — нет данных в столбце');
+    } else {
+
+      const q = navQ.asMultipleChoiceItem();
+      const choices = [];
+
+      /* ===== 1️⃣ Первый вариант → "Программа и результаты" ===== */
+
+      const section4 = sections.find(s => s.getTitle() === 'Программа и результаты');
+      if (values[0] && section4) {
+        choices.push(
+          q.createChoice(values[0], section4.asPageBreakItem())
+        );
+      }
+
+      /* ===== 2️⃣ СЕРЕДИНА → по совпадению с названием ВОПРОСА (разделы 5–14) ===== */
+
+      const middle = values.slice(1, -3);
+
+      middle.forEach(v => {
+        if (!v) return;
+
+        let targetSection = null;
+
+        for (const section of sections) {
+          const idx = items.indexOf(section);
+          const nextItem = items[idx + 1];
+
+          // первый вопрос после PAGE_BREAK
+          if (
+            nextItem &&
+            nextItem.getType() === FormApp.ItemType.CHECKBOX &&
+            nextItem.getTitle() === v
+          ) {
+            targetSection = section;
+            break;
+          }
+        }
+
+        if (targetSection) {
+          choices.push(
+            q.createChoice(v, targetSection.asPageBreakItem())
+          );
+        } else {
+          Logger.log(`⚠ Не найден вопрос 5–14 с названием "${v}"`);
+        }
+      });
+
+      /* ===== 3️⃣ Последние три варианта (В КОНЦЕ!) ===== */
+
+      const last3 = values.slice(-3);
+
+      const section15 = sections.find(s => s.getTitle() === 'Все группы');
+      if (last3[0] && section15) {
+        choices.push(
+          q.createChoice(last3[0], section15.asPageBreakItem())
+        );
+      }
+
+      const section2 = sections.find(s => s.getTitle() === 'Посещаемость');
+      if (last3[1] && section2) {
+        choices.push(
+          q.createChoice(last3[1], section2.asPageBreakItem())
+        );
+      }
+
+      if (last3[2]) {
+        choices.push(
+          q.createChoice(last3[2], FormApp.PageNavigationType.SUBMIT)
+        );
+      }
+
+      q.setChoices(choices);
+      Logger.log(`✅ Навигация создана корректно (${choices.length} вариантов)`);
+    }
+  }
+
+
+  /* =======================================================
+   7. Раздел "Все группы" — копия вопросов 5–14
+======================================================= */
+
+  const allSection = sections.find(s => s.getTitle() === 'Все группы');
+
+  if (!allSection) {
+    Logger.log('⚠ Раздел "Все группы" не найден');
+  } else {
+
+    /* === 1️⃣ Собираем эталонные вопросы из разделов 5–14 === */
+
+    const sourceQuestions = [];
+
+    sectionTitles.forEach(title => {
+      const section = sections.find(s => s.getTitle() === title);
+      if (!section) return;
+
+      const idx = items.indexOf(section);
+      const qItem = items[idx + 1];
+
+      if (qItem && qItem.getType() === FormApp.ItemType.CHECKBOX) {
+        const q = qItem.asCheckboxItem();
+        sourceQuestions.push({
+          title: q.getTitle(),
+          choices: q.getChoices().map(c => c.getValue())
+        });
+      }
+    });
+
+    if (sourceQuestions.length !== 10) {
+      Logger.log(`⚠ Ожидалось 10 эталонных вопросов, найдено ${sourceQuestions.length}`);
+    }
+
+    /* === 2️⃣ Вопросы в разделе "Все группы" === */
+
+    const start = items.indexOf(allSection) + 1;
+    const targetQuestions = items
+      .slice(start)
+      .filter(i => i.getType() === FormApp.ItemType.CHECKBOX)
+      .slice(0, sourceQuestions.length);
+
+    /* === 3️⃣ Копируем название и варианты === */
+
+    targetQuestions.forEach((qItem, idx) => {
+      const src = sourceQuestions[idx];
+      if (!src) return;
+
+      const q = qItem.asCheckboxItem();
+
+      q.setTitle(src.title);
+      q.setChoices(src.choices.map(v => q.createChoice(v)));
+
+      Logger.log(`✅ Все группы: скопирован вопрос "${src.title}"`);
+    });
+  }
+}
