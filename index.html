@@ -737,6 +737,7 @@
    *************************************************/
   const tbody = document.querySelector('#fioTable tbody');
   let debounceTimer = null;
+  let matchRequestId = 0;
 
   function createRow(left = '') {
     const tr = document.createElement('tr');
@@ -884,7 +885,7 @@
     debounceTimer = setTimeout(runMatch, 400);
   }
 
-  function renderResult(cell, data) {
+  function renderResult(cell, data, selectedValue = '') {
     cell.innerHTML = '';
 
     if (!data || !data.options || data.options.length === 0 || data.options.length > 3) {
@@ -895,11 +896,13 @@
     const wrap = document.createElement('div');
     wrap.className = 'fio-list';
 
+    const selectedFio = data.options.includes(selectedValue) ? selectedValue : data.selected;
+
     data.options.forEach(fio => {
       const btn = document.createElement('div');
       btn.className = 'fio-option';
       btn.innerText = fio;
-      if (fio === data.selected) btn.classList.add('selected');
+      if (fio === selectedFio) btn.classList.add('selected');
 
       btn.addEventListener('click', () => {
         [...wrap.children].forEach(b => b.classList.remove('selected'));
@@ -915,11 +918,17 @@
   function runMatch() {
     const rows = [...tbody.rows];
     const inputs = rows.map(r => r.cells[0].innerText.trim());
+    const selectedValues = rows.map(r => {
+      const selected = r.querySelector('.fio-option.selected');
+      return selected ? selected.innerText : '';
+    });
+    const requestId = ++matchRequestId;
 
     google.script.run
       .withSuccessHandler(results => {
+        if (requestId !== matchRequestId) return;
         results.forEach((data, i) => {
-          if (rows[i]) renderResult(rows[i].cells[1], data);
+          if (rows[i]) renderResult(rows[i].cells[1], data, selectedValues[i]);
         });
       })
       .findNames(inputs);
