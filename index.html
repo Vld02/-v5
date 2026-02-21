@@ -737,11 +737,19 @@
    *************************************************/
   const tbody = document.querySelector('#fioTable tbody');
   let debounceTimer = null;
+  let nextAttendanceRowId = 1;
+  const selectedByRowId = new Map();
 
   function createRow(left = '') {
     const tr = document.createElement('tr');
+    tr.dataset.rowId = String(nextAttendanceRowId++);
     tr.innerHTML = `<td class="input" contenteditable="true">${left}</td><td class="result"></td>`;
     return tr;
+  }
+
+  const initialAttendanceRow = tbody.querySelector('tr');
+  if (initialAttendanceRow && !initialAttendanceRow.dataset.rowId) {
+    initialAttendanceRow.dataset.rowId = String(nextAttendanceRowId++);
   }
 
   function caretPos(el) {
@@ -884,13 +892,20 @@
     debounceTimer = setTimeout(runMatch, 400);
   }
 
-  function renderResult(cell, data) {
+  function renderResult(row, data) {
+    const cell = row.cells[1];
+    const rowId = row.dataset.rowId;
     cell.innerHTML = '';
 
     if (!data || !data.options || data.options.length === 0 || data.options.length > 3) {
+      if (rowId) selectedByRowId.delete(rowId);
       cell.innerText = '—';
       return;
     }
+
+    const stored = rowId ? selectedByRowId.get(rowId) : '';
+    const selectedName = data.options.includes(stored) ? stored : data.selected;
+    if (rowId && selectedName) selectedByRowId.set(rowId, selectedName);
 
     const wrap = document.createElement('div');
     wrap.className = 'fio-list';
@@ -899,11 +914,12 @@
       const btn = document.createElement('div');
       btn.className = 'fio-option';
       btn.innerText = fio;
-      if (fio === data.selected) btn.classList.add('selected');
+      if (fio === selectedName) btn.classList.add('selected');
 
       btn.addEventListener('click', () => {
         [...wrap.children].forEach(b => b.classList.remove('selected'));
         btn.classList.add('selected');
+        if (rowId) selectedByRowId.set(rowId, fio);
       });
 
       wrap.appendChild(btn);
@@ -919,7 +935,7 @@
     google.script.run
       .withSuccessHandler(results => {
         results.forEach((data, i) => {
-          if (rows[i]) renderResult(rows[i].cells[1], data);
+          if (rows[i]) renderResult(rows[i], data);
         });
       })
       .findNames(inputs);
