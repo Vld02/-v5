@@ -137,16 +137,27 @@
   .controls { display: flex; justify-content: center; margin-bottom: 10px; }
   .table-wrapper {
     width: 100%;
-    max-width: 100%;
-    overflow-x: auto;
-    overflow-y: hidden;
+    display: flex;
+    justify-content: center;
   }
-  table { border-collapse: collapse; min-width: 420px; width: max-content; }
-  th, td { border: 1px solid #ccc; padding: 6px 8px; vertical-align: top; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    max-width: 100%;
+    table-layout: auto;
+    margin: 0 auto;
+  }
+  th, td {
+    border: 1px solid #ccc;
+    padding: 6px 8px;
+    vertical-align: top;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
   th { background: #eaeaea; }
   tbody tr:nth-child(even) { background: #f3f3f3; }
-  td.input { min-width: 160px; outline: none; }
-  td.result { min-width: 240px; }
+  td.input { outline: none; }
   .fio-list { display: flex; flex-wrap: wrap; gap: 6px; }
   .fio-option { padding: 4px 8px; border: 1px solid #999; border-radius: 4px; background: #fff; cursor: pointer; user-select: none; font-size: 13px; }
   .fio-option.selected { background: #cce5ff; border-color: #339; font-weight: bold; }
@@ -214,7 +225,12 @@
     <input id="login" type="text" placeholder="Фамилия Имя Отчество" />
 
     <label>Дата рождения:</label>
-    <input id="password" type="date" />
+    <input id="password" name="birthDateText" type="text" inputmode="numeric" maxlength="10" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="ДД.ММ.ГГГГ" />
+
+    <div id="snilsWrap" style="display:none;">
+      <label>СНИЛС:</label>
+      <input id="snils" type="text" inputmode="numeric" maxlength="14" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="000-000-000-00" />
+    </div>
 
     <button onclick="loginDocs()">Войти</button>
 
@@ -254,10 +270,25 @@
 </div>
 
 <script>
+  /*************************************************
+   * ОБЩИЕ DOM-ССЫЛКИ И НАВИГАЦИЯ ПО ВКЛАДКАМ
+   *************************************************/
+  const dom = {
+    error: document.getElementById('error'),
+    loading: document.getElementById('loading'),
+    login: document.getElementById('login'),
+    password: document.getElementById('password'),
+    snils: document.getElementById('snils'),
+    snilsWrap: document.getElementById('snilsWrap'),
+    docsFlag: document.getElementById('flag-docs'),
+    attendanceFlag: document.getElementById('flag-attendance'),
+    gearFlag: document.getElementById('flag-gear')
+  };
+
   const tabFlags = [...document.querySelectorAll('.tab-flag')];
-  document.getElementById('flag-docs').src = FLAG_IMAGES.docs;
-  document.getElementById('flag-attendance').src = FLAG_IMAGES.attendance;
-  document.getElementById('flag-gear').src = FLAG_IMAGES.gear;
+  dom.docsFlag.src = FLAG_IMAGES.docs;
+  dom.attendanceFlag.src = FLAG_IMAGES.attendance;
+  dom.gearFlag.src = FLAG_IMAGES.gear;
 
   const tabPanels = {
     docs: document.getElementById('tab-docs'),
@@ -275,6 +306,46 @@
     });
   });
 
+  /*************************************************
+   * ДОКУМЕНТЫ: РАБОТА С ДАТОЙ И АВТОРИЗАЦИЯ
+   *************************************************/
+  const authState = {
+    awaitingSnils: false,
+    login: '',
+    password: ''
+  };
+
+  function formatSnilsInput(value) {
+    const digits = (value || '').replace(/\D/g, '').slice(0, 11);
+    if (digits.length <= 3) return digits;
+    if (digits.length <= 6) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+    if (digits.length <= 9) return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+    return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 9)}-${digits.slice(9)}`;
+  }
+
+  function resetSnilsStep() {
+    authState.awaitingSnils = false;
+    authState.login = '';
+    authState.password = '';
+    dom.snils.value = '';
+    dom.snilsWrap.style.display = 'none';
+  }
+
+  function startSnilsStep(login, password) {
+    authState.awaitingSnils = true;
+    authState.login = login;
+    authState.password = password;
+
+    const savedSnils = localStorage.getItem('savedSnils');
+    if (savedSnils && !dom.snils.value.trim()) {
+      dom.snils.value = formatSnilsInput(savedSnils);
+    }
+
+    dom.snilsWrap.style.display = 'block';
+    dom.snils.focus();
+    dom.loading.innerText = '';
+  }
+
   function parseDateString(value) {
     if (!value) return null;
     value = value.trim();
@@ -285,29 +356,114 @@
     return null;
   }
 
-  async function loginDocs() {
-    document.getElementById('error').textContent = '';
-    document.getElementById('loading').innerText = '';
+  function formatDateInput(value) {
+    const digits = (value || '').replace(/\D/g, '').slice(0, 8);
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 4) return `${digits.slice(0, 2)}.${digits.slice(2)}`;
+    return `${digits.slice(0, 2)}.${digits.slice(2, 4)}.${digits.slice(4)}`;
+  }
 
-    const loginVal = document.getElementById('login').value.trim();
-    const dateRaw = document.getElementById('password').value;
-    if (!loginVal || !dateRaw) {
-      document.getElementById('error').textContent = 'Введите ФИО и дату рождения.';
+  function toServerDate(value) {
+    const parsed = parseDateString(value);
+    if (!parsed) return '';
+    const day = String(parsed.day).padStart(2, '0');
+    const month = String(parsed.month).padStart(2, '0');
+    return `${day}.${month}.${parsed.year}`;
+  }
+
+  async function loginDocs() {
+    dom.error.textContent = '';
+    dom.loading.innerText = '';
+
+    const loginVal = dom.login.value.trim();
+    const dateInput = dom.password;
+    dateInput.value = formatDateInput(dateInput.value);
+    const passwordForServer = toServerDate(dateInput.value);
+
+    if (!loginVal || !passwordForServer) {
+      dom.error.textContent = 'Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.';
       return;
     }
 
-    document.getElementById('loading').innerText = 'Аутентификация...';
-    localStorage.setItem('savedLogin', loginVal);
-    localStorage.setItem('savedDate', dateRaw);
-    localStorage.setItem('isLoggedIn', '1');
+    const snilsFormatted = formatSnilsInput(dom.snils.value);
+    dom.snils.value = snilsFormatted;
 
-    const parts = dateRaw.split('-');
-    const passwordForServer = `${parts[2]}.${parts[1]}.${parts[0]}`;
+    if (authState.awaitingSnils) {
+      verifySnilsDocs();
+      return;
+    }
+
+    dom.loading.innerText = 'Аутентификация...';
+
     const clientInfo = await getClientInfo();
 
     google.script.run
-      .withSuccessHandler(showDocsResult)
+      .withSuccessHandler(response => {
+        if (response && response.requiresSnils) {
+          startSnilsStep(loginVal, passwordForServer);
+          if (snilsFormatted.length === 14) {
+            verifySnilsDocs();
+            return;
+          }
+          dom.error.textContent = 'Для входа введите СНИЛС.';
+          return;
+        }
+
+        localStorage.setItem('savedLogin', loginVal);
+        localStorage.setItem('savedDate', dateInput.value);
+        localStorage.setItem('isLoggedIn', '1');
+        authState.awaitingSnils = false;
+        authState.login = '';
+        authState.password = '';
+        showDocsResult(response);
+      })
       .checkLogin(loginVal, passwordForServer, clientInfo);
+  }
+
+  async function verifySnilsDocs() {
+    dom.error.textContent = '';
+
+    if (!authState.login || !authState.password) {
+      const loginVal = dom.login.value.trim();
+      const passwordForServer = toServerDate(formatDateInput(dom.password.value));
+      if (!loginVal || !passwordForServer) {
+        dom.error.textContent = 'Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.';
+        return;
+      }
+      authState.login = loginVal;
+      authState.password = passwordForServer;
+    }
+
+    const snilsFormatted = formatSnilsInput(dom.snils.value);
+    dom.snils.value = snilsFormatted;
+
+    if (snilsFormatted.length !== 14) {
+      dom.error.textContent = 'Введите СНИЛС в формате 000-000-000-00.';
+      return;
+    }
+
+    dom.loading.innerText = 'Проверка СНИЛС...';
+    const clientInfo = await getClientInfo();
+
+    google.script.run
+      .withSuccessHandler(response => {
+        if (response && response.error) {
+          dom.error.textContent = response.error;
+          dom.loading.innerText = '';
+          return;
+        }
+
+        localStorage.setItem('savedLogin', authState.login);
+        localStorage.setItem('savedDate', dom.password.value);
+        localStorage.setItem('savedSnils', snilsFormatted);
+        localStorage.setItem('isLoggedIn', '1');
+        authState.awaitingSnils = false;
+        authState.login = '';
+        authState.password = '';
+        dom.snilsWrap.style.display = 'block';
+        showDocsResult(response);
+      })
+      .verifySnils(authState.login, authState.password, snilsFormatted, clientInfo);
   }
 
   async function getClientInfo() {
@@ -336,8 +492,8 @@
     const dateRaw = localStorage.getItem('savedDate');
     if (!loginVal || !dateRaw) return;
 
-    const parts = dateRaw.split('-');
-    const passwordForServer = `${parts[2]}.${parts[1]}.${parts[0]}`;
+    const passwordForServer = toServerDate(dateRaw);
+    if (!passwordForServer) return;
     google.script.run.checkLogin(loginVal, passwordForServer, { silent: true });
   }
 
@@ -349,8 +505,14 @@
   window.addEventListener('DOMContentLoaded', () => {
     const savedLogin = localStorage.getItem('savedLogin');
     const savedDate = localStorage.getItem('savedDate');
-    if (savedLogin) document.getElementById('login').value = savedLogin;
-    if (savedDate) document.getElementById('password').value = savedDate;
+    const savedSnils = localStorage.getItem('savedSnils');
+
+    if (savedLogin) dom.login.value = savedLogin;
+    if (savedDate) dom.password.value = formatDateInput(savedDate);
+    if (savedSnils) {
+      dom.snils.value = formatSnilsInput(savedSnils);
+      dom.snilsWrap.style.display = 'block';
+    }
   });
 
   const ENTRY_MAP = {
@@ -433,8 +595,8 @@
 
   function showDocsResult(response) {
     if (response.error) {
-      document.getElementById('error').textContent = response.error;
-      document.getElementById('loading').innerText = '';
+      dom.error.textContent = response.error;
+      dom.loading.innerText = '';
       return;
     }
 
@@ -491,7 +653,7 @@
     }
 
     document.getElementById('result').innerHTML = html;
-    document.getElementById('loading').innerText = '';
+    dom.loading.innerText = '';
   }
 
   function openEmbeddedForm(formUrl) {
@@ -525,14 +687,39 @@
       .replace(/'/g, '&#039;');
   }
 
-  document.getElementById('login').addEventListener('keydown', function(e) {
+  dom.login.addEventListener('input', function() {
+    if (authState.awaitingSnils) resetSnilsStep();
+  });
+
+  dom.login.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') {
       e.preventDefault();
-      document.getElementById('password').focus();
+      dom.password.focus();
     }
   });
 
-  document.getElementById('password').addEventListener('keydown', function(e) {
+  dom.password.addEventListener('input', function(e) {
+    if (authState.awaitingSnils) resetSnilsStep();
+    const formatted = formatDateInput(e.target.value);
+    if (formatted !== e.target.value) e.target.value = formatted;
+  });
+
+  dom.password.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      loginDocs();
+    }
+  });
+
+  dom.snils.addEventListener('input', function(e) {
+    const formatted = formatSnilsInput(e.target.value);
+    if (formatted !== e.target.value) e.target.value = formatted;
+    if (formatted.length === 14) {
+      localStorage.setItem('savedSnils', formatted);
+    }
+  });
+
+  dom.snils.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') {
       e.preventDefault();
       loginDocs();
@@ -545,6 +732,9 @@
     loadDataSilently();
   });
 
+  /*************************************************
+   * ПОСЕЩАЕМОСТЬ: РЕДАКТИРУЕМАЯ ТАБЛИЦА И ПОДБОР ФИО
+   *************************************************/
   const tbody = document.querySelector('#fioTable tbody');
   let debounceTimer = null;
 
@@ -554,14 +744,27 @@
     return tr;
   }
 
-  function caretPos(el) { return window.getSelection().focusOffset; }
+  function caretPos(el) {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return 0;
+
+    const range = selection.getRangeAt(0).cloneRange();
+    range.selectNodeContents(el);
+    range.setEnd(selection.focusNode, selection.focusOffset);
+    return range.toString().length;
+  }
 
   function setCaret(el, pos) {
     const r = document.createRange();
     const s = window.getSelection();
     r.selectNodeContents(el);
     r.collapse(true);
-    r.setStart(el.firstChild || el, pos);
+
+    const textNode = el.firstChild;
+    const maxPos = (textNode ? textNode.textContent : el.textContent || '').length;
+    const safePos = Math.min(Math.max(pos, 0), maxPos);
+
+    r.setStart(textNode || el, safePos);
     s.removeAllRanges();
     s.addRange(r);
     el.focus();
@@ -606,6 +809,27 @@
       row.remove();
       setCaret(p, len);
       scheduleMatch();
+    }
+
+    if (e.key === 'Delete' && pos === text.length) {
+      const next = row.nextElementSibling;
+      if (!next) return;
+      e.preventDefault();
+      const n = next.cells[0];
+      const len = text.length;
+      cell.innerText += n.innerText;
+      next.remove();
+      setCaret(cell, len);
+      scheduleMatch();
+    }
+
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      const targetRow = e.key === 'ArrowUp' ? row.previousElementSibling : row.nextElementSibling;
+      if (!targetRow) return;
+      const targetCell = targetRow.cells[0];
+      const targetPos = Math.min(pos, targetCell.innerText.length);
+      setCaret(targetCell, targetPos);
     }
   });
 
