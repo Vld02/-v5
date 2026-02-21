@@ -884,13 +884,21 @@
     debounceTimer = setTimeout(runMatch, 400);
   }
 
-  function renderResult(cell, data) {
+  function renderResult(row, data) {
+    const cell = row.cells[1];
     cell.innerHTML = '';
 
     if (!data || !data.options || data.options.length === 0 || data.options.length > 3) {
+      row.dataset.selectedFio = '';
       cell.innerText = '—';
       return;
     }
+
+    const preferredSelection = row.dataset.selectedFio;
+    const selectedFio = data.options.includes(preferredSelection)
+      ? preferredSelection
+      : data.selected;
+    row.dataset.selectedFio = selectedFio || '';
 
     const wrap = document.createElement('div');
     wrap.className = 'fio-list';
@@ -899,11 +907,12 @@
       const btn = document.createElement('div');
       btn.className = 'fio-option';
       btn.innerText = fio;
-      if (fio === data.selected) btn.classList.add('selected');
+      if (fio === selectedFio) btn.classList.add('selected');
 
       btn.addEventListener('click', () => {
         [...wrap.children].forEach(b => b.classList.remove('selected'));
         btn.classList.add('selected');
+        row.dataset.selectedFio = fio;
       });
 
       wrap.appendChild(btn);
@@ -914,12 +923,16 @@
 
   function runMatch() {
     const rows = [...tbody.rows];
+    rows.forEach(row => {
+      const selected = row.querySelector('.fio-option.selected');
+      if (selected) row.dataset.selectedFio = selected.innerText;
+    });
     const inputs = rows.map(r => r.cells[0].innerText.trim());
 
     google.script.run
       .withSuccessHandler(results => {
         results.forEach((data, i) => {
-          if (rows[i]) renderResult(rows[i].cells[1], data);
+          if (rows[i]) renderResult(rows[i], data);
         });
       })
       .findNames(inputs);
