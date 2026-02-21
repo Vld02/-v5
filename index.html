@@ -914,12 +914,30 @@
 
   function runMatch() {
     const rows = [...tbody.rows];
-    const inputs = rows.map(r => r.cells[0].innerText.trim());
+    const changedRows = [];
+
+    rows.forEach((row, index) => {
+      const input = row.cells[0].innerText.trim();
+      if (row.dataset.lastMatchedInput !== input) {
+        changedRows.push({ index, input });
+      }
+    });
+
+    if (!changedRows.length) return;
+
+    const inputs = changedRows.map(item => item.input);
 
     google.script.run
       .withSuccessHandler(results => {
         results.forEach((data, i) => {
-          if (rows[i]) renderResult(rows[i].cells[1], data);
+          const changed = changedRows[i];
+          if (!changed) return;
+
+          const row = rows[changed.index];
+          if (!row) return;
+
+          renderResult(row.cells[1], data);
+          row.dataset.lastMatchedInput = changed.input;
         });
       })
       .findNames(inputs);
