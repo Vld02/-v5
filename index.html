@@ -884,13 +884,27 @@
     debounceTimer = setTimeout(runMatch, 400);
   }
 
-  function renderResult(cell, data) {
+  function normalizeAttendanceInput(value) {
+    return String(value || '')
+      .replace(/ /g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function renderResult(row, data) {
+    const cell = row.cells[1];
+    const savedSelection = row.dataset.selectedFio || '';
     cell.innerHTML = '';
 
     if (!data || !data.options || data.options.length === 0 || data.options.length > 3) {
+      row.dataset.selectedFio = '';
       cell.innerText = '—';
       return;
     }
+
+    const selectedValue = data.options.includes(savedSelection)
+      ? savedSelection
+      : (data.options.includes(data.selected) ? data.selected : '');
 
     const wrap = document.createElement('div');
     wrap.className = 'fio-list';
@@ -899,16 +913,18 @@
       const btn = document.createElement('div');
       btn.className = 'fio-option';
       btn.innerText = fio;
-      if (fio === data.selected) btn.classList.add('selected');
+      if (fio === selectedValue) btn.classList.add('selected');
 
       btn.addEventListener('click', () => {
         [...wrap.children].forEach(b => b.classList.remove('selected'));
         btn.classList.add('selected');
+        row.dataset.selectedFio = fio;
       });
 
       wrap.appendChild(btn);
     });
 
+    row.dataset.selectedFio = selectedValue;
     cell.appendChild(wrap);
   }
 
@@ -917,7 +933,7 @@
     const changedRows = [];
 
     rows.forEach((row, index) => {
-      const input = row.cells[0].innerText.trim();
+      const input = normalizeAttendanceInput(row.cells[0].innerText);
       if (row.dataset.lastMatchedInput !== input) {
         changedRows.push({ index, input });
       }
@@ -936,7 +952,7 @@
           const row = rows[changed.index];
           if (!row) return;
 
-          renderResult(row.cells[1], data);
+          renderResult(row, data);
           row.dataset.lastMatchedInput = changed.input;
         });
       })
