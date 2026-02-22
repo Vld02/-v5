@@ -380,8 +380,12 @@ function processInput(input, fullNames) {
     }
   }
 
+  const bestCost = top.length ? top[0].totalCost : null;
+  const sameBestCount = bestCost === null ? 0 : top.filter(m => m.totalCost === bestCost).length;
+  const shouldAutoSelect = sameBestCount <= 1;
+
   return {
-    selected,
+    selected: shouldAutoSelect ? selected : '',
     options: top.map(m => m.original)
   };
 }

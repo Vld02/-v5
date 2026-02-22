@@ -162,6 +162,27 @@
   .fio-option { padding: 4px 8px; border: 1px solid #999; border-radius: 4px; background: #fff; cursor: pointer; user-select: none; font-size: 13px; }
   .fio-option.selected { background: #cce5ff; border-color: #339; font-weight: bold; }
 
+  .attendance-notice {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    z-index: 9999;
+    background: rgba(40, 40, 40, 0.88);
+    color: #fff;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 14px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    opacity: 0;
+    transform: translateY(8px);
+    pointer-events: none;
+    transition: opacity .35s ease, transform .35s ease;
+  }
+  .attendance-notice.show {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
   .placeholder {
     text-align: center;
     padding: 48px 14px;
@@ -743,6 +764,7 @@
   };
   let matchInFlight = false;
   let latestMatchPromise = Promise.resolve();
+  let attendanceNoticeTimer = null;
 
   function normalizeAttendanceInput(value) {
     return String(value || '')
@@ -943,6 +965,25 @@
     }, 400);
   }
 
+
+  function showAttendanceNotice(message) {
+    let notice = document.getElementById('attendanceNotice');
+    if (!notice) {
+      notice = document.createElement('div');
+      notice.id = 'attendanceNotice';
+      notice.className = 'attendance-notice';
+      document.body.appendChild(notice);
+    }
+
+    notice.textContent = message;
+    notice.classList.add('show');
+
+    if (attendanceNoticeTimer) clearTimeout(attendanceNoticeTimer);
+    attendanceNoticeTimer = setTimeout(() => {
+      notice.classList.remove('show');
+    }, 1800);
+  }
+
   function renderResult(row, data) {
     const rowId = getRowId(row);
     const rowState = ensureAttendanceState(rowId);
@@ -1038,11 +1079,21 @@
     }
 
     const rows = [...tbody.rows];
+    const hasUnselectedRows = rows.some(r => {
+      const options = r.querySelectorAll('.fio-option');
+      if (!options.length) return false;
+      return !r.querySelector('.fio-option.selected');
+    });
+
+    if (hasUnselectedRows) {
+      showAttendanceNotice('Выберите все ФИО');
+      return;
+    }
+
     const values = rows
       .map(r => {
         const selected = r.querySelector('.fio-option.selected');
-        const first = r.querySelector('.fio-option');
-        return selected ? selected.innerText : first ? first.innerText : '';
+        return selected ? selected.innerText : '';
       })
       .filter(Boolean);
 
