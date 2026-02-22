@@ -162,7 +162,38 @@
   .fio-option { padding: 4px 8px; border: 1px solid #999; border-radius: 4px; background: #fff; cursor: pointer; user-select: none; font-size: 13px; }
   .fio-option.selected { background: #cce5ff; border-color: #339; font-weight: bold; }
 
-  .training-title { margin: 16px 0 8px; }
+  .training-topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 16px 0 8px;
+    gap: 10px;
+  }
+  .training-title { margin: 0; }
+  .training-controls {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+  }
+  .training-controls input {
+    width: 80px;
+    padding: 4px 6px;
+  }
+  .training-loading {
+    width: 14px;
+    height: 14px;
+    border: 2px solid #cfd8dc;
+    border-top-color: #1a73e8;
+    border-radius: 50%;
+    display: none;
+    animation: training-spin .8s linear infinite;
+  }
+  .training-loading.show { display: inline-block; }
+  @keyframes training-spin {
+    to { transform: rotate(360deg); }
+  }
+
   .training-list-head,
   .training-toggle {
     display: grid;
@@ -172,10 +203,23 @@
   }
   .training-list-head {
     padding: 8px 10px;
+    border-bottom: 1px solid #ddd;
+  }
+  .training-sort {
+    border: none;
+    background: transparent;
+    text-align: left;
+    padding: 0;
+    margin: 0;
     font-size: 12px;
     color: #666;
     font-weight: 600;
-    border-bottom: 1px solid #ddd;
+    cursor: pointer;
+  }
+  .training-sort.active::after {
+    content: attr(data-sort-mark);
+    margin-left: 4px;
+    color: #1a73e8;
   }
   .training-list {
     margin-top: 8px;
@@ -223,17 +267,6 @@
     max-height: 520px;
     opacity: 1;
     padding: 10px 12px 12px;
-  }
-  .training-controls {
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    gap: 8px;
-    margin-top: 10px;
-  }
-  .training-controls input {
-    width: 80px;
-    padding: 4px 6px;
   }
 
   .attendance-notice {
@@ -357,17 +390,20 @@
       </table>
     </div>
 
-    <h3 class="training-title">Тренировки</h3>
+    <div class="training-topbar">
+      <h3 class="training-title">Тренировки</h3>
+      <div class="training-controls">
+        <span id="trainingLoading" class="training-loading" aria-hidden="true"></span>
+        <label for="trainingLimitInput">Показать тренировок:</label>
+        <input id="trainingLimitInput" type="number" min="1" step="1" value="5" />
+      </div>
+    </div>
     <div class="training-list-head">
-      <span>Отметка времени</span>
-      <span>Дата тренировки</span>
-      <span>Тренер присутствовал:</span>
+      <button type="button" class="training-sort" data-sort-key="timestamp">Отметка времени</button>
+      <button type="button" class="training-sort" data-sort-key="date">Дата тренировки</button>
+      <button type="button" class="training-sort" data-sort-key="coach">Тренер присутствовал:</button>
     </div>
     <div id="trainingList" class="training-list"></div>
-    <div class="training-controls">
-      <label for="trainingLimitInput">Показать тренировок:</label>
-      <input id="trainingLimitInput" type="number" min="1" step="1" value="5" />
-    </div>
   </section>
 
   <section id="tab-gear" class="tab-panel">
@@ -410,9 +446,6 @@
       Object.entries(tabPanels).forEach(([name, panel]) => {
         panel.classList.toggle('active', name === key);
       });
-      if (key === 'attendance') {
-        loadTrainingHistory();
-      }
     });
   });
 
@@ -848,6 +881,8 @@
   const tbody = document.querySelector('#fioTable tbody');
   const trainingLimitInput = document.getElementById('trainingLimitInput');
   const trainingList = document.getElementById('trainingList');
+  const trainingLoading = document.getElementById('trainingLoading');
+  const trainingSortButtons = [...document.querySelectorAll('.training-sort')];
   let debounceTimer = null;
   const attendanceState = {
     nextId: 1,
@@ -1075,10 +1110,51 @@
     }, 1800);
   }
 
+  const trainingState = {
+    items: [],
+    isLoaded: false,
+    requestId: 0,
+    sortKey: '',
+    sortDir: 0,
+    opened: new Set()
+  };
+
   function normalizeTrainingLimit(value) {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) return 5;
     return Math.max(1, Math.floor(parsed));
+  }
+
+  function setTrainingLoading(isLoading) {
+    trainingLoading.classList.toggle('show', isLoading);
+  }
+
+  function getTrainingItemKey(item) {
+    return [item.timestamp || '', item.date || '', item.coach || '', item.fio || ''].join('|');
+  }
+
+  function getSortedTrainingItems(items) {
+    if (!trainingState.sortKey || trainingState.sortDir === 0) return [...items];
+
+    const dir = trainingState.sortDir;
+    const key = trainingState.sortKey;
+
+    return [...items].sort((a, b) => {
+      const av = String(a[key] || '').toLowerCase();
+      const bv = String(b[key] || '').toLowerCase();
+      if (av === bv) return 0;
+      return av > bv ? dir : -dir;
+    });
+  }
+
+  function updateTrainingSortUi() {
+    trainingSortButtons.forEach(btn => {
+      const active = btn.dataset.sortKey === trainingState.sortKey && trainingState.sortDir !== 0;
+      btn.classList.toggle('active', active);
+      let mark = '';
+      if (active) mark = trainingState.sortDir === 1 ? '↑' : '↓';
+      btn.setAttribute('data-sort-mark', mark);
+    });
   }
 
   function renderTrainingHistory(items) {
@@ -1086,18 +1162,26 @@
 
     if (!items || !items.length) {
       trainingList.innerHTML = '<div class="placeholder" style="padding:12px 10px;font-size:15px;">История тренировок не найдена.</div>';
+      updateTrainingSortUi();
       return;
     }
 
-    items.forEach(item => {
+    const sorted = getSortedTrainingItems(items);
+
+    sorted.forEach(item => {
       const card = document.createElement('div');
       card.className = 'training-item';
+
+      const itemKey = getTrainingItemKey(item);
 
       const toggle = document.createElement('button');
       toggle.type = 'button';
       toggle.className = 'training-toggle';
       toggle.innerHTML = `<span>${escapeHtml(item.timestamp || '')}</span><span>${escapeHtml(item.date || '')}</span><span>${escapeHtml(item.coach || '')}</span>`;
-      toggle.setAttribute('aria-expanded', 'false');
+
+      const isOpen = trainingState.opened.has(itemKey);
+      card.classList.toggle('open', isOpen);
+      toggle.setAttribute('aria-expanded', String(isOpen));
 
       const fio = document.createElement('div');
       fio.className = 'training-fio-list';
@@ -1110,29 +1194,59 @@
         const willOpen = !card.classList.contains('open');
         card.classList.toggle('open', willOpen);
         toggle.setAttribute('aria-expanded', String(willOpen));
+        if (willOpen) trainingState.opened.add(itemKey);
+        else trainingState.opened.delete(itemKey);
       });
 
       trainingList.appendChild(card);
     });
+
+    updateTrainingSortUi();
   }
 
-  function loadTrainingHistory() {
+  function loadTrainingHistory(force = false) {
     const limit = normalizeTrainingLimit(trainingLimitInput.value || 5);
     trainingLimitInput.value = String(limit);
-    trainingList.innerHTML = '<div style="color:#666;">Загрузка тренировок...</div>';
+
+    if (!force && trainingState.isLoaded) return;
+
+    const requestId = ++trainingState.requestId;
+    setTrainingLoading(true);
 
     google.script.run
       .withSuccessHandler(items => {
-        renderTrainingHistory(items || []);
+        if (requestId !== trainingState.requestId) return;
+        trainingState.items = items || [];
+        trainingState.isLoaded = true;
+        setTrainingLoading(false);
+        renderTrainingHistory(trainingState.items);
       })
       .withFailureHandler(() => {
-        trainingList.innerHTML = '<div style="color:#c00;">Не удалось загрузить тренировки.</div>';
+        if (requestId !== trainingState.requestId) return;
+        setTrainingLoading(false);
       })
       .getTrainingHistory(limit);
   }
 
   trainingLimitInput.addEventListener('change', () => {
-    loadTrainingHistory();
+    loadTrainingHistory(true);
+  });
+
+  trainingSortButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.sortKey;
+      if (trainingState.sortKey !== key) {
+        trainingState.sortKey = key;
+        trainingState.sortDir = 1;
+      } else if (trainingState.sortDir === 1) {
+        trainingState.sortDir = -1;
+      } else if (trainingState.sortDir === -1) {
+        trainingState.sortDir = 0;
+      } else {
+        trainingState.sortDir = 1;
+      }
+      renderTrainingHistory(trainingState.items);
+    });
   });
 
   function renderResult(row, data) {
