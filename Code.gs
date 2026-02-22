@@ -395,7 +395,7 @@ function processInput(input, fullNames) {
  * Возвращает список последних тренировок из внешней таблицы ответов.
  * Порядок: в таблице сверху-вниз, на сайте снизу-вверх.
  * @param {number} [limit=5] Количество записей.
- * @returns {Array<{timestamp:string,date:string,coach:string,fio:string}>}
+ * @returns {Array<{timestamp:string,date:string,coach:string,place:string,fio:string}>}
  */
 function getTrainingHistory(limit = 5) {
   const safeLimit = Math.max(1, Number(limit) || 5);
@@ -410,8 +410,9 @@ function getTrainingHistory(limit = 5) {
   const tsCol = header.indexOf('Отметка времени');
   const dateCol = header.indexOf('Дата тренировки');
   const coachCol = header.indexOf('Тренер присутствовал:');
+  const placeCol = header.indexOf('Место проведения занятия');
 
-  if (tsCol === -1 || dateCol === -1 || coachCol === -1) return [];
+  if (tsCol === -1 || dateCol === -1 || coachCol === -1 || placeCol === -1) return [];
 
   const startCol = 12; // M
   const endCol = 32;   // AG
@@ -430,6 +431,7 @@ function getTrainingHistory(limit = 5) {
         timestamp: formatTrainingCell(row[tsCol]),
         date: formatTrainingCell(row[dateCol]),
         coach: formatTrainingCell(row[coachCol]),
+        place: formatTrainingCell(row[placeCol]),
         fio: fioMerged
       };
     })

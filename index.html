@@ -197,13 +197,14 @@
   .training-list-head,
   .training-toggle {
     display: grid;
-    grid-template-columns: 1.2fr 1fr 1fr;
+    grid-template-columns: 1.2fr 1fr 1fr 1fr;
     gap: 10px;
     align-items: center;
   }
   .training-list-head {
     padding: 8px 10px;
-    border-bottom: 1px solid #ddd;
+    border: 1px solid #ccc;
+    border-bottom: none;
   }
   .training-sort {
     border: none;
@@ -222,22 +223,23 @@
     color: #1a73e8;
   }
   .training-list {
-    margin-top: 8px;
+    margin-top: 0;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 0;
   }
   .training-item {
-    border: 1px solid #cfd8dc;
-    border-radius: 10px;
+    border: 1px solid #ccc;
+    border-top: none;
+    border-radius: 0;
     background: #fff;
     overflow: hidden;
-    box-shadow: 0 1px 6px rgba(0,0,0,.06);
+    box-shadow: none;
   }
   .training-toggle {
     width: 100%;
     border: none;
-    background: linear-gradient(180deg, #f9fcff 0%, #f2f7ff 100%);
+    background: #fff;
     text-align: left;
     padding: 12px 12px;
     cursor: pointer;
@@ -253,7 +255,7 @@
     transform: rotate(180deg);
   }
   .training-fio-list {
-    border-top: 1px dashed #cfd8dc;
+    border-top: 1px dashed #ccc;
     padding: 0 12px;
     white-space: pre-line;
     font-size: 13px;
@@ -402,6 +404,7 @@
       <button type="button" class="training-sort" data-sort-key="timestamp">Отметка времени</button>
       <button type="button" class="training-sort" data-sort-key="date">Дата тренировки</button>
       <button type="button" class="training-sort" data-sort-key="coach">Тренер присутствовал:</button>
+      <button type="button" class="training-sort" data-sort-key="place">Место проведения занятия</button>
     </div>
     <div id="trainingList" class="training-list"></div>
   </section>
@@ -1130,7 +1133,20 @@
   }
 
   function getTrainingItemKey(item) {
-    return [item.timestamp || '', item.date || '', item.coach || '', item.fio || ''].join('|');
+    return [item.timestamp || '', item.date || '', item.coach || '', item.place || '', item.fio || ''].join('|');
+  }
+
+  function parseRuDateTime(value) {
+    const str = String(value || '').trim();
+    const m = str.match(/^(\d{2})\.(\d{2})\.(\d{4})(?:\s+(\d{2}):(\d{2}):(\d{2}))?$/);
+    if (!m) return null;
+    const dd = Number(m[1]);
+    const mm = Number(m[2]) - 1;
+    const yyyy = Number(m[3]);
+    const hh = Number(m[4] || 0);
+    const mi = Number(m[5] || 0);
+    const ss = Number(m[6] || 0);
+    return new Date(yyyy, mm, dd, hh, mi, ss).getTime();
   }
 
   function getSortedTrainingItems(items) {
@@ -1140,6 +1156,12 @@
     const key = trainingState.sortKey;
 
     return [...items].sort((a, b) => {
+      if (key === 'timestamp' || key === 'date') {
+        const at = parseRuDateTime(a[key]);
+        const bt = parseRuDateTime(b[key]);
+        if (at !== null && bt !== null && at !== bt) return at > bt ? dir : -dir;
+      }
+
       const av = String(a[key] || '').toLowerCase();
       const bv = String(b[key] || '').toLowerCase();
       if (av === bv) return 0;
@@ -1186,7 +1208,7 @@
       const toggle = document.createElement('button');
       toggle.type = 'button';
       toggle.className = 'training-toggle';
-      toggle.innerHTML = `<span>${escapeHtml(item.timestamp || '')}</span><span>${escapeHtml(item.date || '')}</span><span>${escapeHtml(item.coach || '')}</span>`;
+      toggle.innerHTML = `<span>${escapeHtml(item.timestamp || '')}</span><span>${escapeHtml(item.date || '')}</span><span>${escapeHtml(item.coach || '')}</span><span>${escapeHtml(item.place || '')}</span>`;
 
       const isOpen = trainingState.opened.has(itemKey);
       card.classList.toggle('open', isOpen);
