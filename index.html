@@ -737,11 +737,66 @@
    *************************************************/
   const tbody = document.querySelector('#fioTable tbody');
   let debounceTimer = null;
+  const attendanceState = {
+    nextId: 1,
+    rows: new Map()
+  };
+
+  function normalizeAttendanceInput(value) {
+    return String(value || '')
+      .replace(/ /g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function ensureAttendanceState(rowId) {
+    if (!attendanceState.rows.has(rowId)) {
+      attendanceState.rows.set(rowId, {
+        lastMatchedInput: '',
+        selectedFio: '',
+        options: []
+      });
+    }
+    return attendanceState.rows.get(rowId);
+  }
+
+  function getRowId(row) {
+    if (!row.dataset.rowId) {
+      row.dataset.rowId = String(attendanceState.nextId++);
+    }
+    return row.dataset.rowId;
+  }
 
   function createRow(left = '') {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td class="input" contenteditable="true">${left}</td><td class="result"></td>`;
+    const rowId = getRowId(tr);
+    ensureAttendanceState(rowId);
     return tr;
+  }
+
+  function hydrateExistingRows() {
+    const rows = [...tbody.rows];
+    rows.forEach(row => {
+      const rowId = getRowId(row);
+      ensureAttendanceState(rowId);
+    });
+
+    if (!rows.length) {
+      tbody.appendChild(createRow());
+      return;
+    }
+
+    const last = rows[rows.length - 1];
+    if (last && last.cells[0].innerText.trim()) {
+      tbody.appendChild(createRow());
+    }
+  }
+
+  function removeRowAndState(row) {
+    const rowId = row.dataset.rowId;
+    row.remove();
+    if (rowId) attendanceState.rows.delete(rowId);
   }
 
   function caretPos(el) {
@@ -806,7 +861,7 @@
       const p = prev.cells[0];
       const len = p.innerText.length;
       p.innerText += text;
-      row.remove();
+      removeRowAndState(row);
       setCaret(p, len);
       scheduleMatch();
     }
@@ -818,7 +873,7 @@
       const n = next.cells[0];
       const len = text.length;
       cell.innerText += n.innerText;
-      next.remove();
+      removeRowAndState(next);
       setCaret(cell, len);
       scheduleMatch();
     }
@@ -842,7 +897,7 @@
 
     if (lines.length <= 1) {
       const last = tbody.lastElementChild;
-      if (last.cells[0].innerText.trim()) tbody.appendChild(createRow());
+      if (last && last.cells[0].innerText.trim()) tbody.appendChild(createRow());
       scheduleMatch();
       return;
     }
@@ -884,26 +939,40 @@
     debounceTimer = setTimeout(runMatch, 400);
   }
 
-  function renderResult(cell, data) {
+  function renderResult(row, data) {
+    const rowId = getRowId(row);
+    const rowState = ensureAttendanceState(rowId);
+    const cell = row.cells[1];
     cell.innerHTML = '';
 
     if (!data || !data.options || data.options.length === 0 || data.options.length > 3) {
+      rowState.options = [];
+      rowState.selectedFio = '';
       cell.innerText = '—';
       return;
     }
 
+    rowState.options = [...data.options];
+
+    const selectedValue = rowState.options.includes(rowState.selectedFio)
+      ? rowState.selectedFio
+      : (rowState.options.includes(data.selected) ? data.selected : '');
+
+    rowState.selectedFio = selectedValue;
+
     const wrap = document.createElement('div');
     wrap.className = 'fio-list';
 
-    data.options.forEach(fio => {
+    rowState.options.forEach(fio => {
       const btn = document.createElement('div');
       btn.className = 'fio-option';
       btn.innerText = fio;
-      if (fio === data.selected) btn.classList.add('selected');
+      if (fio === selectedValue) btn.classList.add('selected');
 
       btn.addEventListener('click', () => {
         [...wrap.children].forEach(b => b.classList.remove('selected'));
         btn.classList.add('selected');
+        rowState.selectedFio = fio;
       });
 
       wrap.appendChild(btn);
@@ -914,17 +983,35 @@
 
   function runMatch() {
     const rows = [...tbody.rows];
-    const inputs = rows.map(r => r.cells[0].innerText.trim());
+    const changedRows = [];
+
+    rows.forEach(row => {
+      const rowId = getRowId(row);
+      const rowState = ensureAttendanceState(rowId);
+      const input = normalizeAttendanceInput(row.cells[0].innerText);
+      if (rowState.lastMatchedInput !== input) {
+        changedRows.push({ row, rowState, input });
+      }
+    });
+
+    if (!changedRows.length) return;
+
+    const inputs = changedRows.map(item => item.input);
 
     google.script.run
       .withSuccessHandler(results => {
         results.forEach((data, i) => {
-          if (rows[i]) renderResult(rows[i].cells[1], data);
+          const changed = changedRows[i];
+          if (!changed || !changed.row.isConnected) return;
+
+          renderResult(changed.row, data);
+          changed.rowState.lastMatchedInput = changed.input;
         });
       })
       .findNames(inputs);
   }
 
+  hydrateExistingRows();
   function openAttendanceForm() {
     const rows = [...tbody.rows];
     const values = rows
