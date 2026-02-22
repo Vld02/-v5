@@ -162,6 +162,39 @@
   .fio-option { padding: 4px 8px; border: 1px solid #999; border-radius: 4px; background: #fff; cursor: pointer; user-select: none; font-size: 13px; }
   .fio-option.selected { background: #cce5ff; border-color: #339; font-weight: bold; }
 
+  .attendance-notice {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    z-index: 9999;
+    background: rgba(40, 40, 40, 0.88);
+    color: #fff;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 14px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    opacity: 0;
+    transform: translateY(8px);
+    pointer-events: none;
+    transition: opacity .35s ease, transform .35s ease;
+  }
+  .attendance-notice.show {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+
+  .training-controls { margin-top: 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .training-controls input { width: 90px; padding: 6px; }
+  .training-history { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+  .training-item { border: 1px solid #d6d6d6; border-radius: 8px; background: #fff; }
+  .training-item-header { padding: 10px; cursor: pointer; display: grid; gap: 4px; }
+  .training-item-header strong { color: #444; }
+  .training-fio-list { border-top: 1px solid #ececec; padding: 8px 10px; display: none; }
+  .training-fio-list.open { display: block; }
+  .training-fio-row { padding: 2px 0; }
+  .training-empty { color: #666; font-style: italic; }
+
   .placeholder {
     text-align: center;
     padding: 48px 14px;
@@ -261,6 +294,13 @@
         </tbody>
       </table>
     </div>
+
+    <div class="training-controls">
+      <label for="trainingLimit">Показать тренировок:</label>
+      <input id="trainingLimit" type="number" min="1" max="100" value="5" />
+      <button type="button" onclick="loadTrainingHistory()">Обновить</button>
+    </div>
+    <div id="trainingHistory" class="training-history"></div>
   </section>
 
   <section id="tab-gear" class="tab-panel">
@@ -282,7 +322,9 @@
     snilsWrap: document.getElementById('snilsWrap'),
     docsFlag: document.getElementById('flag-docs'),
     attendanceFlag: document.getElementById('flag-attendance'),
-    gearFlag: document.getElementById('flag-gear')
+    gearFlag: document.getElementById('flag-gear'),
+    trainingLimit: document.getElementById('trainingLimit'),
+    trainingHistory: document.getElementById('trainingHistory')
   };
 
   const tabFlags = [...document.querySelectorAll('.tab-flag')];
@@ -303,8 +345,85 @@
       Object.entries(tabPanels).forEach(([name, panel]) => {
         panel.classList.toggle('active', name === key);
       });
+      if (key === 'attendance') loadTrainingHistory();
     });
   });
+
+
+  function renderTrainingHistory(items) {
+    dom.trainingHistory.innerHTML = '';
+
+    if (!items || !items.length) {
+      const empty = document.createElement('div');
+      empty.className = 'training-empty';
+      empty.textContent = 'Нет данных по тренировкам.';
+      dom.trainingHistory.appendChild(empty);
+      return;
+    }
+
+    items.forEach(item => {
+      const card = document.createElement('div');
+      card.className = 'training-item';
+
+      const header = document.createElement('div');
+      header.className = 'training-item-header';
+
+      const t1 = document.createElement('div');
+      t1.innerHTML = `<strong>Отметка времени:</strong> ${escapeHtml(item.timestamp || '')}`;
+      const t2 = document.createElement('div');
+      t2.innerHTML = `<strong>Дата тренировки:</strong> ${escapeHtml(item.trainingDate || '')}`;
+      const t3 = document.createElement('div');
+      t3.innerHTML = `<strong>Тренер присутствовал:</strong> ${escapeHtml(item.coach || '')}`;
+
+      const fioWrap = document.createElement('div');
+      fioWrap.className = 'training-fio-list';
+
+      const fioTitle = document.createElement('div');
+      fioTitle.innerHTML = '<strong>ФИО</strong>';
+      fioWrap.appendChild(fioTitle);
+
+      if (item.fioList && item.fioList.length) {
+        item.fioList.forEach(fio => {
+          const fioRow = document.createElement('div');
+          fioRow.className = 'training-fio-row';
+          fioRow.textContent = fio;
+          fioWrap.appendChild(fioRow);
+        });
+      } else {
+        const empty = document.createElement('div');
+        empty.className = 'training-empty';
+        empty.textContent = 'Пусто';
+        fioWrap.appendChild(empty);
+      }
+
+      header.appendChild(t1);
+      header.appendChild(t2);
+      header.appendChild(t3);
+
+      header.addEventListener('click', () => {
+        fioWrap.classList.toggle('open');
+      });
+
+      card.appendChild(header);
+      card.appendChild(fioWrap);
+      dom.trainingHistory.appendChild(card);
+    });
+  }
+
+  function loadTrainingHistory() {
+    const limit = Math.min(Math.max(parseInt(dom.trainingLimit.value, 10) || 5, 1), 100);
+    dom.trainingLimit.value = String(limit);
+    dom.trainingHistory.innerHTML = '<div class="training-empty">Загрузка...</div>';
+
+    google.script.run
+      .withSuccessHandler(renderTrainingHistory)
+      .withFailureHandler(() => {
+        dom.trainingHistory.innerHTML = '<div class="training-empty">Не удалось загрузить тренировки.</div>';
+      })
+      .getTrainingHistory(limit);
+  }
+
+  dom.trainingLimit.addEventListener('change', loadTrainingHistory);
 
   /*************************************************
    * ДОКУМЕНТЫ: РАБОТА С ДАТОЙ И АВТОРИЗАЦИЯ
@@ -737,11 +856,69 @@
    *************************************************/
   const tbody = document.querySelector('#fioTable tbody');
   let debounceTimer = null;
+  const attendanceState = {
+    nextId: 1,
+    rows: new Map()
+  };
+  let matchInFlight = false;
+  let latestMatchPromise = Promise.resolve();
+  let attendanceNoticeTimer = null;
+
+  function normalizeAttendanceInput(value) {
+    return String(value || '')
+      .replace(/ /g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function ensureAttendanceState(rowId) {
+    if (!attendanceState.rows.has(rowId)) {
+      attendanceState.rows.set(rowId, {
+        lastMatchedInput: '',
+        selectedFio: '',
+        options: []
+      });
+    }
+    return attendanceState.rows.get(rowId);
+  }
+
+  function getRowId(row) {
+    if (!row.dataset.rowId) {
+      row.dataset.rowId = String(attendanceState.nextId++);
+    }
+    return row.dataset.rowId;
+  }
 
   function createRow(left = '') {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td class="input" contenteditable="true">${left}</td><td class="result"></td>`;
+    const rowId = getRowId(tr);
+    ensureAttendanceState(rowId);
     return tr;
+  }
+
+  function hydrateExistingRows() {
+    const rows = [...tbody.rows];
+    rows.forEach(row => {
+      const rowId = getRowId(row);
+      ensureAttendanceState(rowId);
+    });
+
+    if (!rows.length) {
+      tbody.appendChild(createRow());
+      return;
+    }
+
+    const last = rows[rows.length - 1];
+    if (last && last.cells[0].innerText.trim()) {
+      tbody.appendChild(createRow());
+    }
+  }
+
+  function removeRowAndState(row) {
+    const rowId = row.dataset.rowId;
+    row.remove();
+    if (rowId) attendanceState.rows.delete(rowId);
   }
 
   function caretPos(el) {
@@ -806,7 +983,7 @@
       const p = prev.cells[0];
       const len = p.innerText.length;
       p.innerText += text;
-      row.remove();
+      removeRowAndState(row);
       setCaret(p, len);
       scheduleMatch();
     }
@@ -818,7 +995,7 @@
       const n = next.cells[0];
       const len = text.length;
       cell.innerText += n.innerText;
-      next.remove();
+      removeRowAndState(next);
       setCaret(cell, len);
       scheduleMatch();
     }
@@ -842,7 +1019,7 @@
 
     if (lines.length <= 1) {
       const last = tbody.lastElementChild;
-      if (last.cells[0].innerText.trim()) tbody.appendChild(createRow());
+      if (last && last.cells[0].innerText.trim()) tbody.appendChild(createRow());
       scheduleMatch();
       return;
     }
@@ -881,29 +1058,64 @@
 
   function scheduleMatch() {
     clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(runMatch, 400);
+    debounceTimer = setTimeout(() => {
+      latestMatchPromise = runMatch();
+    }, 400);
   }
 
-  function renderResult(cell, data) {
+
+  function showAttendanceNotice(message) {
+    let notice = document.getElementById('attendanceNotice');
+    if (!notice) {
+      notice = document.createElement('div');
+      notice.id = 'attendanceNotice';
+      notice.className = 'attendance-notice';
+      document.body.appendChild(notice);
+    }
+
+    notice.textContent = message;
+    notice.classList.add('show');
+
+    if (attendanceNoticeTimer) clearTimeout(attendanceNoticeTimer);
+    attendanceNoticeTimer = setTimeout(() => {
+      notice.classList.remove('show');
+    }, 1800);
+  }
+
+  function renderResult(row, data) {
+    const rowId = getRowId(row);
+    const rowState = ensureAttendanceState(rowId);
+    const cell = row.cells[1];
     cell.innerHTML = '';
 
     if (!data || !data.options || data.options.length === 0 || data.options.length > 3) {
+      rowState.options = [];
+      rowState.selectedFio = '';
       cell.innerText = '—';
       return;
     }
 
+    rowState.options = [...data.options];
+
+    const selectedValue = rowState.options.includes(rowState.selectedFio)
+      ? rowState.selectedFio
+      : (rowState.options.includes(data.selected) ? data.selected : '');
+
+    rowState.selectedFio = selectedValue;
+
     const wrap = document.createElement('div');
     wrap.className = 'fio-list';
 
-    data.options.forEach(fio => {
+    rowState.options.forEach(fio => {
       const btn = document.createElement('div');
       btn.className = 'fio-option';
       btn.innerText = fio;
-      if (fio === data.selected) btn.classList.add('selected');
+      if (fio === selectedValue) btn.classList.add('selected');
 
       btn.addEventListener('click', () => {
         [...wrap.children].forEach(b => b.classList.remove('selected'));
         btn.classList.add('selected');
+        rowState.selectedFio = fio;
       });
 
       wrap.appendChild(btn);
@@ -914,31 +1126,75 @@
 
   function runMatch() {
     const rows = [...tbody.rows];
-    const inputs = rows.map(r => r.cells[0].innerText.trim());
+    const changedRows = [];
 
-    google.script.run
-      .withSuccessHandler(results => {
-        results.forEach((data, i) => {
-          if (rows[i]) renderResult(rows[i].cells[1], data);
-        });
-      })
-      .findNames(inputs);
+    rows.forEach(row => {
+      const rowId = getRowId(row);
+      const rowState = ensureAttendanceState(rowId);
+      const input = normalizeAttendanceInput(row.cells[0].innerText);
+      if (rowState.lastMatchedInput !== input) {
+        changedRows.push({ row, rowState, input });
+      }
+    });
+
+    if (!changedRows.length) return Promise.resolve();
+
+    const inputs = changedRows.map(item => item.input);
+
+    matchInFlight = true;
+
+    return new Promise(resolve => {
+      google.script.run
+        .withSuccessHandler(results => {
+          results.forEach((data, i) => {
+            const changed = changedRows[i];
+            if (!changed || !changed.row.isConnected) return;
+
+            renderResult(changed.row, data);
+            changed.rowState.lastMatchedInput = changed.input;
+          });
+          matchInFlight = false;
+          resolve();
+        })
+        .withFailureHandler(() => {
+          matchInFlight = false;
+          resolve();
+        })
+        .findNames(inputs);
+    });
   }
 
-  function openAttendanceForm() {
+  hydrateExistingRows();
+  loadTrainingHistory();
+  async function openAttendanceForm() {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+      latestMatchPromise = runMatch();
+    }
+
+    if (matchInFlight) {
+      await latestMatchPromise;
+    }
+
     const rows = [...tbody.rows];
+    const hasUnselectedRows = rows.some(r => {
+      const options = r.querySelectorAll('.fio-option');
+      if (!options.length) return false;
+      return !r.querySelector('.fio-option.selected');
+    });
+
+    if (hasUnselectedRows) {
+      showAttendanceNotice('Выберите все ФИО');
+      return;
+    }
+
     const values = rows
       .map(r => {
         const selected = r.querySelector('.fio-option.selected');
-        const first = r.querySelector('.fio-option');
-        return selected ? selected.innerText : first ? first.innerText : '';
+        return selected ? selected.innerText : '';
       })
       .filter(Boolean);
-
-    if (!values.length) {
-      alert('Нет данных для заполнения формы');
-      return;
-    }
 
     const prefillValue = encodeURIComponent(values.join('\n'));
     const url = 'https://docs.google.com/forms/d/e/1FAIpQLSdGwQQhPaY3wXjT90TX2daQx7U-mjnfkoL_7VZ9nJ8NUqbKtw/viewform?entry.286976530=' + prefillValue;

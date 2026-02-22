@@ -324,6 +324,54 @@ function findNames(inputs) {
   return inputs.map(input => processInput(input, fullNames));
 }
 
+
+/**
+ * Возвращает историю тренировок из внешней таблицы.
+ * @param {number} [limit=5] Количество записей.
+ * @returns {Array<{timestamp:string,trainingDate:string,coach:string,fioList:string[]}>}
+ */
+function getTrainingHistory(limit = 5) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 5, 1), 100);
+  const sheet = SpreadsheetApp
+    .openById('1K1TtjIL2retzFoXBlQaePKbeKIEkMZZedZX-Ans4VjY')
+    .getSheetByName('ОтветыV5');
+
+  if (!sheet) return [];
+
+  const values = sheet.getDataRange().getValues();
+  if (values.length < 2) return [];
+
+  const header = values[0].map(String);
+  const idxTimestamp = header.indexOf('Отметка времени');
+  const idxTrainingDate = header.indexOf('Дата тренировки');
+  const idxCoach = header.indexOf('Тренер присутствовал:');
+
+  if (idxTimestamp === -1 || idxTrainingDate === -1 || idxCoach === -1) return [];
+
+  const dataRows = values.slice(1);
+  const transformed = dataRows.map(row => {
+    const fioCells = row.slice(12, 33)
+      .map(v => String(v || '').trim())
+      .filter(Boolean)
+      .map(v => v.replace(/,\s+/g, '\n'));
+
+    const fioList = fioCells
+      .join('\n')
+      .split(/\n+/)
+      .map(v => v.trim())
+      .filter(Boolean);
+
+    return {
+      timestamp: formatCellValue(row[idxTimestamp]),
+      trainingDate: formatCellValue(row[idxTrainingDate]),
+      coach: formatCellValue(row[idxCoach]),
+      fioList
+    };
+  });
+
+  return transformed.reverse().slice(0, safeLimit);
+}
+
 /**
  * Загружает полные ФИО из первого столбца листа результатов.
  * Для ускорения используется краткоживущий кэш ScriptCache.
@@ -380,8 +428,12 @@ function processInput(input, fullNames) {
     }
   }
 
+  const bestCost = top.length ? top[0].totalCost : null;
+  const sameBestCount = bestCost === null ? 0 : top.filter(m => m.totalCost === bestCost).length;
+  const shouldAutoSelect = sameBestCount <= 1;
+
   return {
-    selected,
+    selected: shouldAutoSelect ? selected : '',
     options: top.map(m => m.original)
   };
 }
