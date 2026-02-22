@@ -737,11 +737,30 @@
    *************************************************/
   const tbody = document.querySelector('#fioTable tbody');
   let debounceTimer = null;
+  let matchRequestSeq = 0;
 
-  function createRow(left = '') {
+  function normalizeAttendanceInput(value) {
+    return String(value || '')
+      .replace(/ /g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function createRow(left = '', state = {}) {
     const tr = document.createElement('tr');
+    tr.dataset.lastMatchedInput = state.lastMatchedInput ?? '';
+    tr.dataset.selectedFio = state.selectedFio ?? '';
+    tr.dataset.renderVersion = String(state.renderVersion ?? 0);
     tr.innerHTML = `<td class="input" contenteditable="true">${left}</td><td class="result"></td>`;
     return tr;
+  }
+
+  function captureRowState(row) {
+    return {
+      lastMatchedInput: row.dataset.lastMatchedInput || '',
+      selectedFio: row.dataset.selectedFio || '',
+      renderVersion: Number(row.dataset.renderVersion || 0)
+    };
   }
 
   function caretPos(el) {
@@ -792,8 +811,9 @@
 
     if (e.key === 'Enter') {
       e.preventDefault();
+      const tailState = captureRowState(row);
       cell.innerText = text.slice(0, pos);
-      const r = createRow(text.slice(pos));
+      const r = createRow(text.slice(pos), tailState);
       row.after(r);
       setCaret(r.cells[0], 0);
       scheduleMatch();
@@ -847,10 +867,11 @@
       return;
     }
 
+    const baseState = captureRowState(row);
     cell.innerText = lines[0];
     let currentRow = row;
     for (let i = 1; i < lines.length; i++) {
-      const r = createRow(lines[i]);
+      const r = createRow(lines[i], baseState);
       currentRow.after(r);
       currentRow = r;
     }
@@ -870,7 +891,7 @@
       if (i === 0) {
         e.target.innerText = line;
       } else {
-        const r = createRow(line);
+        const r = createRow(line, captureRowState(row));
         row.after(r);
         row = r;
       }
@@ -881,16 +902,23 @@
 
   function scheduleMatch() {
     clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(runMatch, 400);
+    debounceTimer = setTimeout(runMatch, 350);
   }
 
-  function renderResult(cell, data) {
+  function renderResult(row, data) {
+    const cell = row.cells[1];
+    const savedSelection = row.dataset.selectedFio || '';
     cell.innerHTML = '';
 
     if (!data || !data.options || data.options.length === 0 || data.options.length > 3) {
+      row.dataset.selectedFio = '';
       cell.innerText = '—';
       return;
     }
+
+    const selectedValue = data.options.includes(savedSelection)
+      ? savedSelection
+      : (data.options.includes(data.selected) ? data.selected : '');
 
     const wrap = document.createElement('div');
     wrap.className = 'fio-list';
@@ -899,30 +927,56 @@
       const btn = document.createElement('div');
       btn.className = 'fio-option';
       btn.innerText = fio;
-      if (fio === data.selected) btn.classList.add('selected');
+      if (fio === selectedValue) btn.classList.add('selected');
 
       btn.addEventListener('click', () => {
         [...wrap.children].forEach(b => b.classList.remove('selected'));
         btn.classList.add('selected');
+        row.dataset.selectedFio = fio;
       });
 
       wrap.appendChild(btn);
     });
 
+    row.dataset.selectedFio = selectedValue;
     cell.appendChild(wrap);
   }
 
   function runMatch() {
     const rows = [...tbody.rows];
-    const inputs = rows.map(r => r.cells[0].innerText.trim());
+    const changedRows = [];
+    const requestId = ++matchRequestSeq;
+
+    rows.forEach((row, index) => {
+      const input = normalizeAttendanceInput(row.cells[0].innerText);
+      if ((row.dataset.lastMatchedInput || '') !== input) {
+        const renderVersion = Number(row.dataset.renderVersion || 0) + 1;
+        row.dataset.renderVersion = String(renderVersion);
+        changedRows.push({ index, input, renderVersion });
+      }
+    });
+
+    if (!changedRows.length) return;
 
     google.script.run
       .withSuccessHandler(results => {
+        if (requestId !== matchRequestSeq) return;
+
         results.forEach((data, i) => {
-          if (rows[i]) renderResult(rows[i].cells[1], data);
+          const changed = changedRows[i];
+          if (!changed) return;
+
+          const row = rows[changed.index];
+          if (!row || !row.isConnected) return;
+
+          const currentVersion = Number(row.dataset.renderVersion || 0);
+          if (currentVersion !== changed.renderVersion) return;
+
+          renderResult(row, data);
+          row.dataset.lastMatchedInput = changed.input;
         });
       })
-      .findNames(inputs);
+      .findNames(changedRows.map(item => item.input));
   }
 
   function openAttendanceForm() {
