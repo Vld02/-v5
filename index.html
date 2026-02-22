@@ -162,41 +162,79 @@
   .fio-option { padding: 4px 8px; border: 1px solid #999; border-radius: 4px; background: #fff; cursor: pointer; user-select: none; font-size: 13px; }
   .fio-option.selected { background: #cce5ff; border-color: #339; font-weight: bold; }
 
+  .training-title { margin: 16px 0 8px; }
+  .training-list-head,
+  .training-toggle {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr 1fr;
+    gap: 10px;
+    align-items: center;
+  }
+  .training-list-head {
+    padding: 8px 10px;
+    font-size: 12px;
+    color: #666;
+    font-weight: 600;
+    border-bottom: 1px solid #ddd;
+  }
+  .training-list {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .training-item {
+    border: 1px solid #cfd8dc;
+    border-radius: 10px;
+    background: #fff;
+    overflow: hidden;
+    box-shadow: 0 1px 6px rgba(0,0,0,.06);
+  }
+  .training-toggle {
+    width: 100%;
+    border: none;
+    background: linear-gradient(180deg, #f9fcff 0%, #f2f7ff 100%);
+    text-align: left;
+    padding: 12px 12px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .training-toggle::after {
+    content: '▾';
+    justify-self: end;
+    color: #4a5a6a;
+    transition: transform .5s ease;
+  }
+  .training-item.open .training-toggle::after {
+    transform: rotate(180deg);
+  }
+  .training-fio-list {
+    border-top: 1px dashed #cfd8dc;
+    padding: 0 12px;
+    white-space: pre-line;
+    font-size: 13px;
+    color: #333;
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition: max-height .5s ease, opacity .5s ease, padding .5s ease;
+  }
+  .training-item.open .training-fio-list {
+    max-height: 520px;
+    opacity: 1;
+    padding: 10px 12px 12px;
+  }
   .training-controls {
     display: flex;
+    justify-content: flex-end;
     align-items: center;
     gap: 8px;
-    margin-top: 14px;
+    margin-top: 10px;
   }
   .training-controls input {
     width: 80px;
     padding: 4px 6px;
   }
-  .training-list {
-    margin-top: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .training-item {
-    border: 1px solid #ccc;
-    border-radius: 8px;
-    background: #fff;
-    padding: 8px;
-    cursor: default;
-  }
-  .training-title { margin: 16px 0 8px; }
-  .training-item-head { font-size: 14px; cursor: pointer; }
-  .training-fio-list {
-    margin-top: 8px;
-    border-top: 1px dashed #ccc;
-    padding-top: 8px;
-    display: none;
-    white-space: pre-line;
-    font-size: 13px;
-    color: #333;
-  }
-  .training-item.open .training-fio-list { display: block; }
 
   .attendance-notice {
     position: fixed;
@@ -320,11 +358,16 @@
     </div>
 
     <h3 class="training-title">Тренировки</h3>
+    <div class="training-list-head">
+      <span>Отметка времени</span>
+      <span>Дата тренировки</span>
+      <span>Тренер присутствовал:</span>
+    </div>
+    <div id="trainingList" class="training-list"></div>
     <div class="training-controls">
       <label for="trainingLimitInput">Показать тренировок:</label>
       <input id="trainingLimitInput" type="number" min="1" step="1" value="5" />
     </div>
-    <div id="trainingList" class="training-list"></div>
   </section>
 
   <section id="tab-gear" class="tab-panel">
@@ -1050,19 +1093,23 @@
       const card = document.createElement('div');
       card.className = 'training-item';
 
-      const head = document.createElement('div');
-      head.className = 'training-item-head';
-      head.innerHTML = `<strong>${escapeHtml(item.timestamp || '')}</strong> | ${escapeHtml(item.date || '')} | ${escapeHtml(item.coach || '')}`;
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'training-toggle';
+      toggle.innerHTML = `<span>${escapeHtml(item.timestamp || '')}</span><span>${escapeHtml(item.date || '')}</span><span>${escapeHtml(item.coach || '')}</span>`;
+      toggle.setAttribute('aria-expanded', 'false');
 
       const fio = document.createElement('div');
       fio.className = 'training-fio-list';
       fio.textContent = item.fio || '—';
 
-      card.appendChild(head);
+      card.appendChild(toggle);
       card.appendChild(fio);
 
-      head.addEventListener('click', () => {
-        card.classList.toggle('open');
+      toggle.addEventListener('click', () => {
+        const willOpen = !card.classList.contains('open');
+        card.classList.toggle('open', willOpen);
+        toggle.setAttribute('aria-expanded', String(willOpen));
       });
 
       trainingList.appendChild(card);
