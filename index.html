@@ -183,9 +183,10 @@
     border-radius: 8px;
     background: #fff;
     padding: 8px;
-    cursor: pointer;
+    cursor: default;
   }
-  .training-item-head { font-size: 14px; }
+  .training-title { margin: 16px 0 8px; }
+  .training-item-head { font-size: 14px; cursor: pointer; }
   .training-fio-list {
     margin-top: 8px;
     border-top: 1px dashed #ccc;
@@ -318,6 +319,7 @@
       </table>
     </div>
 
+    <h3 class="training-title">Тренировки</h3>
     <div class="training-controls">
       <label for="trainingLimitInput">Показать тренировок:</label>
       <input id="trainingLimitInput" type="number" min="1" step="1" value="5" />
@@ -1059,7 +1061,7 @@
       card.appendChild(head);
       card.appendChild(fio);
 
-      card.addEventListener('click', () => {
+      head.addEventListener('click', () => {
         card.classList.toggle('open');
       });
 
