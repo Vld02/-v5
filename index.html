@@ -741,6 +741,8 @@
     nextId: 1,
     rows: new Map()
   };
+  let matchInFlight = false;
+  let latestMatchPromise = Promise.resolve();
 
   function normalizeAttendanceInput(value) {
     return String(value || '')
@@ -936,7 +938,9 @@
 
   function scheduleMatch() {
     clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(runMatch, 400);
+    debounceTimer = setTimeout(() => {
+      latestMatchPromise = runMatch();
+    }, 400);
   }
 
   function renderResult(row, data) {
@@ -994,25 +998,45 @@
       }
     });
 
-    if (!changedRows.length) return;
+    if (!changedRows.length) return Promise.resolve();
 
     const inputs = changedRows.map(item => item.input);
 
-    google.script.run
-      .withSuccessHandler(results => {
-        results.forEach((data, i) => {
-          const changed = changedRows[i];
-          if (!changed || !changed.row.isConnected) return;
+    matchInFlight = true;
 
-          renderResult(changed.row, data);
-          changed.rowState.lastMatchedInput = changed.input;
-        });
-      })
-      .findNames(inputs);
+    return new Promise(resolve => {
+      google.script.run
+        .withSuccessHandler(results => {
+          results.forEach((data, i) => {
+            const changed = changedRows[i];
+            if (!changed || !changed.row.isConnected) return;
+
+            renderResult(changed.row, data);
+            changed.rowState.lastMatchedInput = changed.input;
+          });
+          matchInFlight = false;
+          resolve();
+        })
+        .withFailureHandler(() => {
+          matchInFlight = false;
+          resolve();
+        })
+        .findNames(inputs);
+    });
   }
 
   hydrateExistingRows();
-  function openAttendanceForm() {
+  async function openAttendanceForm() {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+      latestMatchPromise = runMatch();
+    }
+
+    if (matchInFlight) {
+      await latestMatchPromise;
+    }
+
     const rows = [...tbody.rows];
     const values = rows
       .map(r => {
@@ -1021,11 +1045,6 @@
         return selected ? selected.innerText : first ? first.innerText : '';
       })
       .filter(Boolean);
-
-    if (!values.length) {
-      alert('Нет данных для заполнения формы');
-      return;
-    }
 
     const prefillValue = encodeURIComponent(values.join('\n'));
     const url = 'https://docs.google.com/forms/d/e/1FAIpQLSdGwQQhPaY3wXjT90TX2daQx7U-mjnfkoL_7VZ9nJ8NUqbKtw/viewform?entry.286976530=' + prefillValue;
