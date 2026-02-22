@@ -380,10 +380,77 @@ function processInput(input, fullNames) {
     }
   }
 
+  const bestCost = top.length ? top[0].totalCost : null;
+  const sameBestCount = bestCost === null ? 0 : top.filter(m => m.totalCost === bestCost).length;
+  const shouldAutoSelect = sameBestCount <= 1;
+
   return {
-    selected,
+    selected: shouldAutoSelect ? selected : '',
     options: top.map(m => m.original)
   };
+}
+
+
+/**
+ * Возвращает список последних тренировок из внешней таблицы ответов.
+ * Порядок: в таблице сверху-вниз, на сайте снизу-вверх.
+ * @param {number} [limit=5] Количество записей.
+ * @returns {Array<{timestamp:string,date:string,coach:string,fio:string}>}
+ */
+function getTrainingHistory(limit = 5) {
+  const safeLimit = Math.max(1, Number(limit) || 5);
+  const ss = SpreadsheetApp.openById('1K1TtjIL2retzFoXBlQaePKbeKIEkMZZedZX-Ans4VjY');
+  const sheet = ss.getSheetByName('ОтветыV5');
+  if (!sheet) return [];
+
+  const values = sheet.getDataRange().getValues();
+  if (values.length < 2) return [];
+
+  const header = values[0].map(String);
+  const tsCol = header.indexOf('Отметка времени');
+  const dateCol = header.indexOf('Дата тренировки');
+  const coachCol = header.indexOf('Тренер присутствовал:');
+
+  if (tsCol === -1 || dateCol === -1 || coachCol === -1) return [];
+
+  const startCol = 12; // M
+  const endCol = 32;   // AG
+
+  const rows = values.slice(1)
+    .filter(row => row.some(cell => String(cell || '').trim() !== ''))
+    .map(row => {
+      const fioMerged = row
+        .slice(startCol, endCol + 1)
+        .map(v => String(v || '').trim())
+        .filter(Boolean)
+        .join('\n')
+        .replace(/,\s*/g, '\n');
+
+      return {
+        timestamp: formatTrainingCell(row[tsCol]),
+        date: formatTrainingCell(row[dateCol]),
+        coach: formatTrainingCell(row[coachCol]),
+        fio: fioMerged
+      };
+    })
+    .reverse()
+    .slice(0, safeLimit);
+
+  return rows;
+}
+
+/**
+ * Форматирует значение ячейки для блока истории тренировок.
+ * @param {*} value
+ * @returns {string}
+ */
+function formatTrainingCell(value) {
+  if (value instanceof Date) {
+    const hasTime = value.getHours() !== 0 || value.getMinutes() !== 0 || value.getSeconds() !== 0;
+    const pattern = hasTime ? 'dd.MM.yyyy HH:mm:ss' : CONFIG.DATE_FORMAT;
+    return Utilities.formatDate(value, CONFIG.TIMEZONE, pattern);
+  }
+  return String(value ?? '');
 }
 
 /**
