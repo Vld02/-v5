@@ -391,7 +391,7 @@
     </div>
 
     <div class="training-topbar">
-      <h3 class="training-title">Тренировки</h3>
+      <h3 class="training-title">Последние отмеченные тренировки</h3>
       <div class="training-controls">
         <span id="trainingLoading" class="training-loading" aria-hidden="true"></span>
         <label for="trainingLimitInput">Показать тренировок:</label>
@@ -1157,6 +1157,23 @@
     });
   }
 
+  function keepViewportStableWhileCollapsing(anchorEl, durationMs = 520) {
+    const start = performance.now();
+    const anchorTop = anchorEl.getBoundingClientRect().top;
+
+    function tick() {
+      const shift = anchorEl.getBoundingClientRect().top - anchorTop;
+      if (Math.abs(shift) > 0.5) {
+        window.scrollBy(0, shift);
+      }
+      if (performance.now() - start < durationMs) {
+        requestAnimationFrame(tick);
+      }
+    }
+
+    requestAnimationFrame(tick);
+  }
+
   function renderTrainingHistory(items) {
     trainingList.innerHTML = '';
 
@@ -1192,6 +1209,9 @@
 
       toggle.addEventListener('click', () => {
         const willOpen = !card.classList.contains('open');
+        if (!willOpen) {
+          keepViewportStableWhileCollapsing(card, 520);
+        }
         card.classList.toggle('open', willOpen);
         toggle.setAttribute('aria-expanded', String(willOpen));
         if (willOpen) trainingState.opened.add(itemKey);
