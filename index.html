@@ -287,7 +287,9 @@
     padding: 4px;
   }
   .training-filter-option {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 6px;
     font-size: 13px;
     margin-bottom: 2px;
   }
@@ -487,10 +489,10 @@
       </div>
     </div>
     <div class="training-list-head">
-      <div class="training-head-cell"><button type="button" class="training-sort" data-sort-key="timestamp">Отметка времени</button><button type="button" class="training-filter-btn" data-filter-key="timestamp" title="Фильтр">▾</button></div>
-      <div class="training-head-cell"><button type="button" class="training-sort" data-sort-key="date">Дата тренировки</button><button type="button" class="training-filter-btn" data-filter-key="date" title="Фильтр">▾</button></div>
-      <div class="training-head-cell"><button type="button" class="training-sort" data-sort-key="coach">Тренер присутствовал:</button><button type="button" class="training-filter-btn" data-filter-key="coach" title="Фильтр">▾</button></div>
-      <div class="training-head-cell"><button type="button" class="training-sort" data-sort-key="place">Место проведения занятия</button><button type="button" class="training-filter-btn" data-filter-key="place" title="Фильтр">▾</button></div>
+      <div class="training-head-cell"><button type="button" class="training-filter-btn" data-filter-key="timestamp" title="Фильтр">▾</button><button type="button" class="training-sort" data-sort-key="timestamp">Отметка времени</button></div>
+      <div class="training-head-cell"><button type="button" class="training-filter-btn" data-filter-key="date" title="Фильтр">▾</button><button type="button" class="training-sort" data-sort-key="date">Дата тренировки</button></div>
+      <div class="training-head-cell"><button type="button" class="training-filter-btn" data-filter-key="coach" title="Фильтр">▾</button><button type="button" class="training-sort" data-sort-key="coach">Тренер присутствовал:</button></div>
+      <div class="training-head-cell"><button type="button" class="training-filter-btn" data-filter-key="place" title="Фильтр">▾</button><button type="button" class="training-sort" data-sort-key="place">Место проведения занятия</button></div>
     </div>
     <div id="trainingList" class="training-list"></div>
     <div id="trainingFilterMenu" class="training-filter-menu"></div>
@@ -1257,13 +1259,11 @@
       <input class="training-filter-search" type="text" placeholder="Поиск..." />
       <div class="training-filter-actions">
         <button type="button" data-action="all">Все</button>
-        <button type="button" data-action="none">Ничего</button>
-        <button type="button" data-action="invert">Инверт.</button>
+        <button type="button" data-action="reset">Сбросить</button>
       </div>
       <div class="training-filter-options"></div>
       <div class="training-filter-actions" style="margin-top:6px;">
         <button type="button" data-action="apply">Применить</button>
-        <button type="button" data-action="clear">Сброс</button>
       </div>
     `;
 
@@ -1299,18 +1299,12 @@
         if (action === 'all') {
           allValues.forEach(v => selected.add(v));
           drawOptions(search.value);
-        } else if (action === 'none') {
-          selected.clear();
-          drawOptions(search.value);
-        } else if (action === 'invert') {
-          allValues.forEach(v => selected.has(v) ? selected.delete(v) : selected.add(v));
-          drawOptions(search.value);
-        } else if (action === 'apply') {
-          trainingState.filters[key] = selected.size === allValues.length ? null : [...selected];
+        } else if (action === 'reset') {
+          trainingState.filters[key] = null;
           closeTrainingFilterMenu();
           renderTrainingHistory(trainingState.items);
-        } else if (action === 'clear') {
-          trainingState.filters[key] = null;
+        } else if (action === 'apply') {
+          trainingState.filters[key] = selected.size === allValues.length ? null : [...selected];
           closeTrainingFilterMenu();
           renderTrainingHistory(trainingState.items);
         }
@@ -1318,8 +1312,12 @@
     });
 
     const rect = buttonEl.getBoundingClientRect();
+    const menuWidth = 280;
+    const minLeft = 8;
+    const maxLeft = Math.max(minLeft, window.innerWidth - menuWidth - 8);
+    const preferredLeft = rect.left - 12;
     trainingFilterMenu.style.top = `${rect.bottom + 4}px`;
-    trainingFilterMenu.style.left = `${Math.max(8, rect.left - 220)}px`;
+    trainingFilterMenu.style.left = `${Math.min(Math.max(preferredLeft, minLeft), maxLeft)}px`;
     trainingFilterMenu.classList.add('show');
   }
 
