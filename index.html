@@ -1227,8 +1227,10 @@
     opened: new Set(),
     filters: { timestamp: null, date: null, coach: null, place: null },
     activeFilterKey: '',
-    visibleCount: 5
+    visibleCount: 5,
+    filterDrafts: {}
   };
+  let collectActiveFilterDraft = null;
 
 
   function setTrainingLoading(isLoading) {
@@ -1250,6 +1252,7 @@
 
   function closeTrainingFilterMenu() {
     trainingState.activeFilterKey = '';
+    collectActiveFilterDraft = null;
     trainingFilterMenu.classList.remove('show');
   }
 
@@ -1262,7 +1265,7 @@
     if (Array.isArray(filter)) return filter.length > 0;
     if (filter && typeof filter === 'object') {
       const hasRange = filter.start !== null || filter.end !== null;
-      const hasValues = Array.isArray(filter.values) && filter.values.length > 0;
+      const hasValues = Array.isArray(filter.values);
       return hasRange || hasValues;
     }
     return false;
@@ -1370,20 +1373,37 @@
   }
 
   function openTrainingFilterMenu(key, buttonEl) {
+    const draft = trainingState.filterDrafts[key] || null;
     const allValues = getDistinctFilterValues(key);
-    const selected = hasActiveFilter(key) && Array.isArray(trainingState.filters[key])
-      ? new Set(trainingState.filters[key])
+    const baseFilter = draft ? draft.filter : trainingState.filters[key];
+    const selected = Array.isArray(baseFilter)
+      ? new Set(baseFilter)
       : new Set(allValues);
 
     trainingState.activeFilterKey = key;
 
-    const sortAscActive = trainingState.sortKey === key && trainingState.sortDir === 1;
-    const sortDescActive = trainingState.sortKey === key && trainingState.sortDir === -1;
+    let localSortDir = typeof draft?.sortDir === 'number'
+      ? draft.sortDir
+      : (trainingState.sortKey === key ? trainingState.sortDir : 0);
+    const sortAscActive = localSortDir === 1;
+    const sortDescActive = localSortDir === -1;
+
+    function saveDraft(filterValue) {
+      const filterCopy = Array.isArray(filterValue)
+        ? [...filterValue]
+        : (filterValue && typeof filterValue === 'object'
+          ? { ...filterValue, values: Array.isArray(filterValue.values) ? [...filterValue.values] : filterValue.values }
+          : filterValue);
+      trainingState.filterDrafts[key] = {
+        filter: filterCopy,
+        sortDir: localSortDir
+      };
+    }
 
     if (isDateFilterKey(key)) {
       const dateBounds = getDateBoundsForKey(key);
-      const dateFilter = trainingState.filters[key] && typeof trainingState.filters[key] === 'object'
-        ? trainingState.filters[key]
+      const dateFilter = baseFilter && typeof baseFilter === 'object'
+        ? baseFilter
         : { start: null, end: null, values: null };
 
       const selected = Array.isArray(dateFilter.values)
@@ -1462,6 +1482,11 @@
             cb.addEventListener('change', () => {
               if (cb.checked) selected.add(v);
               else selected.delete(v);
+              saveDraft({
+                start: parseDateFilterInput(startDateInput.value, false),
+                end: parseDateFilterInput(endDateInput.value, true),
+                values: [...selected]
+              });
             });
             dateOptions.appendChild(label);
           });
@@ -1469,34 +1494,78 @@
 
       drawDateOptions();
       dateSearchInput.addEventListener('input', () => drawDateOptions(dateSearchInput.value));
-      startDateInput.addEventListener('input', () => drawDateOptions(dateSearchInput.value));
-      endDateInput.addEventListener('input', () => drawDateOptions(dateSearchInput.value));
+      startDateInput.addEventListener('input', () => {
+        selected.clear();
+        getRangeFilteredValues().forEach(v => selected.add(v));
+        drawDateOptions(dateSearchInput.value);
+        saveDraft({
+          start: parseDateFilterInput(startDateInput.value, false),
+          end: parseDateFilterInput(endDateInput.value, true),
+          values: [...selected]
+        });
+      });
+      endDateInput.addEventListener('input', () => {
+        selected.clear();
+        getRangeFilteredValues().forEach(v => selected.add(v));
+        drawDateOptions(dateSearchInput.value);
+        saveDraft({
+          start: parseDateFilterInput(startDateInput.value, false),
+          end: parseDateFilterInput(endDateInput.value, true),
+          values: [...selected]
+        });
+      });
+
+      collectActiveFilterDraft = () => {
+        saveDraft({
+          start: parseDateFilterInput(startDateInput.value, false),
+          end: parseDateFilterInput(endDateInput.value, true),
+          values: [...selected]
+        });
+      };
 
       trainingFilterMenu.querySelectorAll('button[data-action]').forEach(btn => {
         btn.addEventListener('click', () => {
           const action = btn.dataset.action;
           if (action === 'sort-asc') {
-            trainingState.sortKey = key;
-            trainingState.sortDir = 1;
+            localSortDir = 1;
+            saveDraft({
+              start: parseDateFilterInput(startDateInput.value, false),
+              end: parseDateFilterInput(endDateInput.value, true),
+              values: [...selected]
+            });
             openTrainingFilterMenu(key, buttonEl);
-            renderTrainingHistory(trainingState.items);
           } else if (action === 'sort-desc') {
-            trainingState.sortKey = key;
-            trainingState.sortDir = -1;
+            localSortDir = -1;
+            saveDraft({
+              start: parseDateFilterInput(startDateInput.value, false),
+              end: parseDateFilterInput(endDateInput.value, true),
+              values: [...selected]
+            });
             openTrainingFilterMenu(key, buttonEl);
-            renderTrainingHistory(trainingState.items);
           } else if (action === 'all') {
-            getRangeFilteredValues().forEach(v => selected.add(v));
+            const rangeValues = getRangeFilteredValues();
+            const isAllSelected = rangeValues.length > 0 && rangeValues.every(v => selected.has(v));
+            if (isAllSelected) {
+              rangeValues.forEach(v => selected.delete(v));
+            } else {
+              rangeValues.forEach(v => selected.add(v));
+            }
             drawDateOptions(dateSearchInput.value);
+            saveDraft({
+              start: parseDateFilterInput(startDateInput.value, false),
+              end: parseDateFilterInput(endDateInput.value, true),
+              values: [...selected]
+            });
           } else if (action === 'reset') {
             trainingState.filters[key] = null;
+            delete trainingState.filterDrafts[key];
             openTrainingFilterMenu(key, buttonEl);
             renderTrainingHistory(trainingState.items);
           } else if (action === 'apply') {
             const startTs = parseDateFilterInput(startDateInput.value, false);
             const endTs = parseDateFilterInput(endDateInput.value, true);
             const rangeValues = getRangeFilteredValues();
-            const selectedValues = selected.size === rangeValues.length ? null : [...selected];
+            const selectedValues = (rangeValues.length > 0 && selected.size === rangeValues.length) ? null : [...selected];
 
             const effectiveStart = startTs !== null ? startTs : defaultStartTs;
             const effectiveEnd = endTs !== null ? endTs : defaultEndTs;
@@ -1507,6 +1576,11 @@
             } else {
               trainingState.filters[key] = { start: effectiveStart, end: effectiveEnd, values: selectedValues };
             }
+            if (localSortDir !== 0) {
+              trainingState.sortKey = key;
+              trainingState.sortDir = localSortDir;
+            }
+            delete trainingState.filterDrafts[key];
             closeTrainingFilterMenu();
             renderTrainingHistory(trainingState.items);
           }
@@ -1547,6 +1621,7 @@
             cb.addEventListener('change', () => {
               if (cb.checked) selected.add(v);
               else selected.delete(v);
+              saveDraft([...selected]);
             });
             optionsBox.appendChild(label);
           });
@@ -1554,28 +1629,34 @@
 
       drawOptions();
       search.addEventListener('input', () => drawOptions(search.value));
+      collectActiveFilterDraft = () => saveDraft([...selected]);
 
       trainingFilterMenu.querySelectorAll('button[data-action]').forEach(btn => {
         btn.addEventListener('click', () => {
           const action = btn.dataset.action;
           if (action === 'sort-asc') {
-            trainingState.sortKey = key;
-            trainingState.sortDir = 1;
+            localSortDir = 1;
+            saveDraft([...selected]);
             openTrainingFilterMenu(key, buttonEl);
-            renderTrainingHistory(trainingState.items);
           } else if (action === 'sort-desc') {
-            trainingState.sortKey = key;
-            trainingState.sortDir = -1;
+            localSortDir = -1;
+            saveDraft([...selected]);
             openTrainingFilterMenu(key, buttonEl);
-            renderTrainingHistory(trainingState.items);
           } else if (action === 'all') {
             allValues.forEach(v => selected.add(v));
             drawOptions(search.value);
+            saveDraft([...selected]);
           } else if (action === 'reset') {
             selected.clear();
             drawOptions(search.value);
+            saveDraft([...selected]);
           } else if (action === 'apply') {
             trainingState.filters[key] = selected.size === allValues.length ? null : [...selected];
+            if (localSortDir !== 0) {
+              trainingState.sortKey = key;
+              trainingState.sortDir = localSortDir;
+            }
+            delete trainingState.filterDrafts[key];
             closeTrainingFilterMenu();
             renderTrainingHistory(trainingState.items);
           }
@@ -1612,7 +1693,7 @@
 
         if (isDateFilterKey(key) && typeof filter === 'object') {
           const value = String(item[key] || '—').trim() || '—';
-          if (Array.isArray(filter.values) && filter.values.length && !filter.values.includes(value)) return false;
+          if (Array.isArray(filter.values) && !filter.values.includes(value)) return false;
 
           const ts = parseRuDateTime(item[key]);
           if (ts === null) return false;
@@ -1788,6 +1869,9 @@
   document.addEventListener('mousedown', e => {
     if (!trainingFilterMenu.classList.contains('show')) return;
     if (trainingFilterMenu.contains(e.target)) return;
+    if (typeof collectActiveFilterDraft === 'function') {
+      collectActiveFilterDraft();
+    }
     closeTrainingFilterMenu();
   });
 
