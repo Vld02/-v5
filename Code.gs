@@ -394,11 +394,9 @@ function processInput(input, fullNames) {
 /**
  * Возвращает список последних тренировок из внешней таблицы ответов.
  * Порядок: в таблице сверху-вниз, на сайте снизу-вверх.
- * @param {number} [limit=5] Количество записей.
  * @returns {Array<{timestamp:string,date:string,coach:string,place:string,fio:string,fioGroups:Array<{group:string,names:string[]}>}>}
  */
-function getTrainingHistory(limit = 5) {
-  const safeLimit = Math.max(1, Number(limit) || 5);
+function getTrainingHistory() {
   const ss = SpreadsheetApp.openById('1K1TtjIL2retzFoXBlQaePKbeKIEkMZZedZX-Ans4VjY');
   const sheet = ss.getSheetByName('ОтветыV5');
   if (!sheet) return [];
@@ -434,8 +432,7 @@ function getTrainingHistory(limit = 5) {
         fioGroups
       };
     })
-    .reverse()
-    .slice(0, safeLimit);
+    .reverse();
 
   return rows;
 }
