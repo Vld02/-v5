@@ -488,8 +488,6 @@
       <h3 class="training-title">Последние отмеченные тренировки</h3>
       <div class="training-controls">
         <span id="trainingLoading" class="training-loading" aria-hidden="true"></span>
-        <label for="trainingLimitInput">Показать тренировок:</label>
-        <input id="trainingLimitInput" type="number" min="1" step="1" value="5" />
       </div>
     </div>
     <div class="training-list-head">
@@ -975,7 +973,6 @@
    * ПОСЕЩАЕМОСТЬ: РЕДАКТИРУЕМАЯ ТАБЛИЦА И ПОДБОР ФИО
    *************************************************/
   const tbody = document.querySelector('#fioTable tbody');
-  const trainingLimitInput = document.getElementById('trainingLimitInput');
   const trainingList = document.getElementById('trainingList');
   const trainingLoading = document.getElementById('trainingLoading');
   const trainingSortButtons = [...document.querySelectorAll('.training-sort')];
@@ -1218,11 +1215,6 @@
     activeFilterKey: ''
   };
 
-  function normalizeTrainingLimit(value) {
-    const parsed = Number(value);
-    if (!Number.isFinite(parsed)) return 5;
-    return Math.max(1, Math.floor(parsed));
-  }
 
   function setTrainingLoading(isLoading) {
     trainingLoading.classList.toggle('show', isLoading);
@@ -1253,7 +1245,11 @@
   function hasActiveFilter(key) {
     const filter = trainingState.filters[key];
     if (Array.isArray(filter)) return filter.length > 0;
-    if (filter && typeof filter === 'object') return filter.start !== null || filter.end !== null;
+    if (filter && typeof filter === 'object') {
+      const hasRange = filter.start !== null || filter.end !== null;
+      const hasValues = Array.isArray(filter.values) && filter.values.length > 0;
+      return hasRange || hasValues;
+    }
     return false;
   }
 
@@ -1265,6 +1261,59 @@
       years.add(new Date(ts).getFullYear());
     });
     return [...years].sort((a, b) => a - b);
+  }
+
+  function getDateBoundsForKey(key) {
+    let min = null;
+    let max = null;
+    trainingState.items.forEach(item => {
+      const ts = parseRuDateTime(item[key]);
+      if (ts === null) return;
+      if (min === null || ts < min) min = ts;
+      if (max === null || ts > max) max = ts;
+    });
+    return { min, max };
+  }
+
+  function formatDateInputFromTs(ts) {
+    if (ts === null) return '';
+    const d = new Date(ts);
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yyyy = String(d.getFullYear());
+    return `${dd}.${mm}.${yyyy}`;
+  }
+
+  function parseDateFilterInput(value, isEnd) {
+    const parsed = parseDateString(value);
+    if (!parsed) return null;
+    return buildDateTimestamp(parsed.year, parsed.month, parsed.day, isEnd);
+  }
+
+  function wireMaskedDateInput(inputEl) {
+    inputEl.addEventListener('input', e => {
+      const prevLen = e.target.value.length;
+      const prevPos = e.target.selectionStart || 0;
+      const digitsBefore = e.target.value.slice(0, prevPos).replace(/\D/g, '').length;
+      const formatted = formatDateInput(e.target.value);
+      e.target.value = formatted;
+
+      let nextPos = formatted.length;
+      let seenDigits = 0;
+      for (let i = 0; i < formatted.length; i++) {
+        if (/\d/.test(formatted[i])) seenDigits++;
+        if (seenDigits >= digitsBefore) {
+          nextPos = i + 1;
+          break;
+        }
+      }
+
+      if (formatted.length > prevLen && (formatted.length === 3 || formatted.length === 6)) {
+        nextPos = formatted.length;
+      }
+
+      e.target.setSelectionRange(nextPos, nextPos);
+    });
   }
 
   function buildDateTimestamp(year, month, day, isEnd) {
@@ -1317,17 +1366,19 @@
     const sortDescActive = trainingState.sortKey === key && trainingState.sortDir === -1;
 
     if (isDateFilterKey(key)) {
-      const years = getDistinctYearsForKey(key);
-      const monthOptions = [
-        ['1', 'Январь'], ['2', 'Февраль'], ['3', 'Март'], ['4', 'Апрель'], ['5', 'Май'], ['6', 'Июнь'],
-        ['7', 'Июль'], ['8', 'Август'], ['9', 'Сентябрь'], ['10', 'Октябрь'], ['11', 'Ноябрь'], ['12', 'Декабрь']
-      ];
+      const dateBounds = getDateBoundsForKey(key);
       const dateFilter = trainingState.filters[key] && typeof trainingState.filters[key] === 'object'
         ? trainingState.filters[key]
-        : { start: null, end: null };
+        : { start: null, end: null, values: null };
 
-      const startDate = dateFilter.start !== null ? new Date(dateFilter.start) : null;
-      const endDate = dateFilter.end !== null ? new Date(dateFilter.end) : null;
+      const selected = Array.isArray(dateFilter.values)
+        ? new Set(dateFilter.values)
+        : new Set(allValues);
+
+      const defaultStartTs = dateBounds.min;
+      const defaultEndTs = dateBounds.max;
+      const startInputValue = formatDateInputFromTs(dateFilter.start !== null ? dateFilter.start : defaultStartTs);
+      const endInputValue = formatDateInputFromTs(dateFilter.end !== null ? dateFilter.end : defaultEndTs);
 
       trainingFilterMenu.innerHTML = `
         <div class="training-filter-actions" style="margin-bottom:6px;">
@@ -1335,43 +1386,50 @@
           <button type="button" data-action="sort-desc" class="${sortDescActive ? 'active' : ''}">Я < А</button>
         </div>
         <div style="font-size:12px;margin-bottom:4px;">Дата начала</div>
-        <div class="training-filter-actions" id="dateStartWrap"></div>
+        <input id="startDateInput" class="training-filter-search" type="text" inputmode="numeric" maxlength="10" placeholder="ДД.ММ.ГГГГ" value="${escapeHtml(startInputValue)}" />
         <div style="font-size:12px;margin:6px 0 4px;">Дата конца</div>
-        <div class="training-filter-actions" id="dateEndWrap"></div>
-        <div class="training-filter-actions" style="margin-top:8px;">
+        <input id="endDateInput" class="training-filter-search" type="text" inputmode="numeric" maxlength="10" placeholder="ДД.ММ.ГГГГ" value="${escapeHtml(endInputValue)}" />
+        <div class="training-filter-actions" style="margin-top:6px;">
+          <button type="button" data-action="all">Все даты</button>
           <button type="button" data-action="reset">Сбросить</button>
+        </div>
+        <input class="training-filter-search" id="dateSearchInput" type="text" placeholder="Поиск дат..." />
+        <div class="training-filter-options" id="dateOptions"></div>
+        <div class="training-filter-actions" style="margin-top:6px;">
           <button type="button" data-action="apply">Применить</button>
         </div>
       `;
 
-      function buildDateSelects(container, initialDate, prefix) {
-        const y = initialDate ? String(initialDate.getFullYear()) : '';
-        const m = initialDate ? String(initialDate.getMonth() + 1) : '';
-        const d = initialDate ? String(initialDate.getDate()) : '';
+      const startDateInput = trainingFilterMenu.querySelector('#startDateInput');
+      const endDateInput = trainingFilterMenu.querySelector('#endDateInput');
+      const dateSearchInput = trainingFilterMenu.querySelector('#dateSearchInput');
+      const dateOptions = trainingFilterMenu.querySelector('#dateOptions');
 
-        const yearOptions = ['<option value="">Год</option>']
-          .concat(years.map(v => `<option value="${v}" ${String(v) === y ? 'selected' : ''}>${v}</option>`)).join('');
-        const monthOptionsHtml = ['<option value="">Месяц</option>']
-          .concat(monthOptions.map(([val, label]) => `<option value="${val}" ${val === m ? 'selected' : ''}>${label}</option>`)).join('');
+      wireMaskedDateInput(startDateInput);
+      wireMaskedDateInput(endDateInput);
 
-        const daysCount = y && m ? new Date(Number(y), Number(m), 0).getDate() : 31;
-        const dayOptions = ['<option value="">День</option>']
-          .concat(Array.from({ length: daysCount }, (_, i) => {
-            const val = String(i + 1);
-            return `<option value="${val}" ${val === d ? 'selected' : ''}>${val}</option>`;
-          })).join('');
-
-        container.innerHTML = `
-          <select id="${prefix}Year">${yearOptions}</select>
-          <select id="${prefix}Month">${monthOptionsHtml}</select>
-          <select id="${prefix}Day">${dayOptions}</select>
-        `;
+      function drawDateOptions(filterText = '') {
+        const q = filterText.trim().toLowerCase();
+        dateOptions.innerHTML = '';
+        allValues
+          .filter(v => !q || v.toLowerCase().includes(q))
+          .forEach(v => {
+            const id = `opt_${key}_${Math.random().toString(36).slice(2)}`;
+            const label = document.createElement('label');
+            label.className = 'training-filter-option';
+            label.htmlFor = id;
+            label.innerHTML = `<input id="${id}" type="checkbox" ${selected.has(v) ? 'checked' : ''}> ${escapeHtml(v)}`;
+            const cb = label.querySelector('input');
+            cb.addEventListener('change', () => {
+              if (cb.checked) selected.add(v);
+              else selected.delete(v);
+            });
+            dateOptions.appendChild(label);
+          });
       }
 
-      const startWrap = trainingFilterMenu.querySelector('#dateStartWrap');
-      const endWrap = trainingFilterMenu.querySelector('#dateEndWrap');
-      buildDateSelects(startWrap, startDate, 'start');
-      buildDateSelects(endWrap, endDate, 'end');
+      drawDateOptions();
+      dateSearchInput.addEventListener('input', () => drawDateOptions(dateSearchInput.value));
 
       trainingFilterMenu.querySelectorAll('button[data-action]').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -1386,25 +1444,26 @@
             trainingState.sortDir = -1;
             openTrainingFilterMenu(key, buttonEl);
             renderTrainingHistory(trainingState.items);
+          } else if (action === 'all') {
+            allValues.forEach(v => selected.add(v));
+            drawDateOptions(dateSearchInput.value);
           } else if (action === 'reset') {
             trainingState.filters[key] = null;
             openTrainingFilterMenu(key, buttonEl);
             renderTrainingHistory(trainingState.items);
           } else if (action === 'apply') {
-            const sy = trainingFilterMenu.querySelector('#startYear').value;
-            const sm = trainingFilterMenu.querySelector('#startMonth').value;
-            const sd = trainingFilterMenu.querySelector('#startDay').value;
-            const ey = trainingFilterMenu.querySelector('#endYear').value;
-            const em = trainingFilterMenu.querySelector('#endMonth').value;
-            const ed = trainingFilterMenu.querySelector('#endDay').value;
+            const startTs = parseDateFilterInput(startDateInput.value, false);
+            const endTs = parseDateFilterInput(endDateInput.value, true);
+            const selectedValues = selected.size === allValues.length ? null : [...selected];
 
-            const startTs = buildDateTimestamp(sy, sm, sd, false);
-            const endTs = buildDateTimestamp(ey, em, ed, true);
+            const effectiveStart = startTs !== null ? startTs : defaultStartTs;
+            const effectiveEnd = endTs !== null ? endTs : defaultEndTs;
+            const isDefaultRange = effectiveStart === defaultStartTs && effectiveEnd === defaultEndTs;
 
-            if (startTs === null && endTs === null) {
+            if (isDefaultRange && !selectedValues) {
               trainingState.filters[key] = null;
             } else {
-              trainingState.filters[key] = { start: startTs, end: endTs };
+              trainingState.filters[key] = { start: effectiveStart, end: effectiveEnd, values: selectedValues };
             }
             closeTrainingFilterMenu();
             renderTrainingHistory(trainingState.items);
@@ -1510,6 +1569,9 @@
         }
 
         if (isDateFilterKey(key) && typeof filter === 'object') {
+          const value = String(item[key] || '—').trim() || '—';
+          if (Array.isArray(filter.values) && filter.values.length && !filter.values.includes(value)) return false;
+
           const ts = parseRuDateTime(item[key]);
           if (ts === null) return false;
           if (filter.start !== null && ts < filter.start) return false;
@@ -1641,9 +1703,6 @@
   }
 
   function loadTrainingHistory(force = false) {
-    const limit = normalizeTrainingLimit(trainingLimitInput.value || 5);
-    trainingLimitInput.value = String(limit);
-
     if (!force && trainingState.isLoaded) return;
 
     const requestId = ++trainingState.requestId;
@@ -1661,12 +1720,8 @@
         if (requestId !== trainingState.requestId) return;
         setTrainingLoading(false);
       })
-      .getTrainingHistory(limit);
+      .getTrainingHistory();
   }
-
-  trainingLimitInput.addEventListener('change', () => {
-    loadTrainingHistory(true);
-  });
 
   trainingSortButtons.forEach(btn => {
     btn.addEventListener('click', e => {
