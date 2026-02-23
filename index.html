@@ -176,9 +176,17 @@
     align-items: center;
     gap: 8px;
   }
+  .training-controls label {
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+  }
   .training-controls input {
     width: 80px;
     padding: 4px 6px;
+    margin: 0;
   }
   .training-loading {
     width: 14px;
@@ -240,11 +248,12 @@
     position: fixed;
     z-index: 9998;
     width: 280px;
-    max-height: 360px;
+    max-height: min(420px, calc(100vh - 16px));
     background: #fff;
     border: 1px solid #ccc;
     box-shadow: 0 4px 14px rgba(0,0,0,.18);
     padding: 8px;
+    overflow: auto;
     display: none;
   }
   .training-filter-menu.show { display: block; }
@@ -488,6 +497,9 @@
       <h3 class="training-title">Последние отмеченные тренировки</h3>
       <div class="training-controls">
         <span id="trainingLoading" class="training-loading" aria-hidden="true"></span>
+        <label for="trainingPageSizeInput">Показать тренировок
+          <input id="trainingPageSizeInput" type="number" min="1" step="1" value="5" />
+        </label>
       </div>
     </div>
     <div class="training-list-head">
@@ -977,6 +989,7 @@
   const trainingLoading = document.getElementById('trainingLoading');
   const trainingSortButtons = [...document.querySelectorAll('.training-sort')];
   const trainingFilterMenu = document.getElementById('trainingFilterMenu');
+  const trainingPageSizeInput = document.getElementById('trainingPageSizeInput');
   let debounceTimer = null;
   const attendanceState = {
     nextId: 1,
@@ -1212,7 +1225,8 @@
     sortDir: 0,
     opened: new Set(),
     filters: { timestamp: null, date: null, coach: null, place: null },
-    activeFilterKey: ''
+    activeFilterKey: '',
+    visibleCount: 5
   };
 
 
@@ -1409,9 +1423,25 @@
       wireMaskedDateInput(endDateInput);
 
       function drawDateOptions(filterText = '') {
+        const startTs = parseDateFilterInput(startDateInput.value, false);
+        const endTs = parseDateFilterInput(endDateInput.value, true);
+        const effectiveStart = startTs !== null ? startTs : defaultStartTs;
+        const effectiveEnd = endTs !== null ? endTs : defaultEndTs;
+        const inRangeValues = allValues.filter(v => {
+          const ts = parseRuDateTime(v);
+          if (ts === null) return false;
+          if (effectiveStart !== null && ts < effectiveStart) return false;
+          if (effectiveEnd !== null && ts > effectiveEnd) return false;
+          return true;
+        });
+
+        [...selected].forEach(v => {
+          if (!inRangeValues.includes(v)) selected.delete(v);
+        });
+
         const q = filterText.trim().toLowerCase();
         dateOptions.innerHTML = '';
-        allValues
+        inRangeValues
           .filter(v => !q || v.toLowerCase().includes(q))
           .forEach(v => {
             const id = `opt_${key}_${Math.random().toString(36).slice(2)}`;
@@ -1430,6 +1460,8 @@
 
       drawDateOptions();
       dateSearchInput.addEventListener('input', () => drawDateOptions(dateSearchInput.value));
+      startDateInput.addEventListener('input', () => drawDateOptions(dateSearchInput.value));
+      endDateInput.addEventListener('input', () => drawDateOptions(dateSearchInput.value));
 
       trainingFilterMenu.querySelectorAll('button[data-action]').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -1445,7 +1477,17 @@
             openTrainingFilterMenu(key, buttonEl);
             renderTrainingHistory(trainingState.items);
           } else if (action === 'all') {
-            allValues.forEach(v => selected.add(v));
+            const startTs = parseDateFilterInput(startDateInput.value, false);
+            const endTs = parseDateFilterInput(endDateInput.value, true);
+            const effectiveStart = startTs !== null ? startTs : defaultStartTs;
+            const effectiveEnd = endTs !== null ? endTs : defaultEndTs;
+            allValues.forEach(v => {
+              const ts = parseRuDateTime(v);
+              if (ts === null) return;
+              if (effectiveStart !== null && ts < effectiveStart) return;
+              if (effectiveEnd !== null && ts > effectiveEnd) return;
+              selected.add(v);
+            });
             drawDateOptions(dateSearchInput.value);
           } else if (action === 'reset') {
             trainingState.filters[key] = null;
@@ -1632,8 +1674,9 @@
     }
 
     const sorted = getSortedTrainingItems(items);
+    const limited = sorted.slice(0, trainingState.visibleCount);
 
-    sorted.forEach(item => {
+    limited.forEach(item => {
       const card = document.createElement('div');
       card.className = 'training-item';
 
@@ -1735,8 +1778,17 @@
     });
   });
 
-  document.addEventListener('click', e => {
+  trainingPageSizeInput.addEventListener('input', () => {
+    const parsed = Number(trainingPageSizeInput.value);
+    const next = Number.isFinite(parsed) ? Math.max(1, Math.floor(parsed)) : 5;
+    trainingState.visibleCount = next;
+    trainingPageSizeInput.value = String(next);
+    renderTrainingHistory(trainingState.items);
+  });
+
+  document.addEventListener('mousedown', e => {
     if (!trainingFilterMenu.classList.contains('show')) return;
+    if (e.button !== 0) return;
     if (trainingFilterMenu.contains(e.target)) return;
     closeTrainingFilterMenu();
   });
