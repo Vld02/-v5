@@ -287,22 +287,24 @@
     padding: 2px;
   }
   .training-filter-option {
-    display: flex;
+    display: grid;
+    grid-template-columns: 12px 1fr;
     align-items: center;
-    gap: 5px;
-    font-size: 13px;
+    column-gap: 4px;
+    font-size: 12px;
     margin: 0;
-    padding: 1px 3px;
-    line-height: 1.25;
+    padding: 1px 2px;
+    line-height: 1.1;
     cursor: pointer;
     user-select: none;
   }
   .training-filter-option:hover {
-    background: #efefef;
+    background: #e6e6e6;
   }
   .training-filter-option input {
     margin: 0;
-    flex: 0 0 auto;
+    width: 12px;
+    height: 12px;
   }
   .training-list {
     margin-top: 0;
@@ -1267,6 +1269,10 @@
     trainingFilterButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.filterKey === key));
 
     trainingFilterMenu.innerHTML = `
+      <div class="training-filter-actions" style="margin-bottom:6px;">
+        <button type="button" data-action="sort-asc">А > Я</button>
+        <button type="button" data-action="sort-desc">Я < А</button>
+      </div>
       <input class="training-filter-search" type="text" placeholder="Поиск..." />
       <div class="training-filter-actions">
         <button type="button" data-action="all">Все</button>
@@ -1307,7 +1313,15 @@
     trainingFilterMenu.querySelectorAll('button[data-action]').forEach(btn => {
       btn.addEventListener('click', () => {
         const action = btn.dataset.action;
-        if (action === 'all') {
+        if (action === 'sort-asc') {
+          trainingState.sortKey = key;
+          trainingState.sortDir = 1;
+          renderTrainingHistory(trainingState.items);
+        } else if (action === 'sort-desc') {
+          trainingState.sortKey = key;
+          trainingState.sortDir = -1;
+          renderTrainingHistory(trainingState.items);
+        } else if (action === 'all') {
           allValues.forEach(v => selected.add(v));
           drawOptions(search.value);
         } else if (action === 'reset') {
@@ -1323,14 +1337,27 @@
 
     const rect = buttonEl.getBoundingClientRect();
     const pageRect = document.querySelector('.page')?.getBoundingClientRect();
-    const menuWidth = 280;
+
+    trainingFilterMenu.classList.add('show');
+    const menuRect = trainingFilterMenu.getBoundingClientRect();
+
     const minLeft = pageRect ? Math.max(8, pageRect.left + 4) : 8;
     const maxRight = pageRect ? pageRect.right - 4 : (document.documentElement.clientWidth - 8);
-    const maxLeft = Math.max(minLeft, maxRight - menuWidth);
+    const maxLeft = Math.max(minLeft, maxRight - menuRect.width);
     const preferredLeft = rect.left - 12;
-    trainingFilterMenu.style.top = `${rect.bottom + 4}px`;
+
+    const minTop = 8;
+    const maxBottom = pageRect ? Math.min(pageRect.bottom - 4, window.innerHeight - 8) : (window.innerHeight - 8);
+    const openDownTop = rect.bottom + 4;
+    const openUpTop = rect.top - menuRect.height - 4;
+    let finalTop = openDownTop;
+    if (openDownTop + menuRect.height > maxBottom && openUpTop >= minTop) {
+      finalTop = openUpTop;
+    }
+    finalTop = Math.min(Math.max(finalTop, minTop), Math.max(minTop, maxBottom - menuRect.height));
+
+    trainingFilterMenu.style.top = `${finalTop}px`;
     trainingFilterMenu.style.left = `${Math.min(Math.max(preferredLeft, minLeft), maxLeft)}px`;
-    trainingFilterMenu.classList.add('show');
   }
 
   function parseRuDateTime(value) {
@@ -1508,19 +1535,16 @@
   });
 
   trainingSortButtons.forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
       const key = btn.dataset.sortKey;
-      if (trainingState.sortKey !== key) {
-        trainingState.sortKey = key;
-        trainingState.sortDir = 1;
-      } else if (trainingState.sortDir === 1) {
-        trainingState.sortDir = -1;
-      } else if (trainingState.sortDir === -1) {
-        trainingState.sortDir = 0;
-      } else {
-        trainingState.sortDir = 1;
+      const filterBtn = trainingFilterButtons.find(x => x.dataset.filterKey === key);
+      const anchorBtn = filterBtn || btn;
+      if (trainingState.activeFilterKey === key && trainingFilterMenu.classList.contains('show')) {
+        closeTrainingFilterMenu();
+        return;
       }
-      renderTrainingHistory(trainingState.items);
+      openTrainingFilterMenu(key, anchorBtn);
     });
   });
 
