@@ -236,19 +236,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .training-filter-btn {
-    border: none;
-    background: transparent;
-    color: #666;
-    cursor: pointer;
-    font-size: 12px;
-    padding: 0 2px;
-    line-height: 1;
-  }
-  .training-filter-btn.active {
-    color: #1a73e8;
-    font-weight: bold;
-  }
   .training-filter-menu {
     position: fixed;
     z-index: 9998;
@@ -279,6 +266,10 @@
     padding: 2px 6px;
     cursor: pointer;
     font-size: 12px;
+  }
+  .training-filter-actions button.active {
+    background: #dce8ff;
+    border-color: #7aa7ff;
   }
   .training-filter-options {
     max-height: 190px;
@@ -502,10 +493,10 @@
       </div>
     </div>
     <div class="training-list-head">
-      <div class="training-head-cell"><button type="button" class="training-filter-btn" data-filter-key="timestamp" title="Фильтр">▾</button><button type="button" class="training-sort" data-sort-key="timestamp">Отметка времени</button></div>
-      <div class="training-head-cell"><button type="button" class="training-filter-btn" data-filter-key="date" title="Фильтр">▾</button><button type="button" class="training-sort" data-sort-key="date">Дата тренировки</button></div>
-      <div class="training-head-cell"><button type="button" class="training-filter-btn" data-filter-key="coach" title="Фильтр">▾</button><button type="button" class="training-sort" data-sort-key="coach">Тренер присутствовал:</button></div>
-      <div class="training-head-cell"><button type="button" class="training-filter-btn" data-filter-key="place" title="Фильтр">▾</button><button type="button" class="training-sort" data-sort-key="place">Место проведения занятия</button></div>
+      <div class="training-head-cell"><button type="button" class="training-sort" data-sort-key="timestamp">Отметка времени</button></div>
+      <div class="training-head-cell"><button type="button" class="training-sort" data-sort-key="date">Дата тренировки</button></div>
+      <div class="training-head-cell"><button type="button" class="training-sort" data-sort-key="coach">Тренер присутствовал:</button></div>
+      <div class="training-head-cell"><button type="button" class="training-sort" data-sort-key="place">Место проведения занятия</button></div>
     </div>
     <div id="trainingList" class="training-list"></div>
     <div id="trainingFilterMenu" class="training-filter-menu"></div>
@@ -988,7 +979,6 @@
   const trainingList = document.getElementById('trainingList');
   const trainingLoading = document.getElementById('trainingLoading');
   const trainingSortButtons = [...document.querySelectorAll('.training-sort')];
-  const trainingFilterButtons = [...document.querySelectorAll('.training-filter-btn')];
   const trainingFilterMenu = document.getElementById('trainingFilterMenu');
   let debounceTimer = null;
   const attendanceState = {
@@ -1254,87 +1244,42 @@
   function closeTrainingFilterMenu() {
     trainingState.activeFilterKey = '';
     trainingFilterMenu.classList.remove('show');
-    trainingFilterButtons.forEach(btn => btn.classList.remove('active'));
+  }
+
+  function isDateFilterKey(key) {
+    return key === 'timestamp' || key === 'date';
   }
 
   function hasActiveFilter(key) {
-    return Array.isArray(trainingState.filters[key]) && trainingState.filters[key].length > 0;
+    const filter = trainingState.filters[key];
+    if (Array.isArray(filter)) return filter.length > 0;
+    if (filter && typeof filter === 'object') return filter.start !== null || filter.end !== null;
+    return false;
   }
 
-  function openTrainingFilterMenu(key, buttonEl) {
-    const allValues = getDistinctFilterValues(key);
-    const selected = hasActiveFilter(key) ? new Set(trainingState.filters[key]) : new Set(allValues);
-
-    trainingState.activeFilterKey = key;
-    trainingFilterButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.filterKey === key));
-
-    trainingFilterMenu.innerHTML = `
-      <div class="training-filter-actions" style="margin-bottom:6px;">
-        <button type="button" data-action="sort-asc">А > Я</button>
-        <button type="button" data-action="sort-desc">Я < А</button>
-      </div>
-      <input class="training-filter-search" type="text" placeholder="Поиск..." />
-      <div class="training-filter-actions">
-        <button type="button" data-action="all">Все</button>
-        <button type="button" data-action="reset">Сбросить</button>
-      </div>
-      <div class="training-filter-options"></div>
-      <div class="training-filter-actions" style="margin-top:6px;">
-        <button type="button" data-action="apply">Применить</button>
-      </div>
-    `;
-
-    const search = trainingFilterMenu.querySelector('.training-filter-search');
-    const optionsBox = trainingFilterMenu.querySelector('.training-filter-options');
-
-    function drawOptions(filterText = '') {
-      const q = filterText.trim().toLowerCase();
-      optionsBox.innerHTML = '';
-      allValues
-        .filter(v => !q || v.toLowerCase().includes(q))
-        .forEach(v => {
-          const id = `opt_${key}_${Math.random().toString(36).slice(2)}`;
-          const label = document.createElement('label');
-          label.className = 'training-filter-option';
-          label.htmlFor = id;
-          label.innerHTML = `<input id="${id}" type="checkbox" ${selected.has(v) ? 'checked' : ''}> ${escapeHtml(v)}`;
-          const cb = label.querySelector('input');
-          cb.addEventListener('change', () => {
-            if (cb.checked) selected.add(v);
-            else selected.delete(v);
-          });
-          optionsBox.appendChild(label);
-        });
-    }
-
-    drawOptions();
-    search.addEventListener('input', () => drawOptions(search.value));
-
-    trainingFilterMenu.querySelectorAll('button[data-action]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const action = btn.dataset.action;
-        if (action === 'sort-asc') {
-          trainingState.sortKey = key;
-          trainingState.sortDir = 1;
-          renderTrainingHistory(trainingState.items);
-        } else if (action === 'sort-desc') {
-          trainingState.sortKey = key;
-          trainingState.sortDir = -1;
-          renderTrainingHistory(trainingState.items);
-        } else if (action === 'all') {
-          allValues.forEach(v => selected.add(v));
-          drawOptions(search.value);
-        } else if (action === 'reset') {
-          selected.clear();
-          drawOptions(search.value);
-        } else if (action === 'apply') {
-          trainingState.filters[key] = selected.size === allValues.length ? null : [...selected];
-          closeTrainingFilterMenu();
-          renderTrainingHistory(trainingState.items);
-        }
-      });
+  function getDistinctYearsForKey(key) {
+    const years = new Set();
+    trainingState.items.forEach(item => {
+      const ts = parseRuDateTime(item[key]);
+      if (ts === null) return;
+      years.add(new Date(ts).getFullYear());
     });
+    return [...years].sort((a, b) => a - b);
+  }
 
+  function buildDateTimestamp(year, month, day, isEnd) {
+    if (!year) return null;
+    const y = Number(year);
+    const m = month ? Number(month) : (isEnd ? 12 : 1);
+    const maxDay = new Date(y, m, 0).getDate();
+    const d = day ? Number(day) : (isEnd ? maxDay : 1);
+    const hh = isEnd ? 23 : 0;
+    const mi = isEnd ? 59 : 0;
+    const ss = isEnd ? 59 : 0;
+    return new Date(y, m - 1, d, hh, mi, ss).getTime();
+  }
+
+  function setFilterMenuPosition(buttonEl) {
     const rect = buttonEl.getBoundingClientRect();
     const pageRect = document.querySelector('.page')?.getBoundingClientRect();
 
@@ -1360,6 +1305,186 @@
     trainingFilterMenu.style.left = `${Math.min(Math.max(preferredLeft, minLeft), maxLeft)}px`;
   }
 
+  function openTrainingFilterMenu(key, buttonEl) {
+    const allValues = getDistinctFilterValues(key);
+    const selected = hasActiveFilter(key) && Array.isArray(trainingState.filters[key])
+      ? new Set(trainingState.filters[key])
+      : new Set(allValues);
+
+    trainingState.activeFilterKey = key;
+
+    const sortAscActive = trainingState.sortKey === key && trainingState.sortDir === 1;
+    const sortDescActive = trainingState.sortKey === key && trainingState.sortDir === -1;
+
+    if (isDateFilterKey(key)) {
+      const years = getDistinctYearsForKey(key);
+      const monthOptions = [
+        ['1', 'Январь'], ['2', 'Февраль'], ['3', 'Март'], ['4', 'Апрель'], ['5', 'Май'], ['6', 'Июнь'],
+        ['7', 'Июль'], ['8', 'Август'], ['9', 'Сентябрь'], ['10', 'Октябрь'], ['11', 'Ноябрь'], ['12', 'Декабрь']
+      ];
+      const dateFilter = trainingState.filters[key] && typeof trainingState.filters[key] === 'object'
+        ? trainingState.filters[key]
+        : { start: null, end: null };
+
+      const startDate = dateFilter.start !== null ? new Date(dateFilter.start) : null;
+      const endDate = dateFilter.end !== null ? new Date(dateFilter.end) : null;
+
+      trainingFilterMenu.innerHTML = `
+        <div class="training-filter-actions" style="margin-bottom:6px;">
+          <button type="button" data-action="sort-asc" class="${sortAscActive ? 'active' : ''}">А > Я</button>
+          <button type="button" data-action="sort-desc" class="${sortDescActive ? 'active' : ''}">Я < А</button>
+        </div>
+        <div style="font-size:12px;margin-bottom:4px;">Дата начала</div>
+        <div class="training-filter-actions" id="dateStartWrap"></div>
+        <div style="font-size:12px;margin:6px 0 4px;">Дата конца</div>
+        <div class="training-filter-actions" id="dateEndWrap"></div>
+        <div class="training-filter-actions" style="margin-top:8px;">
+          <button type="button" data-action="reset">Сбросить</button>
+          <button type="button" data-action="apply">Применить</button>
+        </div>
+      `;
+
+      function buildDateSelects(container, initialDate, prefix) {
+        const y = initialDate ? String(initialDate.getFullYear()) : '';
+        const m = initialDate ? String(initialDate.getMonth() + 1) : '';
+        const d = initialDate ? String(initialDate.getDate()) : '';
+
+        const yearOptions = ['<option value="">Год</option>']
+          .concat(years.map(v => `<option value="${v}" ${String(v) === y ? 'selected' : ''}>${v}</option>`)).join('');
+        const monthOptionsHtml = ['<option value="">Месяц</option>']
+          .concat(monthOptions.map(([val, label]) => `<option value="${val}" ${val === m ? 'selected' : ''}>${label}</option>`)).join('');
+
+        const daysCount = y && m ? new Date(Number(y), Number(m), 0).getDate() : 31;
+        const dayOptions = ['<option value="">День</option>']
+          .concat(Array.from({ length: daysCount }, (_, i) => {
+            const val = String(i + 1);
+            return `<option value="${val}" ${val === d ? 'selected' : ''}>${val}</option>`;
+          })).join('');
+
+        container.innerHTML = `
+          <select id="${prefix}Year">${yearOptions}</select>
+          <select id="${prefix}Month">${monthOptionsHtml}</select>
+          <select id="${prefix}Day">${dayOptions}</select>
+        `;
+      }
+
+      const startWrap = trainingFilterMenu.querySelector('#dateStartWrap');
+      const endWrap = trainingFilterMenu.querySelector('#dateEndWrap');
+      buildDateSelects(startWrap, startDate, 'start');
+      buildDateSelects(endWrap, endDate, 'end');
+
+      trainingFilterMenu.querySelectorAll('button[data-action]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const action = btn.dataset.action;
+          if (action === 'sort-asc') {
+            trainingState.sortKey = key;
+            trainingState.sortDir = 1;
+            openTrainingFilterMenu(key, buttonEl);
+            renderTrainingHistory(trainingState.items);
+          } else if (action === 'sort-desc') {
+            trainingState.sortKey = key;
+            trainingState.sortDir = -1;
+            openTrainingFilterMenu(key, buttonEl);
+            renderTrainingHistory(trainingState.items);
+          } else if (action === 'reset') {
+            trainingState.filters[key] = null;
+            openTrainingFilterMenu(key, buttonEl);
+            renderTrainingHistory(trainingState.items);
+          } else if (action === 'apply') {
+            const sy = trainingFilterMenu.querySelector('#startYear').value;
+            const sm = trainingFilterMenu.querySelector('#startMonth').value;
+            const sd = trainingFilterMenu.querySelector('#startDay').value;
+            const ey = trainingFilterMenu.querySelector('#endYear').value;
+            const em = trainingFilterMenu.querySelector('#endMonth').value;
+            const ed = trainingFilterMenu.querySelector('#endDay').value;
+
+            const startTs = buildDateTimestamp(sy, sm, sd, false);
+            const endTs = buildDateTimestamp(ey, em, ed, true);
+
+            if (startTs === null && endTs === null) {
+              trainingState.filters[key] = null;
+            } else {
+              trainingState.filters[key] = { start: startTs, end: endTs };
+            }
+            closeTrainingFilterMenu();
+            renderTrainingHistory(trainingState.items);
+          }
+        });
+      });
+    } else {
+      trainingFilterMenu.innerHTML = `
+        <div class="training-filter-actions" style="margin-bottom:6px;">
+          <button type="button" data-action="sort-asc" class="${sortAscActive ? 'active' : ''}">А > Я</button>
+          <button type="button" data-action="sort-desc" class="${sortDescActive ? 'active' : ''}">Я < А</button>
+        </div>
+        <input class="training-filter-search" type="text" placeholder="Поиск..." />
+        <div class="training-filter-actions">
+          <button type="button" data-action="all">Все</button>
+          <button type="button" data-action="reset">Сбросить</button>
+        </div>
+        <div class="training-filter-options"></div>
+        <div class="training-filter-actions" style="margin-top:6px;">
+          <button type="button" data-action="apply">Применить</button>
+        </div>
+      `;
+
+      const search = trainingFilterMenu.querySelector('.training-filter-search');
+      const optionsBox = trainingFilterMenu.querySelector('.training-filter-options');
+
+      function drawOptions(filterText = '') {
+        const q = filterText.trim().toLowerCase();
+        optionsBox.innerHTML = '';
+        allValues
+          .filter(v => !q || v.toLowerCase().includes(q))
+          .forEach(v => {
+            const id = `opt_${key}_${Math.random().toString(36).slice(2)}`;
+            const label = document.createElement('label');
+            label.className = 'training-filter-option';
+            label.htmlFor = id;
+            label.innerHTML = `<input id="${id}" type="checkbox" ${selected.has(v) ? 'checked' : ''}> ${escapeHtml(v)}`;
+            const cb = label.querySelector('input');
+            cb.addEventListener('change', () => {
+              if (cb.checked) selected.add(v);
+              else selected.delete(v);
+            });
+            optionsBox.appendChild(label);
+          });
+      }
+
+      drawOptions();
+      search.addEventListener('input', () => drawOptions(search.value));
+
+      trainingFilterMenu.querySelectorAll('button[data-action]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const action = btn.dataset.action;
+          if (action === 'sort-asc') {
+            trainingState.sortKey = key;
+            trainingState.sortDir = 1;
+            openTrainingFilterMenu(key, buttonEl);
+            renderTrainingHistory(trainingState.items);
+          } else if (action === 'sort-desc') {
+            trainingState.sortKey = key;
+            trainingState.sortDir = -1;
+            openTrainingFilterMenu(key, buttonEl);
+            renderTrainingHistory(trainingState.items);
+          } else if (action === 'all') {
+            allValues.forEach(v => selected.add(v));
+            drawOptions(search.value);
+          } else if (action === 'reset') {
+            selected.clear();
+            drawOptions(search.value);
+          } else if (action === 'apply') {
+            trainingState.filters[key] = selected.size === allValues.length ? null : [...selected];
+            closeTrainingFilterMenu();
+            renderTrainingHistory(trainingState.items);
+          }
+        });
+      });
+    }
+
+    setFilterMenuPosition(buttonEl);
+  }
+
   function parseRuDateTime(value) {
     const str = String(value || '').trim();
     const m = str.match(/^(\d{2})\.(\d{2})\.(\d{4})(?:\s+(\d{2}):(\d{2}):(\d{2}))?$/);
@@ -1377,9 +1502,22 @@
     const filtered = items.filter(item => {
       return ['timestamp', 'date', 'coach', 'place'].every(key => {
         const filter = trainingState.filters[key];
-        if (!Array.isArray(filter)) return true;
-        const value = String(item[key] || '—').trim() || '—';
-        return filter.includes(value);
+        if (!filter) return true;
+
+        if (Array.isArray(filter)) {
+          const value = String(item[key] || '—').trim() || '—';
+          return filter.includes(value);
+        }
+
+        if (isDateFilterKey(key) && typeof filter === 'object') {
+          const ts = parseRuDateTime(item[key]);
+          if (ts === null) return false;
+          if (filter.start !== null && ts < filter.start) return false;
+          if (filter.end !== null && ts > filter.end) return false;
+          return true;
+        }
+
+        return true;
       });
     });
 
@@ -1411,10 +1549,6 @@
       btn.setAttribute('data-sort-mark', mark);
     });
 
-    trainingFilterButtons.forEach(btn => {
-      const key = btn.dataset.filterKey;
-      btn.classList.toggle('active', hasActiveFilter(key));
-    });
   }
 
   function preserveViewportOnCollapse(beforeY) {
@@ -1538,20 +1672,6 @@
     btn.addEventListener('click', e => {
       e.stopPropagation();
       const key = btn.dataset.sortKey;
-      const filterBtn = trainingFilterButtons.find(x => x.dataset.filterKey === key);
-      const anchorBtn = filterBtn || btn;
-      if (trainingState.activeFilterKey === key && trainingFilterMenu.classList.contains('show')) {
-        closeTrainingFilterMenu();
-        return;
-      }
-      openTrainingFilterMenu(key, anchorBtn);
-    });
-  });
-
-  trainingFilterButtons.forEach(btn => {
-    btn.addEventListener('click', e => {
-      e.stopPropagation();
-      const key = btn.dataset.filterKey;
       if (trainingState.activeFilterKey === key && trainingFilterMenu.classList.contains('show')) {
         closeTrainingFilterMenu();
         return;
@@ -1563,7 +1683,6 @@
   document.addEventListener('click', e => {
     if (!trainingFilterMenu.classList.contains('show')) return;
     if (trainingFilterMenu.contains(e.target)) return;
-    if (e.target.classList.contains('training-filter-btn')) return;
     closeTrainingFilterMenu();
   });
 
