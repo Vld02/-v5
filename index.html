@@ -284,14 +284,25 @@
     max-height: 190px;
     overflow: auto;
     border: 1px solid #eee;
-    padding: 4px;
+    padding: 2px;
   }
   .training-filter-option {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
     font-size: 13px;
-    margin-bottom: 2px;
+    margin: 0;
+    padding: 1px 3px;
+    line-height: 1.25;
+    cursor: pointer;
+    user-select: none;
+  }
+  .training-filter-option:hover {
+    background: #efefef;
+  }
+  .training-filter-option input {
+    margin: 0;
+    flex: 0 0 auto;
   }
   .training-list {
     margin-top: 0;
@@ -1300,9 +1311,8 @@
           allValues.forEach(v => selected.add(v));
           drawOptions(search.value);
         } else if (action === 'reset') {
-          trainingState.filters[key] = null;
-          closeTrainingFilterMenu();
-          renderTrainingHistory(trainingState.items);
+          selected.clear();
+          drawOptions(search.value);
         } else if (action === 'apply') {
           trainingState.filters[key] = selected.size === allValues.length ? null : [...selected];
           closeTrainingFilterMenu();
@@ -1312,9 +1322,11 @@
     });
 
     const rect = buttonEl.getBoundingClientRect();
+    const pageRect = document.querySelector('.page')?.getBoundingClientRect();
     const menuWidth = 280;
-    const minLeft = 8;
-    const maxLeft = Math.max(minLeft, window.innerWidth - menuWidth - 8);
+    const minLeft = pageRect ? Math.max(8, pageRect.left + 4) : 8;
+    const maxRight = pageRect ? pageRect.right - 4 : (document.documentElement.clientWidth - 8);
+    const maxLeft = Math.max(minLeft, maxRight - menuWidth);
     const preferredLeft = rect.left - 12;
     trainingFilterMenu.style.top = `${rect.bottom + 4}px`;
     trainingFilterMenu.style.left = `${Math.min(Math.max(preferredLeft, minLeft), maxLeft)}px`;
