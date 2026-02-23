@@ -394,9 +394,19 @@ function processInput(input, fullNames) {
 /**
  * Возвращает список последних тренировок из внешней таблицы ответов.
  * Порядок: в таблице сверху-вниз, на сайте снизу-вверх.
+ *
+ * Поддерживает фильтрацию по датам и ограничение количества строк,
+ * чтобы UI мог показывать компактный список (по умолчанию 5 тренировок).
+ *
+ * @param {{
+ *   limit?: number,
+ *   startDate?: string,
+ *   endDate?: string,
+ *   selectedDates?: string[]
+ * }} [options]
  * @returns {Array<{timestamp:string,date:string,coach:string,place:string,fio:string,fioGroups:Array<{group:string,names:string[]}>}>}
  */
-function getTrainingHistory() {
+function getTrainingHistory(options = {}) {
   const ss = SpreadsheetApp.openById('1K1TtjIL2retzFoXBlQaePKbeKIEkMZZedZX-Ans4VjY');
   const sheet = ss.getSheetByName('ОтветыV5');
   if (!sheet) return [];
@@ -416,8 +426,27 @@ function getTrainingHistory() {
   const startCol = 12; // M
   const endCol = 32;   // AG
 
+  const startBoundary = parseFilterDate(options.startDate, false);
+  const endBoundary = parseFilterDate(options.endDate, true);
+  const selectedDatesSet = new Set((options.selectedDates || []).map(String));
+  const hasSelectedDates = selectedDatesSet.size > 0;
+  const limit = Number(options.limit) > 0 ? Math.floor(Number(options.limit)) : 5;
+
   const rows = values.slice(1)
     .filter(row => row.some(cell => String(cell || '').trim() !== ''))
+    .filter(row => {
+      const trainingDate = parseTrainingDate(row[dateCol]);
+      if (!trainingDate) return true;
+      if (startBoundary && trainingDate < startBoundary) return false;
+      if (endBoundary && trainingDate > endBoundary) return false;
+
+      if (hasSelectedDates) {
+        const trainingDateKey = Utilities.formatDate(trainingDate, CONFIG.TIMEZONE, CONFIG.DATE_FORMAT);
+        return selectedDatesSet.has(trainingDateKey);
+      }
+
+      return true;
+    })
     .map(row => {
       const fioNames = extractFioNamesFromRow(row, startCol, endCol);
       const fioGroups = buildFioGroups(fioNames, fioGroupMap);
@@ -432,9 +461,61 @@ function getTrainingHistory() {
         fioGroups
       };
     })
-    .reverse();
+    .reverse()
+    .slice(0, limit);
 
   return rows;
+}
+
+/**
+ * Возвращает уникальные даты тренировок для UI-фильтра,
+ * уже отфильтрованные по диапазону дат.
+ *
+ * @param {{startDate?: string, endDate?: string}} [options]
+ * @returns {string[]}
+ */
+function getTrainingHistoryDates(options = {}) {
+  const rows = getTrainingHistory({
+    limit: Number.MAX_SAFE_INTEGER,
+    startDate: options.startDate,
+    endDate: options.endDate
+  });
+
+  return [...new Set(rows.map(row => row.date).filter(Boolean))];
+}
+
+/**
+ * Преобразует значение даты тренировки в Date.
+ * @param {*} value
+ * @returns {Date|null}
+ */
+function parseTrainingDate(value) {
+  if (value instanceof Date) {
+    return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+  }
+
+  const text = String(value || '').trim();
+  const match = text.match(/^(\d{2})\.(\d{2})\.(\d{4})/);
+  if (!match) return null;
+
+  const day = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const year = Number(match[3]);
+  return new Date(year, month, day);
+}
+
+/**
+ * Парсит дату из фильтра и возвращает начало/конец дня.
+ * @param {string} value
+ * @param {boolean} endOfDay
+ * @returns {Date|null}
+ */
+function parseFilterDate(value, endOfDay) {
+  const parsed = parseTrainingDate(value);
+  if (!parsed) return null;
+  return endOfDay
+    ? new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 23, 59, 59, 999)
+    : new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 0, 0, 0, 0);
 }
 
 /**
