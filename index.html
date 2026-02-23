@@ -257,7 +257,6 @@
   .training-fio-list {
     border-top: 1px dashed #ccc;
     padding: 0 12px;
-    white-space: pre-line;
     font-size: 13px;
     color: #333;
     max-height: 0;
@@ -266,9 +265,27 @@
     transition: max-height .5s ease, opacity .5s ease, padding .5s ease;
   }
   .training-item.open .training-fio-list {
-    max-height: 520px;
+    max-height: 1200px;
     opacity: 1;
     padding: 10px 12px 12px;
+  }
+  .training-fio-groups {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 8px;
+  }
+  .training-fio-group {
+    border: 1px solid #ddd;
+    padding: 6px;
+  }
+  .training-fio-group-title {
+    font-weight: bold;
+    margin-bottom: 4px;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 2px;
+  }
+  .training-fio-name {
+    line-height: 1.35;
   }
 
   .attendance-notice {
@@ -1216,7 +1233,36 @@
 
       const fio = document.createElement('div');
       fio.className = 'training-fio-list';
-      fio.textContent = item.fio || '—';
+
+      const groupsWrap = document.createElement('div');
+      groupsWrap.className = 'training-fio-groups';
+
+      const groups = Array.isArray(item.fioGroups) ? item.fioGroups : [];
+      if (!groups.length) {
+        groupsWrap.textContent = item.fio || '—';
+      } else {
+        groups.forEach(groupItem => {
+          const col = document.createElement('div');
+          col.className = 'training-fio-group';
+
+          const title = document.createElement('div');
+          title.className = 'training-fio-group-title';
+          title.textContent = groupItem.group || 'Без группы';
+
+          col.appendChild(title);
+
+          (groupItem.names || []).forEach(name => {
+            const row = document.createElement('div');
+            row.className = 'training-fio-name';
+            row.textContent = name;
+            col.appendChild(row);
+          });
+
+          groupsWrap.appendChild(col);
+        });
+      }
+
+      fio.appendChild(groupsWrap);
 
       card.appendChild(toggle);
       card.appendChild(fio);

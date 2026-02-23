@@ -395,7 +395,7 @@ function processInput(input, fullNames) {
  * Возвращает список последних тренировок из внешней таблицы ответов.
  * Порядок: в таблице сверху-вниз, на сайте снизу-вверх.
  * @param {number} [limit=5] Количество записей.
- * @returns {Array<{timestamp:string,date:string,coach:string,place:string,fio:string}>}
+ * @returns {Array<{timestamp:string,date:string,coach:string,place:string,fio:string,fioGroups:Array<{group:string,names:string[]}>}>}
  */
 function getTrainingHistory(limit = 5) {
   const safeLimit = Math.max(1, Number(limit) || 5);
@@ -414,31 +414,118 @@ function getTrainingHistory(limit = 5) {
 
   if (tsCol === -1 || dateCol === -1 || coachCol === -1 || placeCol === -1) return [];
 
+  const fioGroupMap = loadTrainingGroupMap();
   const startCol = 12; // M
   const endCol = 32;   // AG
 
   const rows = values.slice(1)
     .filter(row => row.some(cell => String(cell || '').trim() !== ''))
     .map(row => {
-      const fioMerged = row
-        .slice(startCol, endCol + 1)
-        .map(v => String(v || '').trim())
-        .filter(Boolean)
-        .join('\n')
-        .replace(/,\s*/g, '\n');
+      const fioNames = extractFioNamesFromRow(row, startCol, endCol);
+      const fioGroups = buildFioGroups(fioNames, fioGroupMap);
+      const fioMerged = fioNames.join('\n');
 
       return {
         timestamp: formatTrainingCell(row[tsCol]),
         date: formatTrainingCell(row[dateCol]),
         coach: formatTrainingCell(row[coachCol]),
         place: formatTrainingCell(row[placeCol]),
-        fio: fioMerged
+        fio: fioMerged,
+        fioGroups
       };
     })
     .reverse()
     .slice(0, safeLimit);
 
   return rows;
+}
+
+/**
+ * Загружает соответствие ФИО -> тренировочная группа.
+ * @returns {Object<string,string>}
+ */
+function loadTrainingGroupMap() {
+  const ss = SpreadsheetApp.openById('1PITVXQ48g0hwtx4YSWB7OOy37zvujj9hhts-7eGR1aQ');
+  const sheet = ss.getSheetByName('Результат');
+  if (!sheet) return {};
+
+  const values = sheet.getDataRange().getValues();
+  if (values.length < 2) return {};
+
+  const header = values[0].map(String);
+  const fioCol = header.indexOf('Фамилия Имя Отчество (С)');
+  const groupCol = header.indexOf('Тренировочная группа');
+  if (fioCol === -1 || groupCol === -1) return {};
+
+  const map = {};
+  values.slice(1).forEach(row => {
+    const fio = String(row[fioCol] || '').trim();
+    const group = String(row[groupCol] || '').trim();
+    if (!fio) return;
+    map[normalizeTrainingName(fio)] = group || 'Без группы';
+  });
+
+  return map;
+}
+
+/**
+ * Извлекает ФИО из диапазона столбцов строки ответа.
+ * @param {Array<*>} row
+ * @param {number} startCol
+ * @param {number} endCol
+ * @returns {string[]}
+ */
+function extractFioNamesFromRow(row, startCol, endCol) {
+  const names = [];
+
+  row.slice(startCol, endCol + 1).forEach(value => {
+    const parts = String(value || '')
+      .replace(/\r/g, '\n')
+      .replace(/,\s*/g, '\n')
+      .split(/\n+/)
+      .map(s => s.trim())
+      .filter(Boolean);
+
+    parts.forEach(name => names.push(name));
+  });
+
+  return names;
+}
+
+/**
+ * Группирует ФИО по тренировочным группам.
+ * @param {string[]} fioNames
+ * @param {Object<string,string>} fioGroupMap
+ * @returns {Array<{group:string,names:string[]}>}
+ */
+function buildFioGroups(fioNames, fioGroupMap) {
+  const groups = {};
+  const order = [];
+
+  fioNames.forEach(name => {
+    const normalized = normalizeTrainingName(name);
+    const group = fioGroupMap[normalized] || 'Без группы';
+    if (!groups[group]) {
+      groups[group] = [];
+      order.push(group);
+    }
+    groups[group].push(name);
+  });
+
+  return order.map(group => ({ group, names: groups[group] }));
+}
+
+/**
+ * Нормализация ФИО для сопоставления тренировочной группы.
+ * @param {string} value
+ * @returns {string}
+ */
+function normalizeTrainingName(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /**
