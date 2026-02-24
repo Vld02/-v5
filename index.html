@@ -1400,6 +1400,10 @@
       };
     }
 
+    function toggleLocalSort(nextDir) {
+      localSortDir = localSortDir === nextDir ? 0 : nextDir;
+    }
+
     if (isDateFilterKey(key)) {
       const dateBounds = getDateBoundsForKey(key);
       const dateFilter = baseFilter && typeof baseFilter === 'object'
@@ -1523,11 +1527,47 @@
         });
       };
 
+      function applyDateFilter() {
+        const startTs = parseDateFilterInput(startDateInput.value, false);
+        const endTs = parseDateFilterInput(endDateInput.value, true);
+        const rangeValues = getRangeFilteredValues();
+        const selectedValues = (rangeValues.length > 0 && selected.size === rangeValues.length) ? null : [...selected];
+
+        const effectiveStart = startTs !== null ? startTs : defaultStartTs;
+        const effectiveEnd = endTs !== null ? endTs : defaultEndTs;
+        const isDefaultRange = effectiveStart === defaultStartTs && effectiveEnd === defaultEndTs;
+
+        if (isDefaultRange && !selectedValues) {
+          trainingState.filters[key] = null;
+        } else {
+          trainingState.filters[key] = { start: effectiveStart, end: effectiveEnd, values: selectedValues };
+        }
+        if (localSortDir !== 0) {
+          trainingState.sortKey = key;
+          trainingState.sortDir = localSortDir;
+        } else if (trainingState.sortKey === key) {
+          trainingState.sortKey = '';
+          trainingState.sortDir = 0;
+        }
+        delete trainingState.filterDrafts[key];
+        closeTrainingFilterMenu();
+        renderTrainingHistory(trainingState.items);
+      }
+
+      trainingFilterMenu.addEventListener('keydown', e => {
+        if (e.key !== 'Enter') return;
+        const target = e.target;
+        if (!(target instanceof HTMLElement)) return;
+        if (!target.closest('#startDateInput, #endDateInput, #dateSearchInput')) return;
+        e.preventDefault();
+        applyDateFilter();
+      });
+
       trainingFilterMenu.querySelectorAll('button[data-action]').forEach(btn => {
         btn.addEventListener('click', () => {
           const action = btn.dataset.action;
           if (action === 'sort-asc') {
-            localSortDir = 1;
+            toggleLocalSort(1);
             saveDraft({
               start: parseDateFilterInput(startDateInput.value, false),
               end: parseDateFilterInput(endDateInput.value, true),
@@ -1535,7 +1575,7 @@
             });
             openTrainingFilterMenu(key, buttonEl);
           } else if (action === 'sort-desc') {
-            localSortDir = -1;
+            toggleLocalSort(-1);
             saveDraft({
               start: parseDateFilterInput(startDateInput.value, false),
               end: parseDateFilterInput(endDateInput.value, true),
@@ -1562,27 +1602,7 @@
             openTrainingFilterMenu(key, buttonEl);
             renderTrainingHistory(trainingState.items);
           } else if (action === 'apply') {
-            const startTs = parseDateFilterInput(startDateInput.value, false);
-            const endTs = parseDateFilterInput(endDateInput.value, true);
-            const rangeValues = getRangeFilteredValues();
-            const selectedValues = (rangeValues.length > 0 && selected.size === rangeValues.length) ? null : [...selected];
-
-            const effectiveStart = startTs !== null ? startTs : defaultStartTs;
-            const effectiveEnd = endTs !== null ? endTs : defaultEndTs;
-            const isDefaultRange = effectiveStart === defaultStartTs && effectiveEnd === defaultEndTs;
-
-            if (isDefaultRange && !selectedValues) {
-              trainingState.filters[key] = null;
-            } else {
-              trainingState.filters[key] = { start: effectiveStart, end: effectiveEnd, values: selectedValues };
-            }
-            if (localSortDir !== 0) {
-              trainingState.sortKey = key;
-              trainingState.sortDir = localSortDir;
-            }
-            delete trainingState.filterDrafts[key];
-            closeTrainingFilterMenu();
-            renderTrainingHistory(trainingState.items);
+            applyDateFilter();
           }
         });
       });
@@ -1629,21 +1649,32 @@
 
       drawOptions();
       search.addEventListener('input', () => drawOptions(search.value));
+      trainingFilterMenu.addEventListener('keydown', e => {
+        if (e.key !== 'Enter') return;
+        const target = e.target;
+        if (!(target instanceof HTMLElement)) return;
+        if (!target.closest('.training-filter-search')) return;
+        e.preventDefault();
+        const applyBtn = trainingFilterMenu.querySelector('button[data-action="apply"]');
+        if (applyBtn) applyBtn.click();
+      });
       collectActiveFilterDraft = () => saveDraft([...selected]);
 
       trainingFilterMenu.querySelectorAll('button[data-action]').forEach(btn => {
         btn.addEventListener('click', () => {
           const action = btn.dataset.action;
           if (action === 'sort-asc') {
-            localSortDir = 1;
+            toggleLocalSort(1);
             saveDraft([...selected]);
             openTrainingFilterMenu(key, buttonEl);
           } else if (action === 'sort-desc') {
-            localSortDir = -1;
+            toggleLocalSort(-1);
             saveDraft([...selected]);
             openTrainingFilterMenu(key, buttonEl);
           } else if (action === 'all') {
-            allValues.forEach(v => selected.add(v));
+            const isAllSelected = allValues.length > 0 && allValues.every(v => selected.has(v));
+            if (isAllSelected) selected.clear();
+            else allValues.forEach(v => selected.add(v));
             drawOptions(search.value);
             saveDraft([...selected]);
           } else if (action === 'reset') {
@@ -1655,6 +1686,9 @@
             if (localSortDir !== 0) {
               trainingState.sortKey = key;
               trainingState.sortDir = localSortDir;
+            } else if (trainingState.sortKey === key) {
+              trainingState.sortKey = '';
+              trainingState.sortDir = 0;
             }
             delete trainingState.filterDrafts[key];
             closeTrainingFilterMenu();
@@ -1747,6 +1781,13 @@
 
   function renderTrainingHistory(items) {
     trainingList.innerHTML = '';
+
+    const maxCount = getMaxVisibleCount();
+    trainingVisibleCountInput.max = String(maxCount);
+    if (trainingState.visibleCount > maxCount) {
+      trainingState.visibleCount = maxCount;
+      trainingVisibleCountInput.value = String(maxCount);
+    }
 
     if (!items || !items.length) {
       trainingList.innerHTML = '<div class="placeholder" style="padding:12px 10px;font-size:15px;">История тренировок не найдена.</div>';
@@ -1869,20 +1910,35 @@
   document.addEventListener('mousedown', e => {
     if (!trainingFilterMenu.classList.contains('show')) return;
     if (trainingFilterMenu.contains(e.target)) return;
+    if (e.target instanceof Element && e.target.closest('.training-sort')) return;
     if (typeof collectActiveFilterDraft === 'function') {
       collectActiveFilterDraft();
     }
     closeTrainingFilterMenu();
   });
 
-  trainingVisibleCountInput.addEventListener('input', () => {
+  function getMaxVisibleCount() {
+    return Math.max(1, trainingState.items.length || 1);
+  }
+
+  function applyVisibleCountFromInput() {
+    const maxCount = getMaxVisibleCount();
+    trainingVisibleCountInput.max = String(maxCount);
     const parsed = Number.parseInt(trainingVisibleCountInput.value, 10);
-    const safeValue = Number.isFinite(parsed) && parsed > 0 ? parsed : 5;
+    const fallback = Math.min(5, maxCount);
+    const safeValue = Number.isFinite(parsed)
+      ? Math.min(Math.max(parsed, 1), maxCount)
+      : fallback;
     trainingState.visibleCount = safeValue;
-    if (String(safeValue) !== trainingVisibleCountInput.value) {
-      trainingVisibleCountInput.value = String(safeValue);
-    }
+    trainingVisibleCountInput.value = String(safeValue);
     renderTrainingHistory(trainingState.items);
+  }
+
+  trainingVisibleCountInput.addEventListener('blur', applyVisibleCountFromInput);
+  trainingVisibleCountInput.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    trainingVisibleCountInput.blur();
   });
 
   function renderResult(row, data) {
