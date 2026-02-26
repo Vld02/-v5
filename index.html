@@ -176,9 +176,17 @@
     align-items: center;
     gap: 8px;
   }
+  .training-visible-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #333;
+  }
   .training-controls input {
-    width: 80px;
+    width: 56px;
     padding: 4px 6px;
+    margin: 0;
   }
   .training-loading {
     width: 14px;
@@ -240,7 +248,8 @@
     position: fixed;
     z-index: 9998;
     width: 280px;
-    max-height: 360px;
+    max-height: calc(100vh - 16px);
+    overflow-y: auto;
     background: #fff;
     border: 1px solid #ccc;
     box-shadow: 0 4px 14px rgba(0,0,0,.18);
@@ -488,12 +497,16 @@
       <h3 class="training-title">Последние отмеченные тренировки</h3>
       <div class="training-controls">
         <span id="trainingLoading" class="training-loading" aria-hidden="true"></span>
+        <label class="training-visible-count" for="trainingVisibleCountInput">
+          <span>Показать тренировок</span>
+          <input id="trainingVisibleCountInput" type="number" min="1" step="1" value="5" />
+        </label>
       </div>
     </div>
     <div class="training-list-head">
       <div class="training-head-cell"><button type="button" class="training-sort" data-sort-key="timestamp">Отметка времени</button></div>
       <div class="training-head-cell"><button type="button" class="training-sort" data-sort-key="date">Дата тренировки</button></div>
-      <div class="training-head-cell"><button type="button" class="training-sort" data-sort-key="coach">Тренер присутствовал:</button></div>
+      <div class="training-head-cell"><button type="button" class="training-sort" data-sort-key="coach">Тренер присутствовал</button></div>
       <div class="training-head-cell"><button type="button" class="training-sort" data-sort-key="place">Место проведения занятия</button></div>
     </div>
     <div id="trainingList" class="training-list"></div>
@@ -975,6 +988,7 @@
   const tbody = document.querySelector('#fioTable tbody');
   const trainingList = document.getElementById('trainingList');
   const trainingLoading = document.getElementById('trainingLoading');
+  const trainingVisibleCountInput = document.getElementById('trainingVisibleCountInput');
   const trainingSortButtons = [...document.querySelectorAll('.training-sort')];
   const trainingFilterMenu = document.getElementById('trainingFilterMenu');
   let debounceTimer = null;
@@ -1212,8 +1226,11 @@
     sortDir: 0,
     opened: new Set(),
     filters: { timestamp: null, date: null, coach: null, place: null },
-    activeFilterKey: ''
+    activeFilterKey: '',
+    visibleCount: 5,
+    filterDrafts: {}
   };
+  let collectActiveFilterDraft = null;
 
 
   function setTrainingLoading(isLoading) {
@@ -1225,16 +1242,47 @@
   }
 
   function getDistinctFilterValues(key) {
-    const set = new Set();
+    if (isDateFilterKey(key)) {
+      const set = new Set();
+      trainingState.items.forEach(item => {
+        const value = String(item[key] || '—').trim() || '—';
+        set.add(value);
+      });
+      return [...set].sort((a, b) => a.localeCompare(b, 'ru'));
+    }
+
+    const counts = new Map();
     trainingState.items.forEach(item => {
-      const value = String(item[key] || '—').trim() || '—';
-      set.add(value);
+      const values = getItemValuesForFilter(item, key);
+      values.forEach(value => {
+        counts.set(value, (counts.get(value) || 0) + 1);
+      });
     });
-    return [...set].sort((a, b) => a.localeCompare(b, 'ru'));
+
+    return [...counts.entries()]
+      .sort((a, b) => {
+        if (b[1] !== a[1]) return b[1] - a[1];
+        return a[0].localeCompare(b[0], 'ru');
+      })
+      .map(([value]) => value);
+  }
+
+  function splitCoachValues(raw) {
+    const value = String(raw || '').trim();
+    if (!value) return ['—'];
+    const parts = value.split(',').map(x => x.trim()).filter(Boolean);
+    return parts.length ? parts : ['—'];
+  }
+
+  function getItemValuesForFilter(item, key) {
+    if (key === 'coach') return splitCoachValues(item.coach);
+    const value = String(item[key] || '—').trim() || '—';
+    return [value];
   }
 
   function closeTrainingFilterMenu() {
     trainingState.activeFilterKey = '';
+    collectActiveFilterDraft = null;
     trainingFilterMenu.classList.remove('show');
   }
 
@@ -1247,7 +1295,7 @@
     if (Array.isArray(filter)) return filter.length > 0;
     if (filter && typeof filter === 'object') {
       const hasRange = filter.start !== null || filter.end !== null;
-      const hasValues = Array.isArray(filter.values) && filter.values.length > 0;
+      const hasValues = Array.isArray(filter.values);
       return hasRange || hasValues;
     }
     return false;
@@ -1355,20 +1403,43 @@
   }
 
   function openTrainingFilterMenu(key, buttonEl) {
+    const draft = trainingState.filterDrafts[key] || null;
     const allValues = getDistinctFilterValues(key);
-    const selected = hasActiveFilter(key) && Array.isArray(trainingState.filters[key])
-      ? new Set(trainingState.filters[key])
-      : new Set(allValues);
+    const baseFilter = draft ? draft.filter : trainingState.filters[key];
+    const selected = Array.isArray(baseFilter)
+      ? new Set(baseFilter)
+      : (baseFilter && typeof baseFilter === 'object' && Array.isArray(baseFilter.values) && !isDateFilterKey(key)
+        ? new Set(baseFilter.values)
+        : new Set(allValues));
 
     trainingState.activeFilterKey = key;
 
-    const sortAscActive = trainingState.sortKey === key && trainingState.sortDir === 1;
-    const sortDescActive = trainingState.sortKey === key && trainingState.sortDir === -1;
+    let localSortDir = typeof draft?.sortDir === 'number'
+      ? draft.sortDir
+      : (trainingState.sortKey === key ? trainingState.sortDir : 0);
+    const sortAscActive = localSortDir === 1;
+    const sortDescActive = localSortDir === -1;
+
+    function saveDraft(filterValue) {
+      const filterCopy = Array.isArray(filterValue)
+        ? [...filterValue]
+        : (filterValue && typeof filterValue === 'object'
+          ? { ...filterValue, values: Array.isArray(filterValue.values) ? [...filterValue.values] : filterValue.values }
+          : filterValue);
+      trainingState.filterDrafts[key] = {
+        filter: filterCopy,
+        sortDir: localSortDir
+      };
+    }
+
+    function toggleLocalSort(nextDir) {
+      localSortDir = localSortDir === nextDir ? 0 : nextDir;
+    }
 
     if (isDateFilterKey(key)) {
       const dateBounds = getDateBoundsForKey(key);
-      const dateFilter = trainingState.filters[key] && typeof trainingState.filters[key] === 'object'
-        ? trainingState.filters[key]
+      const dateFilter = baseFilter && typeof baseFilter === 'object'
+        ? baseFilter
         : { start: null, end: null, values: null };
 
       const selected = Array.isArray(dateFilter.values)
@@ -1408,10 +1479,34 @@
       wireMaskedDateInput(startDateInput);
       wireMaskedDateInput(endDateInput);
 
+      function getRangeFilteredValues() {
+        const startTs = parseDateFilterInput(startDateInput.value, false);
+        const endTs = parseDateFilterInput(endDateInput.value, true);
+        const effectiveStart = startTs !== null ? startTs : defaultStartTs;
+        const effectiveEnd = endTs !== null ? endTs : defaultEndTs;
+
+        return allValues.filter(value => {
+          const ts = parseRuDateTime(value);
+          if (ts === null) return false;
+          if (effectiveStart !== null && ts < effectiveStart) return false;
+          if (effectiveEnd !== null && ts > effectiveEnd) return false;
+          return true;
+        });
+      }
+
+      function normalizeSelectedByRange() {
+        const available = new Set(getRangeFilteredValues());
+        [...selected].forEach(v => {
+          if (!available.has(v)) selected.delete(v);
+        });
+      }
+
       function drawDateOptions(filterText = '') {
         const q = filterText.trim().toLowerCase();
+        const rangeValues = getRangeFilteredValues();
+        normalizeSelectedByRange();
         dateOptions.innerHTML = '';
-        allValues
+        rangeValues
           .filter(v => !q || v.toLowerCase().includes(q))
           .forEach(v => {
             const id = `opt_${key}_${Math.random().toString(36).slice(2)}`;
@@ -1423,6 +1518,11 @@
             cb.addEventListener('change', () => {
               if (cb.checked) selected.add(v);
               else selected.delete(v);
+              saveDraft({
+                start: parseDateFilterInput(startDateInput.value, false),
+                end: parseDateFilterInput(endDateInput.value, true),
+                values: [...selected]
+              });
             });
             dateOptions.appendChild(label);
           });
@@ -1430,52 +1530,125 @@
 
       drawDateOptions();
       dateSearchInput.addEventListener('input', () => drawDateOptions(dateSearchInput.value));
+      startDateInput.addEventListener('input', () => {
+        selected.clear();
+        getRangeFilteredValues().forEach(v => selected.add(v));
+        drawDateOptions(dateSearchInput.value);
+        saveDraft({
+          start: parseDateFilterInput(startDateInput.value, false),
+          end: parseDateFilterInput(endDateInput.value, true),
+          values: [...selected]
+        });
+      });
+      endDateInput.addEventListener('input', () => {
+        selected.clear();
+        getRangeFilteredValues().forEach(v => selected.add(v));
+        drawDateOptions(dateSearchInput.value);
+        saveDraft({
+          start: parseDateFilterInput(startDateInput.value, false),
+          end: parseDateFilterInput(endDateInput.value, true),
+          values: [...selected]
+        });
+      });
+
+      collectActiveFilterDraft = () => {
+        saveDraft({
+          start: parseDateFilterInput(startDateInput.value, false),
+          end: parseDateFilterInput(endDateInput.value, true),
+          values: [...selected]
+        });
+      };
+
+      function applyDateFilter() {
+        const startTs = parseDateFilterInput(startDateInput.value, false);
+        const endTs = parseDateFilterInput(endDateInput.value, true);
+        const rangeValues = getRangeFilteredValues();
+        const selectedValues = (rangeValues.length > 0 && selected.size === rangeValues.length) ? null : [...selected];
+
+        const effectiveStart = startTs !== null ? startTs : defaultStartTs;
+        const effectiveEnd = endTs !== null ? endTs : defaultEndTs;
+        const isDefaultRange = effectiveStart === defaultStartTs && effectiveEnd === defaultEndTs;
+
+        if (isDefaultRange && !selectedValues) {
+          trainingState.filters[key] = null;
+        } else {
+          trainingState.filters[key] = { start: effectiveStart, end: effectiveEnd, values: selectedValues };
+        }
+        if (localSortDir !== 0) {
+          trainingState.sortKey = key;
+          trainingState.sortDir = localSortDir;
+        } else if (trainingState.sortKey === key) {
+          trainingState.sortKey = '';
+          trainingState.sortDir = 0;
+        }
+        delete trainingState.filterDrafts[key];
+        closeTrainingFilterMenu();
+        renderTrainingHistory(trainingState.items);
+      }
+
+      trainingFilterMenu.addEventListener('keydown', e => {
+        if (e.key !== 'Enter') return;
+        const target = e.target;
+        if (!(target instanceof HTMLElement)) return;
+        if (!target.closest('#startDateInput, #endDateInput, #dateSearchInput')) return;
+        e.preventDefault();
+        applyDateFilter();
+      });
 
       trainingFilterMenu.querySelectorAll('button[data-action]').forEach(btn => {
         btn.addEventListener('click', () => {
           const action = btn.dataset.action;
           if (action === 'sort-asc') {
-            trainingState.sortKey = key;
-            trainingState.sortDir = 1;
+            toggleLocalSort(1);
+            saveDraft({
+              start: parseDateFilterInput(startDateInput.value, false),
+              end: parseDateFilterInput(endDateInput.value, true),
+              values: [...selected]
+            });
             openTrainingFilterMenu(key, buttonEl);
-            renderTrainingHistory(trainingState.items);
           } else if (action === 'sort-desc') {
-            trainingState.sortKey = key;
-            trainingState.sortDir = -1;
+            toggleLocalSort(-1);
+            saveDraft({
+              start: parseDateFilterInput(startDateInput.value, false),
+              end: parseDateFilterInput(endDateInput.value, true),
+              values: [...selected]
+            });
             openTrainingFilterMenu(key, buttonEl);
-            renderTrainingHistory(trainingState.items);
           } else if (action === 'all') {
-            allValues.forEach(v => selected.add(v));
+            const rangeValues = getRangeFilteredValues();
+            const isAllSelected = rangeValues.length > 0 && rangeValues.every(v => selected.has(v));
+            if (isAllSelected) {
+              rangeValues.forEach(v => selected.delete(v));
+            } else {
+              rangeValues.forEach(v => selected.add(v));
+            }
             drawDateOptions(dateSearchInput.value);
+            saveDraft({
+              start: parseDateFilterInput(startDateInput.value, false),
+              end: parseDateFilterInput(endDateInput.value, true),
+              values: [...selected]
+            });
           } else if (action === 'reset') {
             trainingState.filters[key] = null;
+            delete trainingState.filterDrafts[key];
             openTrainingFilterMenu(key, buttonEl);
             renderTrainingHistory(trainingState.items);
           } else if (action === 'apply') {
-            const startTs = parseDateFilterInput(startDateInput.value, false);
-            const endTs = parseDateFilterInput(endDateInput.value, true);
-            const selectedValues = selected.size === allValues.length ? null : [...selected];
-
-            const effectiveStart = startTs !== null ? startTs : defaultStartTs;
-            const effectiveEnd = endTs !== null ? endTs : defaultEndTs;
-            const isDefaultRange = effectiveStart === defaultStartTs && effectiveEnd === defaultEndTs;
-
-            if (isDefaultRange && !selectedValues) {
-              trainingState.filters[key] = null;
-            } else {
-              trainingState.filters[key] = { start: effectiveStart, end: effectiveEnd, values: selectedValues };
-            }
-            closeTrainingFilterMenu();
-            renderTrainingHistory(trainingState.items);
+            applyDateFilter();
           }
         });
       });
     } else {
+      const isCoachFilter = key === 'coach';
+      const initialMatchMode = (baseFilter && typeof baseFilter === 'object' && baseFilter.matchMode === 'and') ? 'and' : 'or';
+      let localMatchMode = initialMatchMode;
+
       trainingFilterMenu.innerHTML = `
         <div class="training-filter-actions" style="margin-bottom:6px;">
           <button type="button" data-action="sort-asc" class="${sortAscActive ? 'active' : ''}">А > Я</button>
           <button type="button" data-action="sort-desc" class="${sortDescActive ? 'active' : ''}">Я < А</button>
         </div>
+        ${isCoachFilter ? `<div class="training-filter-actions" style="margin-bottom:6px;"><button type="button" data-action="match-mode" class="active">${localMatchMode === 'and' ? 'И' : 'Или'}</button></div>` : ''}
         <input class="training-filter-search" type="text" placeholder="Поиск..." />
         <div class="training-filter-actions">
           <button type="button" data-action="all">Все</button>
@@ -1489,6 +1662,13 @@
 
       const search = trainingFilterMenu.querySelector('.training-filter-search');
       const optionsBox = trainingFilterMenu.querySelector('.training-filter-options');
+      const matchModeBtn = trainingFilterMenu.querySelector('button[data-action="match-mode"]');
+
+      function getFilterPayload() {
+        const values = [...selected];
+        if (!isCoachFilter) return values;
+        return { values, matchMode: localMatchMode };
+      }
 
       function drawOptions(filterText = '') {
         const q = filterText.trim().toLowerCase();
@@ -1505,6 +1685,7 @@
             cb.addEventListener('change', () => {
               if (cb.checked) selected.add(v);
               else selected.delete(v);
+              saveDraft(getFilterPayload());
             });
             optionsBox.appendChild(label);
           });
@@ -1512,28 +1693,61 @@
 
       drawOptions();
       search.addEventListener('input', () => drawOptions(search.value));
+      trainingFilterMenu.addEventListener('keydown', e => {
+        if (e.key !== 'Enter') return;
+        const target = e.target;
+        if (!(target instanceof HTMLElement)) return;
+        if (!target.closest('.training-filter-search')) return;
+        e.preventDefault();
+        const applyBtn = trainingFilterMenu.querySelector('button[data-action="apply"]');
+        if (applyBtn) applyBtn.click();
+      });
+      collectActiveFilterDraft = () => saveDraft(getFilterPayload());
 
       trainingFilterMenu.querySelectorAll('button[data-action]').forEach(btn => {
         btn.addEventListener('click', () => {
           const action = btn.dataset.action;
           if (action === 'sort-asc') {
-            trainingState.sortKey = key;
-            trainingState.sortDir = 1;
+            toggleLocalSort(1);
+            saveDraft(getFilterPayload());
             openTrainingFilterMenu(key, buttonEl);
-            renderTrainingHistory(trainingState.items);
           } else if (action === 'sort-desc') {
-            trainingState.sortKey = key;
-            trainingState.sortDir = -1;
+            toggleLocalSort(-1);
+            saveDraft(getFilterPayload());
             openTrainingFilterMenu(key, buttonEl);
-            renderTrainingHistory(trainingState.items);
+          } else if (action === 'match-mode') {
+            localMatchMode = localMatchMode === 'and' ? 'or' : 'and';
+            if (matchModeBtn) {
+              matchModeBtn.textContent = localMatchMode === 'and' ? 'И' : 'Или';
+            }
+            saveDraft(getFilterPayload());
           } else if (action === 'all') {
-            allValues.forEach(v => selected.add(v));
+            const isAllSelected = allValues.length > 0 && allValues.every(v => selected.has(v));
+            if (isAllSelected) selected.clear();
+            else allValues.forEach(v => selected.add(v));
             drawOptions(search.value);
+            saveDraft(getFilterPayload());
           } else if (action === 'reset') {
             selected.clear();
             drawOptions(search.value);
+            saveDraft(getFilterPayload());
           } else if (action === 'apply') {
-            trainingState.filters[key] = selected.size === allValues.length ? null : [...selected];
+            const allSelected = selected.size === allValues.length;
+            if (allSelected && (!isCoachFilter || localMatchMode === 'or')) {
+              trainingState.filters[key] = null;
+            } else if (isCoachFilter) {
+              trainingState.filters[key] = { values: [...selected], matchMode: localMatchMode };
+            } else {
+              trainingState.filters[key] = [...selected];
+            }
+            if (localSortDir !== 0) {
+              trainingState.sortKey = key;
+              trainingState.sortDir = localSortDir;
+            } else if (trainingState.sortKey === key) {
+              trainingState.sortKey = '';
+              trainingState.sortDir = 0;
+            }
+            delete trainingState.filterDrafts[key];
             closeTrainingFilterMenu();
             renderTrainingHistory(trainingState.items);
           }
@@ -1564,13 +1778,23 @@
         if (!filter) return true;
 
         if (Array.isArray(filter)) {
-          const value = String(item[key] || '—').trim() || '—';
-          return filter.includes(value);
+          const values = getItemValuesForFilter(item, key);
+          return values.some(v => filter.includes(v));
+        }
+
+        if (key === 'coach' && filter && typeof filter === 'object' && Array.isArray(filter.values)) {
+          const values = getItemValuesForFilter(item, key);
+          const selectedValues = filter.values;
+          if (!selectedValues.length) return false;
+          if (filter.matchMode === 'and') {
+            return selectedValues.every(v => values.includes(v));
+          }
+          return selectedValues.some(v => values.includes(v));
         }
 
         if (isDateFilterKey(key) && typeof filter === 'object') {
           const value = String(item[key] || '—').trim() || '—';
-          if (Array.isArray(filter.values) && filter.values.length && !filter.values.includes(value)) return false;
+          if (Array.isArray(filter.values) && !filter.values.includes(value)) return false;
 
           const ts = parseRuDateTime(item[key]);
           if (ts === null) return false;
@@ -1625,6 +1849,13 @@
   function renderTrainingHistory(items) {
     trainingList.innerHTML = '';
 
+    const maxCount = getMaxVisibleCount();
+    trainingVisibleCountInput.max = String(maxCount);
+    if (trainingState.visibleCount > maxCount) {
+      trainingState.visibleCount = maxCount;
+      trainingVisibleCountInput.value = String(maxCount);
+    }
+
     if (!items || !items.length) {
       trainingList.innerHTML = '<div class="placeholder" style="padding:12px 10px;font-size:15px;">История тренировок не найдена.</div>';
       updateTrainingSortUi();
@@ -1633,7 +1864,15 @@
 
     const sorted = getSortedTrainingItems(items);
 
-    sorted.forEach(item => {
+    if (!sorted.length) {
+      trainingList.innerHTML = '<div class="placeholder" style="padding:12px 10px;font-size:15px;">История тренировок не найдена.</div>';
+      updateTrainingSortUi();
+      return;
+    }
+
+    const limitedItems = sorted.slice(0, trainingState.visibleCount);
+
+    limitedItems.forEach(item => {
       const card = document.createElement('div');
       card.className = 'training-item';
 
@@ -1642,7 +1881,10 @@
       const toggle = document.createElement('button');
       toggle.type = 'button';
       toggle.className = 'training-toggle';
-      toggle.innerHTML = `<span>${escapeHtml(item.timestamp || '')}</span><span>${escapeHtml(item.date || '')}</span><span>${escapeHtml(item.coach || '')}</span><span>${escapeHtml(item.place || '')}</span>`;
+      const coachLinesHtml = splitCoachValues(item.coach)
+        .map(v => escapeHtml(v))
+        .join('<br>');
+      toggle.innerHTML = `<span>${escapeHtml(item.timestamp || '')}</span><span>${escapeHtml(item.date || '')}</span><span>${coachLinesHtml}</span><span>${escapeHtml(item.place || '')}</span>`;
 
       const isOpen = trainingState.opened.has(itemKey);
       card.classList.toggle('open', isOpen);
@@ -1735,10 +1977,38 @@
     });
   });
 
-  document.addEventListener('click', e => {
+  document.addEventListener('mousedown', e => {
     if (!trainingFilterMenu.classList.contains('show')) return;
     if (trainingFilterMenu.contains(e.target)) return;
+    if (e.target instanceof Element && e.target.closest('.training-sort')) return;
+    if (typeof collectActiveFilterDraft === 'function') {
+      collectActiveFilterDraft();
+    }
     closeTrainingFilterMenu();
+  });
+
+  function getMaxVisibleCount() {
+    return Math.max(1, trainingState.items.length || 1);
+  }
+
+  function applyVisibleCountFromInput() {
+    const maxCount = getMaxVisibleCount();
+    trainingVisibleCountInput.max = String(maxCount);
+    const parsed = Number.parseInt(trainingVisibleCountInput.value, 10);
+    const fallback = Math.min(5, maxCount);
+    const safeValue = Number.isFinite(parsed)
+      ? Math.min(Math.max(parsed, 1), maxCount)
+      : fallback;
+    trainingState.visibleCount = safeValue;
+    trainingVisibleCountInput.value = String(safeValue);
+    renderTrainingHistory(trainingState.items);
+  }
+
+  trainingVisibleCountInput.addEventListener('blur', applyVisibleCountFromInput);
+  trainingVisibleCountInput.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    trainingVisibleCountInput.blur();
   });
 
   function renderResult(row, data) {
