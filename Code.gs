@@ -1,7 +1,7 @@
 /*************************************************
  * КОНФИГУРАЦИЯ ПРИЛОЖЕНИЯ
  *************************************************/
-const WEBAPP_FAVICON_URL = '__SET_PUBLIC_HTTPS_ICON_URL_32x32__'; // Вставьте прямую HTTPS-ссылку на PNG 32x32 для вкладки в обёртке Google Script.
+const WEBAPP_FAVICON_URL = '__SET_PUBLIC_HTTPS_ICON_URL__'; // Вставьте URL вашего загруженного PNG (публичный HTTPS), тогда и вкладка, и ярлык будут с вашей иконкой.
 
 const CONFIG = Object.freeze({
   SPREADSHEET_ID: '1PITVXQ48g0hwtx4YSWB7OOy37zvujj9hhts-7eGR1aQ',
@@ -38,14 +38,19 @@ function getSheet(name, createIfMissing = false) {
  *************************************************/
 /** Рендерит интерфейс веб-приложения. */
 function doGet() {
-  let output = HtmlService
-    .createHtmlOutputFromFile('index')
+  const iconUrl = /^https:\/\//i.test(WEBAPP_FAVICON_URL) ? WEBAPP_FAVICON_URL : '';
+
+  const template = HtmlService.createTemplateFromFile('index');
+  template.appFaviconUrl = iconUrl;
+
+  let output = template
+    .evaluate()
     .setTitle('ДБВv5')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 
   // setFaviconUrl не принимает data:image/...;base64. Нужен только публичный HTTPS URL.
-  if (/^https:\/\//i.test(WEBAPP_FAVICON_URL)) {
-    output = output.setFaviconUrl(WEBAPP_FAVICON_URL);
+  if (iconUrl) {
+    output = output.setFaviconUrl(iconUrl);
   }
 
   return output;
