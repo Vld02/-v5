@@ -1,6 +1,8 @@
 /*************************************************
  * КОНФИГУРАЦИЯ ПРИЛОЖЕНИЯ
  *************************************************/
+const WEBAPP_FAVICON_URL = '__SET_PUBLIC_HTTPS_ICON_URL_32x32__'; // Вставьте прямую HTTPS-ссылку на PNG 32x32 для вкладки в обёртке Google Script.
+
 const CONFIG = Object.freeze({
   SPREADSHEET_ID: '1PITVXQ48g0hwtx4YSWB7OOy37zvujj9hhts-7eGR1aQ',
   RESULT_SHEET_NAME: 'Результат',
@@ -36,10 +38,17 @@ function getSheet(name, createIfMissing = false) {
  *************************************************/
 /** Рендерит интерфейс веб-приложения. */
 function doGet() {
-  return HtmlService
+  let output = HtmlService
     .createHtmlOutputFromFile('index')
     .setTitle('ДБВv5')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+
+  // setFaviconUrl не принимает data:image/...;base64. Нужен только публичный HTTPS URL.
+  if (/^https:\/\//i.test(WEBAPP_FAVICON_URL)) {
+    output = output.setFaviconUrl(WEBAPP_FAVICON_URL);
+  }
+
+  return output;
 }
 
 /**
