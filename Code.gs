@@ -1,7 +1,7 @@
 /*************************************************
  * КОНФИГУРАЦИЯ ПРИЛОЖЕНИЯ
  *************************************************/
-const WEBAPP_FAVICON_URL = '__SET_PUBLIC_HTTPS_ICON_URL_32x32__'; // Вставьте прямую HTTPS-ссылку на PNG 32x32 для вкладки в обёртке Google Script.
+const WEBAPP_FAVICON_URL = 'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f4dd.png'; // Только HTTPS URL (не base64/data:), иначе GAS игнорирует иконку.
 
 const CONFIG = Object.freeze({
   SPREADSHEET_ID: '1PITVXQ48g0hwtx4YSWB7OOy37zvujj9hhts-7eGR1aQ',
