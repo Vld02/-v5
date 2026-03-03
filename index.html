@@ -8,17 +8,22 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-title" content="ДБВv5" />
 
+<? const APP_ICON_URL = typeof appFaviconUrl === 'string' ? appFaviconUrl : ''; ?>
+
 <!--
-  Для иконок НУЖНЫ обычные HTTPS URL (не base64/data:),
-  иначе Android/iOS часто игнорируют их при "Добавить на главный экран".
+  Иконки берутся из WEBAPP_FAVICON_URL в Code.gs (должен быть публичный HTTPS URL PNG).
+  Если URL не задан, теги иконок не добавляются.
 -->
-<link rel="icon" type="image/png" sizes="32x32" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f4dd.png" />
-<link rel="icon" type="image/png" sizes="192x192" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f4dd.png" />
-<link rel="apple-touch-icon" sizes="180x180" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f4dd.png" />
+<? if (APP_ICON_URL) { ?>
+<link rel="icon" type="image/png" sizes="32x32" href="<?= APP_ICON_URL ?>" />
+<link rel="icon" type="image/png" sizes="192x192" href="<?= APP_ICON_URL ?>" />
+<link rel="apple-touch-icon" sizes="180x180" href="<?= APP_ICON_URL ?>" />
 
 <script>
   (function setupManifest() {
-    const iconUrl = 'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f4dd.png';
+    const iconUrl = <?= JSON.stringify(APP_ICON_URL) ?>;
+    if (!iconUrl) return;
+
     const manifest = {
       name: 'ДБВv5',
       short_name: 'ДБВv5',
@@ -40,6 +45,7 @@
     document.head.appendChild(manifestLink);
   })();
 </script>
+<? } ?>
 <style>
   :root {
     --card-bg: rgba(255, 255, 255, 0.92);
