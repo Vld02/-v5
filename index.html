@@ -149,21 +149,38 @@
     width: 100%;
     display: flex;
     justify-content: center;
+    overflow-x: hidden;
   }
   table {
     border-collapse: collapse;
     width: 100%;
     max-width: 100%;
-    table-layout: auto;
+    table-layout: fixed;
     margin: 0 auto;
+    font-size: clamp(0.88rem, 1.9vw, 1rem);
   }
   th, td {
     border: 1px solid #ccc;
-    padding: 6px 8px;
+    padding: 0.4rem 0.5rem;
     vertical-align: top;
     white-space: normal;
     overflow-wrap: anywhere;
     word-break: break-word;
+    line-height: 1.25;
+  }
+
+  #fioTable th,
+  #fioTable td {
+    min-width: 0;
+  }
+
+  #fioTable td {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   th { background: #eaeaea; }
   tbody tr:nth-child(even) { background: #f3f3f3; }
@@ -433,6 +450,22 @@
       margin-left: var(--left-safe-zone);
       margin-right: 8px;
       padding: 14px;
+    }
+
+    #tab-docs .table-wrapper {
+      overflow-x: auto;
+    }
+
+    #tab-docs table {
+      width: max-content;
+      min-width: 100%;
+      font-size: clamp(0.82rem, 2.9vw, 0.95rem);
+    }
+
+    #tab-docs th,
+    #tab-docs td {
+      min-width: 7.5rem;
+      max-width: 13rem;
     }
   }
 </style>
