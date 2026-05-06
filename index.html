@@ -107,8 +107,13 @@
 
   h2 { text-align: center; }
   label { display: block; margin-top: 10px; }
-  input { padding: 8px; margin: 6px 0; width: 100%; box-sizing: border-box; }
-  button { padding: 10px 16px; margin-top: 10px; cursor: pointer; }
+  input { padding: 10px; margin: 6px 0; width: 100%; box-sizing: border-box; font-size: 16px; }
+  button { padding: 12px 18px; margin-top: 10px; cursor: pointer; font-size: 16px; }
+  .auth-fields { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+  .auth-field { flex: 1 1 220px; min-width: 180px; }
+  .auth-field label { margin-top: 0; }
+  .auth-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-top: 8px; }
+  .auth-status { min-width: 220px; flex: 1 1 220px; }
 
   .block {
     margin-top: 20px;
@@ -142,7 +147,8 @@
   .item-title { font-weight: bold; width: 45%; }
   .item-value { width: 55%; }
 
-  #error { color: red; margin-top: 12px; font-weight: bold; text-align: center; }
+  #error { color: red; margin: 0; font-weight: bold; text-align: left; }
+  #loading { margin: 0; color: #555; }
 
   .controls { display: flex; justify-content: center; margin-bottom: 10px; }
   .table-wrapper {
@@ -435,6 +441,15 @@
       padding: 14px;
     }
   }
+  @media (max-width: 700px) {
+    body { font-size: 18px; }
+    h2 { font-size: 1.5rem; }
+    .page { padding: 16px; }
+    input, button { font-size: 18px; padding: 12px; }
+    .auth-field { flex-basis: 100%; }
+    .auth-actions button { width: 100%; }
+    .auth-status { flex-basis: 100%; min-width: 0; }
+  }
 </style>
 </head>
 <body>
@@ -462,23 +477,29 @@
   <section id="tab-docs" class="tab-panel active">
     <h2>ДБВv5 Документы</h2>
 
-    <label>ФИО занимающегося:</label>
-    <input id="login" type="text" placeholder="Фамилия Имя Отчество" />
-
-    <label>Дата рождения:</label>
-    <input id="password" name="birthDateText" type="text" inputmode="numeric" maxlength="10" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="ДД.ММ.ГГГГ" />
-
-    <div id="snilsWrap" style="display:none;">
-      <label>СНИЛС:</label>
-      <input id="snils" type="text" inputmode="numeric" maxlength="14" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="000-000-000-00" />
+    <div class="auth-fields">
+      <div class="auth-field">
+        <label>ФИО занимающегося:</label>
+        <input id="login" type="text" placeholder="Фамилия Имя Отчество" />
+      </div>
+      <div class="auth-field">
+        <label>Дата рождения:</label>
+        <input id="password" name="birthDateText" type="text" inputmode="numeric" maxlength="10" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="ДД.ММ.ГГГГ" />
+      </div>
+      <div id="snilsWrap" class="auth-field" style="display:none;">
+        <label>СНИЛС:</label>
+        <input id="snils" type="text" inputmode="numeric" maxlength="14" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="000-000-000-00" />
+      </div>
     </div>
 
-    <button onclick="loginDocs()">Войти</button>
-
-    <div id="error"></div>
-    <div id="loading" style="margin-top:10px;color:#555;"></div>
+    <div class="auth-actions">
+      <button onclick="loginDocs()">Войти</button>
+      <div class="auth-status">
+        <div id="error"></div>
+        <div id="loading"></div>
+      </div>
+    </div>
     <div id="result"></div>
-    <div id="formContainer" style="margin-top:20px;"></div>
   </section>
 
   <section id="tab-attendance" class="tab-panel">
@@ -486,6 +507,7 @@
     <div class="controls">
       <button onclick="openAttendanceForm()">Заполнить форму</button>
     </div>
+    <div id="formContainer" style="margin-top:14px;margin-bottom:14px;"></div>
     <div class="table-wrapper">
       <table id="fioTable">
         <thead>
