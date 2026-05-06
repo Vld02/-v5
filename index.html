@@ -591,6 +591,13 @@
     dom.snilsWrap.style.display = 'none';
   }
 
+  function hideSnilsStep() {
+    authState.awaitingSnils = false;
+    authState.login = '';
+    authState.password = '';
+    dom.snilsWrap.style.display = 'none';
+  }
+
   function startSnilsStep(login, password) {
     authState.awaitingSnils = true;
     authState.login = login;
@@ -653,6 +660,7 @@
 
     const snilsFormatted = formatSnilsInput(dom.snils.value);
     dom.snils.value = snilsFormatted;
+    saveAuthInputs(loginVal, dateInput.value, snilsFormatted);
 
     dom.loading.innerText = 'Аутентификация...';
 
@@ -660,8 +668,6 @@
 
     google.script.run
       .withSuccessHandler(response => {
-        saveAuthInputs(loginVal, dateInput.value, snilsFormatted);
-
         if (response && response.error) {
           dom.error.textContent = response.error;
           dom.loading.innerText = '';
@@ -669,8 +675,11 @@
         }
 
         if (response && response.requiresSnils) {
+          const isSnilsAlreadyVisible = dom.snilsWrap.style.display !== 'none';
           startSnilsStep(loginVal, passwordForServer);
-          dom.error.textContent = 'Для входа введите СНИЛС.';
+          dom.error.textContent = isSnilsAlreadyVisible
+            ? 'СНИЛС неверный.'
+            : 'Для входа введите СНИЛС.';
           return;
         }
 
@@ -951,7 +960,7 @@
   }
 
   dom.login.addEventListener('input', function() {
-    if (authState.awaitingSnils) resetSnilsStep();
+    hideSnilsStep();
   });
 
   dom.login.addEventListener('keydown', function(e) {
@@ -962,7 +971,7 @@
   });
 
   dom.password.addEventListener('input', function(e) {
-    if (authState.awaitingSnils) resetSnilsStep();
+    hideSnilsStep();
     const formatted = formatDateInput(e.target.value);
     if (formatted !== e.target.value) e.target.value = formatted;
   });
