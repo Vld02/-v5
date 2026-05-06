@@ -25,6 +25,8 @@
 
   body {
     font-family: Arial, sans-serif;
+    font-size: 1rem;
+    line-height: 1.45;
     margin: 0;
     padding: 0;
     background-image: var(--app-bg-image);
@@ -106,9 +108,9 @@
   .tab-panel.active { display: block; }
 
   h2 { text-align: center; }
-  label { display: block; margin-top: 10px; }
-  input { padding: 8px; margin: 6px 0; width: 100%; box-sizing: border-box; }
-  button { padding: 10px 16px; margin-top: 10px; cursor: pointer; }
+  label { display: block; margin-top: 0.625rem; }
+  input { padding: 0.5rem; margin: 0.375rem 0; width: 100%; box-sizing: border-box; font-size: 1rem; }
+  button { padding: 0.625rem 1rem; margin-top: 0.625rem; cursor: pointer; font-size: 1rem; }
 
   .block {
     margin-top: 20px;
@@ -145,16 +147,30 @@
   #error { color: red; margin-top: 12px; font-weight: bold; text-align: center; }
 
   .controls { display: flex; justify-content: center; margin-bottom: 10px; }
+  .auth-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: nowrap;
+    margin-top: 0.5rem;
+  }
+  .auth-row button { margin-top: 0; }
+  .auth-status {
+    min-height: 1.4em;
+    color: #555;
+    white-space: nowrap;
+  }
   .table-wrapper {
     width: 100%;
     display: flex;
     justify-content: center;
+    overflow-x: auto;
   }
   table {
     border-collapse: collapse;
     width: 100%;
     max-width: 100%;
-    table-layout: auto;
+    table-layout: fixed;
     margin: 0 auto;
   }
   th, td {
@@ -165,6 +181,8 @@
     overflow-wrap: anywhere;
     word-break: break-word;
   }
+  #fioTable th:nth-child(1), #fioTable td:nth-child(1) { width: 35%; }
+  #fioTable th:nth-child(2), #fioTable td:nth-child(2) { width: 65%; }
   th { background: #eaeaea; }
   tbody tr:nth-child(even) { background: #f3f3f3; }
   td.input { outline: none; }
@@ -434,6 +452,21 @@
       margin-right: 8px;
       padding: 14px;
     }
+
+    html { font-size: clamp(15px, 2.8vw, 17px); }
+
+    #fioTable th,
+    #fioTable td {
+      line-height: 1.3;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .auth-row {
+      justify-content: flex-start;
+    }
   }
 </style>
 </head>
@@ -473,10 +506,13 @@
       <input id="snils" type="text" inputmode="numeric" maxlength="14" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="000-000-000-00" />
     </div>
 
-    <button onclick="loginDocs()">Войти</button>
+    <div class="auth-row">
+      <button onclick="loginDocs()">Войти</button>
+      <span id="authStatus" class="auth-status" aria-live="polite"></span>
+    </div>
 
     <div id="error"></div>
-    <div id="loading" style="margin-top:10px;color:#555;"></div>
+    <div id="loading" style="margin-top:10px;color:#555;display:none;"></div>
     <div id="result"></div>
     <div id="formContainer" style="margin-top:20px;"></div>
   </section>
@@ -536,6 +572,7 @@
   const dom = {
     error: document.getElementById('error'),
     loading: document.getElementById('loading'),
+    authStatus: document.getElementById('authStatus'),
     login: document.getElementById('login'),
     password: document.getElementById('password'),
     snils: document.getElementById('snils'),
@@ -574,6 +611,24 @@
     login: '',
     password: ''
   };
+  let authStatusTimer = null;
+  let authStatusDots = 0;
+
+  function clearAuthStatus() {
+    if (authStatusTimer) clearInterval(authStatusTimer);
+    authStatusTimer = null;
+    authStatusDots = 0;
+    dom.authStatus.textContent = '';
+  }
+
+  function setAuthStatusWithDots(baseText) {
+    clearAuthStatus();
+    dom.authStatus.textContent = baseText;
+    authStatusTimer = setInterval(() => {
+      authStatusDots = (authStatusDots + 1) % 4;
+      dom.authStatus.textContent = `${baseText}${'.'.repeat(authStatusDots)}`;
+    }, 420);
+  }
 
   function formatSnilsInput(value) {
     const digits = (value || '').replace(/\D/g, '').slice(0, 11);
@@ -610,7 +665,7 @@
 
     dom.snilsWrap.style.display = 'block';
     dom.snils.focus();
-    dom.loading.innerText = '';
+    clearAuthStatus();
   }
 
   function saveAuthInputs(loginVal, dateVal, snilsVal) {
@@ -646,7 +701,7 @@
 
   async function loginDocs() {
     dom.error.textContent = '';
-    dom.loading.innerText = '';
+    clearAuthStatus();
 
     const loginVal = dom.login.value.trim();
     const dateInput = dom.password;
@@ -662,7 +717,7 @@
     dom.snils.value = snilsFormatted;
     saveAuthInputs(loginVal, dateInput.value, snilsFormatted);
 
-    dom.loading.innerText = 'Аутентификация...';
+    setAuthStatusWithDots('Аутентификация');
 
     const clientInfo = await getClientInfo();
 
@@ -670,7 +725,7 @@
       .withSuccessHandler(response => {
         if (response && response.error) {
           dom.error.textContent = response.error;
-          dom.loading.innerText = '';
+          clearAuthStatus();
           return;
         }
 
@@ -682,6 +737,7 @@
             : 'Для входа введите СНИЛС.';
           return;
         }
+        clearAuthStatus();
 
         localStorage.setItem('isLoggedIn', '1');
         if (snilsFormatted.length === 14) {
@@ -717,14 +773,14 @@
       return;
     }
 
-    dom.loading.innerText = 'Проверка СНИЛС...';
+    setAuthStatusWithDots('Проверка СНИЛС');
     const clientInfo = await getClientInfo();
 
     google.script.run
       .withSuccessHandler(response => {
         if (response && response.error) {
           dom.error.textContent = response.error;
-          dom.loading.innerText = '';
+          clearAuthStatus();
           return;
         }
 
@@ -737,6 +793,7 @@
         authState.password = '';
         dom.snilsWrap.style.display = 'block';
         showDocsResult(response);
+        clearAuthStatus();
       })
       .verifySnils(authState.login, authState.password, snilsFormatted, clientInfo);
   }
