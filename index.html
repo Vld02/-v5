@@ -606,6 +606,12 @@
     dom.loading.innerText = '';
   }
 
+  function saveAuthInputs(loginVal, dateVal, snilsVal) {
+    localStorage.setItem('savedLogin', loginVal);
+    localStorage.setItem('savedDate', dateVal);
+    if (snilsVal) localStorage.setItem('savedSnils', snilsVal);
+  }
+
   function parseDateString(value) {
     if (!value) return null;
     value = value.trim();
@@ -648,36 +654,36 @@
     const snilsFormatted = formatSnilsInput(dom.snils.value);
     dom.snils.value = snilsFormatted;
 
-    if (authState.awaitingSnils) {
-      verifySnilsDocs();
-      return;
-    }
-
     dom.loading.innerText = 'Аутентификация...';
 
     const clientInfo = await getClientInfo();
 
     google.script.run
       .withSuccessHandler(response => {
+        saveAuthInputs(loginVal, dateInput.value, snilsFormatted);
+
+        if (response && response.error) {
+          dom.error.textContent = response.error;
+          dom.loading.innerText = '';
+          return;
+        }
+
         if (response && response.requiresSnils) {
           startSnilsStep(loginVal, passwordForServer);
-          if (snilsFormatted.length === 14) {
-            verifySnilsDocs();
-            return;
-          }
           dom.error.textContent = 'Для входа введите СНИЛС.';
           return;
         }
 
-        localStorage.setItem('savedLogin', loginVal);
-        localStorage.setItem('savedDate', dateInput.value);
         localStorage.setItem('isLoggedIn', '1');
+        if (snilsFormatted.length === 14) {
+          dom.snilsWrap.style.display = 'block';
+        }
         authState.awaitingSnils = false;
         authState.login = '';
         authState.password = '';
         showDocsResult(response);
       })
-      .checkLogin(loginVal, passwordForServer, clientInfo);
+      .checkLogin(loginVal, passwordForServer, clientInfo, snilsFormatted);
   }
 
   async function verifySnilsDocs() {
@@ -769,10 +775,7 @@
 
     if (savedLogin) dom.login.value = savedLogin;
     if (savedDate) dom.password.value = formatDateInput(savedDate);
-    if (savedSnils) {
-      dom.snils.value = formatSnilsInput(savedSnils);
-      dom.snilsWrap.style.display = 'block';
-    }
+    if (savedSnils) dom.snils.value = formatSnilsInput(savedSnils);
   });
 
   const ENTRY_MAP = {
@@ -974,9 +977,6 @@
   dom.snils.addEventListener('input', function(e) {
     const formatted = formatSnilsInput(e.target.value);
     if (formatted !== e.target.value) e.target.value = formatted;
-    if (formatted.length === 14) {
-      localStorage.setItem('savedSnils', formatted);
-    }
   });
 
   dom.snils.addEventListener('keydown', function(e) {
