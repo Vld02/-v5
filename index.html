@@ -415,7 +415,7 @@
 
   @media (max-width: 820px) {
     :root {
-      --left-safe-zone: 92px;
+      --left-safe-zone: 0px;
     }
 
     .tabs {
@@ -424,15 +424,14 @@
     }
 
     .tab-flag {
-      width: 80px;
-      height: 62px;
-      transform: translateX(-18px);
+      width: 58px;
+      height: 46px;
+      transform: translateX(-24px);
     }
 
     .page {
-      width: calc(100vw - var(--left-safe-zone) - 12px);
-      margin-left: var(--left-safe-zone);
-      margin-right: 6px;
+      width: calc(100vw - 16px);
+      margin: 8px auto;
       padding: 14px;
     }
 
