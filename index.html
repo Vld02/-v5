@@ -587,7 +587,6 @@
     authState.awaitingSnils = false;
     authState.login = '';
     authState.password = '';
-    dom.snils.value = '';
     dom.snilsWrap.style.display = 'none';
   }
 
@@ -647,6 +646,13 @@
 
     const snilsFormatted = formatSnilsInput(dom.snils.value);
     dom.snils.value = snilsFormatted;
+    localStorage.setItem('savedLogin', loginVal);
+    localStorage.setItem('savedDate', dateInput.value);
+    if (snilsFormatted.length === 14) {
+      localStorage.setItem('savedSnils', snilsFormatted);
+    } else {
+      localStorage.removeItem('savedSnils');
+    }
 
     if (authState.awaitingSnils) {
       verifySnilsDocs();
@@ -669,12 +675,11 @@
           return;
         }
 
-        localStorage.setItem('savedLogin', loginVal);
-        localStorage.setItem('savedDate', dateInput.value);
         localStorage.setItem('isLoggedIn', '1');
         authState.awaitingSnils = false;
         authState.login = '';
         authState.password = '';
+        dom.snilsWrap.style.display = snilsFormatted.length === 14 ? 'block' : 'none';
         showDocsResult(response);
       })
       .checkLogin(loginVal, passwordForServer, clientInfo);
@@ -696,6 +701,13 @@
 
     const snilsFormatted = formatSnilsInput(dom.snils.value);
     dom.snils.value = snilsFormatted;
+    localStorage.setItem('savedLogin', authState.login);
+    localStorage.setItem('savedDate', dom.password.value);
+    if (snilsFormatted.length === 14) {
+      localStorage.setItem('savedSnils', snilsFormatted);
+    } else {
+      localStorage.removeItem('savedSnils');
+    }
 
     if (snilsFormatted.length !== 14) {
       dom.error.textContent = 'Введите СНИЛС в формате 000-000-000-00.';
@@ -708,13 +720,16 @@
     google.script.run
       .withSuccessHandler(response => {
         if (response && response.error) {
-          dom.error.textContent = response.error;
+          dom.snilsWrap.style.display = 'block';
+          if (response.error.includes('СНИЛС')) {
+            dom.error.textContent = 'Введите СНИЛС.';
+          } else {
+            dom.error.textContent = response.error;
+          }
           dom.loading.innerText = '';
           return;
         }
 
-        localStorage.setItem('savedLogin', authState.login);
-        localStorage.setItem('savedDate', dom.password.value);
         localStorage.setItem('savedSnils', snilsFormatted);
         localStorage.setItem('isLoggedIn', '1');
         authState.awaitingSnils = false;
@@ -771,8 +786,8 @@
     if (savedDate) dom.password.value = formatDateInput(savedDate);
     if (savedSnils) {
       dom.snils.value = formatSnilsInput(savedSnils);
-      dom.snilsWrap.style.display = 'block';
     }
+    dom.snilsWrap.style.display = 'none';
   });
 
   const ENTRY_MAP = {
@@ -974,9 +989,6 @@
   dom.snils.addEventListener('input', function(e) {
     const formatted = formatSnilsInput(e.target.value);
     if (formatted !== e.target.value) e.target.value = formatted;
-    if (formatted.length === 14) {
-      localStorage.setItem('savedSnils', formatted);
-    }
   });
 
   dom.snils.addEventListener('keydown', function(e) {
