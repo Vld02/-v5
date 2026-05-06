@@ -212,6 +212,48 @@
     to { transform: rotate(360deg); }
   }
 
+
+
+  @media (max-width: 900px) {
+    :root {
+      --left-safe-zone: 0px;
+    }
+
+    body {
+      background-attachment: scroll;
+    }
+
+    .page {
+      width: calc(100vw - 16px);
+      margin: 12px auto;
+      margin-left: auto;
+      margin-right: auto;
+      padding: 14px;
+      border-radius: 12px;
+    }
+
+    .left-safe-border {
+      display: none;
+    }
+
+    .tabs {
+      position: static;
+      flex-direction: row;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 8px 0 12px;
+    }
+
+    .tab-flag,
+    .tab-flag.active,
+    .tab-flag:hover {
+      width: 72px;
+      height: 56px;
+      border-radius: 10px;
+      transform: none;
+    }
+  }
   .training-list-head,
   .training-toggle {
     display: grid;
