@@ -430,9 +430,13 @@
     }
 
     .page {
-      width: calc(100vw - 16px);
-      margin: 8px auto;
+      width: calc(100vw - 16px) !important;
+      max-width: none;
+      margin: 8px !important;
+      margin-left: 8px !important;
+      margin-right: 8px !important;
       padding: 14px;
+      box-sizing: border-box;
     }
 
     .table-wrapper,
