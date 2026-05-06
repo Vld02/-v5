@@ -106,9 +106,14 @@
   .tab-panel.active { display: block; }
 
   h2 { text-align: center; }
-  label { display: block; margin-top: 10px; }
-  input { padding: 8px; margin: 6px 0; width: 100%; box-sizing: border-box; }
-  button { padding: 10px 16px; margin-top: 10px; cursor: pointer; }
+  label { display: block; margin-top: 10px; font-size: 17px; }
+  input { padding: 12px; margin: 6px 0; width: 100%; box-sizing: border-box; font-size: 17px; }
+  button { padding: 12px 18px; margin-top: 10px; cursor: pointer; font-size: 17px; }
+  .auth-fields { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+  .auth-field { flex: 1 1 220px; min-width: 220px; }
+  .auth-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; }
+  .auth-actions #error, .auth-actions #loading { margin: 0; }
+  .auth-actions #loading { color: #555; }
 
   .block {
     margin-top: 20px;
@@ -434,6 +439,9 @@
       margin-right: 8px;
       padding: 14px;
     }
+    label { font-size: 19px; }
+    input { font-size: 19px; padding: 14px; }
+    button { font-size: 19px; padding: 14px 20px; }
   }
 </style>
 </head>
@@ -462,23 +470,27 @@
   <section id="tab-docs" class="tab-panel active">
     <h2>ДБВv5 Документы</h2>
 
-    <label>ФИО занимающегося:</label>
-    <input id="login" type="text" placeholder="Фамилия Имя Отчество" />
-
-    <label>Дата рождения:</label>
-    <input id="password" name="birthDateText" type="text" inputmode="numeric" maxlength="10" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="ДД.ММ.ГГГГ" />
-
-    <div id="snilsWrap" style="display:none;">
-      <label>СНИЛС:</label>
-      <input id="snils" type="text" inputmode="numeric" maxlength="14" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="000-000-000-00" />
+    <div class="auth-fields">
+      <div class="auth-field">
+        <label>ФИО занимающегося:</label>
+        <input id="login" type="text" placeholder="Фамилия Имя Отчество" />
+      </div>
+      <div class="auth-field">
+        <label>Дата рождения:</label>
+        <input id="password" name="birthDateText" type="text" inputmode="numeric" maxlength="10" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="ДД.ММ.ГГГГ" />
+      </div>
+      <div id="snilsWrap" class="auth-field" style="display:none;">
+        <label>СНИЛС:</label>
+        <input id="snils" type="text" inputmode="numeric" maxlength="14" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="000-000-000-00" />
+      </div>
     </div>
 
-    <button onclick="loginDocs()">Войти</button>
-
-    <div id="error"></div>
-    <div id="loading" style="margin-top:10px;color:#555;"></div>
+    <div class="auth-actions">
+      <button onclick="loginDocs()">Войти</button>
+      <div id="loading"></div>
+      <div id="error"></div>
+    </div>
     <div id="result"></div>
-    <div id="formContainer" style="margin-top:20px;"></div>
   </section>
 
   <section id="tab-attendance" class="tab-panel">
@@ -591,6 +603,13 @@
     dom.snilsWrap.style.display = 'none';
   }
 
+  function hideSnilsStep() {
+    authState.awaitingSnils = false;
+    authState.login = '';
+    authState.password = '';
+    dom.snilsWrap.style.display = 'none';
+  }
+
   function startSnilsStep(login, password) {
     authState.awaitingSnils = true;
     authState.login = login;
@@ -604,6 +623,12 @@
     dom.snilsWrap.style.display = 'block';
     dom.snils.focus();
     dom.loading.innerText = '';
+  }
+
+  function saveAuthInputs(loginVal, dateVal, snilsVal) {
+    localStorage.setItem('savedLogin', loginVal);
+    localStorage.setItem('savedDate', dateVal);
+    if (snilsVal) localStorage.setItem('savedSnils', snilsVal);
   }
 
   function parseDateString(value) {
@@ -647,11 +672,7 @@
 
     const snilsFormatted = formatSnilsInput(dom.snils.value);
     dom.snils.value = snilsFormatted;
-
-    if (authState.awaitingSnils) {
-      verifySnilsDocs();
-      return;
-    }
+    saveAuthInputs(loginVal, dateInput.value, snilsFormatted);
 
     dom.loading.innerText = 'Аутентификация...';
 
@@ -659,25 +680,31 @@
 
     google.script.run
       .withSuccessHandler(response => {
-        if (response && response.requiresSnils) {
-          startSnilsStep(loginVal, passwordForServer);
-          if (snilsFormatted.length === 14) {
-            verifySnilsDocs();
-            return;
-          }
-          dom.error.textContent = 'Для входа введите СНИЛС.';
+        if (response && response.error) {
+          dom.error.textContent = response.error;
+          dom.loading.innerText = '';
           return;
         }
 
-        localStorage.setItem('savedLogin', loginVal);
-        localStorage.setItem('savedDate', dateInput.value);
+        if (response && response.requiresSnils) {
+          const isSnilsAlreadyVisible = dom.snilsWrap.style.display !== 'none';
+          startSnilsStep(loginVal, passwordForServer);
+          dom.error.textContent = isSnilsAlreadyVisible
+            ? 'СНИЛС неверный.'
+            : 'Для входа введите СНИЛС.';
+          return;
+        }
+
         localStorage.setItem('isLoggedIn', '1');
+        if (snilsFormatted.length === 14) {
+          dom.snilsWrap.style.display = 'block';
+        }
         authState.awaitingSnils = false;
         authState.login = '';
         authState.password = '';
         showDocsResult(response);
       })
-      .checkLogin(loginVal, passwordForServer, clientInfo);
+      .checkLogin(loginVal, passwordForServer, clientInfo, snilsFormatted);
   }
 
   async function verifySnilsDocs() {
@@ -769,10 +796,7 @@
 
     if (savedLogin) dom.login.value = savedLogin;
     if (savedDate) dom.password.value = formatDateInput(savedDate);
-    if (savedSnils) {
-      dom.snils.value = formatSnilsInput(savedSnils);
-      dom.snilsWrap.style.display = 'block';
-    }
+    if (savedSnils) dom.snils.value = formatSnilsInput(savedSnils);
   });
 
   const ENTRY_MAP = {
@@ -871,7 +895,8 @@
         <div id="externalFormBtnWrapper" style="display:none;margin-top:10px;">
           <button class="button-link" onclick="openFormInNewWindow('${formUrl}')">Открыть форму в отдельной вкладке</button>
         </div>
-      </div>`;
+      </div>
+      <div id="formContainer" style="margin-top:20px;"></div>`;
 
     const SECTION_STARTS = {
       'Фамилия Имя Отчество (С)': 'Спортсмен',
@@ -948,7 +973,7 @@
   }
 
   dom.login.addEventListener('input', function() {
-    if (authState.awaitingSnils) resetSnilsStep();
+    hideSnilsStep();
   });
 
   dom.login.addEventListener('keydown', function(e) {
@@ -959,7 +984,7 @@
   });
 
   dom.password.addEventListener('input', function(e) {
-    if (authState.awaitingSnils) resetSnilsStep();
+    hideSnilsStep();
     const formatted = formatDateInput(e.target.value);
     if (formatted !== e.target.value) e.target.value = formatted;
   });
@@ -974,9 +999,6 @@
   dom.snils.addEventListener('input', function(e) {
     const formatted = formatSnilsInput(e.target.value);
     if (formatted !== e.target.value) e.target.value = formatted;
-    if (formatted.length === 14) {
-      localStorage.setItem('savedSnils', formatted);
-    }
   });
 
   dom.snils.addEventListener('keydown', function(e) {
