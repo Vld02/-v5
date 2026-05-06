@@ -14,6 +14,18 @@
 <link rel="apple-touch-icon" sizes="180x180" href="https://raw.githubusercontent.com/Vld02/-v5/refs/heads/main/192.png" />
 <link rel="apple-touch-icon" sizes="512x512" href="https://raw.githubusercontent.com/Vld02/-v5/refs/heads/main/512.png" />
 <title>ДБВv5</title>
+<script>
+  (function ensureMobileViewport() {
+    var vp = document.querySelector('meta[name="viewport"]');
+    var content = "width=device-width,initial-scale=1,maximum-scale=1";
+    if (!vp) {
+      vp = document.createElement("meta");
+      vp.setAttribute("name", "viewport");
+      document.head.appendChild(vp);
+    }
+    vp.setAttribute("content", content);
+  })();
+</script>
 <style>
   :root {
     --card-bg: rgba(255, 255, 255, 0.92);
