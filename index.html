@@ -475,6 +475,45 @@
       padding: 14px;
     }
   }
+
+  @media (max-width: 640px) {
+    :root {
+      --left-safe-zone: 0px;
+    }
+
+    .left-safe-border {
+      display: none;
+    }
+
+    .tabs {
+      position: static;
+      flex-direction: row;
+      justify-content: center;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .tab-flag,
+    .tab-flag:hover,
+    .tab-flag.active {
+      transform: none;
+    }
+
+    .tab-flag {
+      width: 4.5rem;
+      height: 3.5rem;
+      border-radius: 0.625rem;
+    }
+
+    .page {
+      width: calc(100vw - 1rem);
+      max-width: none;
+      margin: 0.5rem auto;
+      padding: 0.75rem;
+    }
+  }
+
 </style>
 </head>
 <body>
