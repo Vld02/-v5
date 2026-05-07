@@ -51,6 +51,8 @@ function doGet() {
   return output;
 }
 
+
+
 /*************************************************
  * ЛОГИРОВАНИЕ
  *************************************************/
@@ -136,6 +138,32 @@ function getSnilsColumnIndex(header) {
 }
 
 /**
+ * Пакетно загружает колонки авторизации из минимального диапазона.
+ * Это снижает число обращений к Spreadsheet API.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @param {number} rowCount
+ * @param {{loginCol:number,passCol:number}} authCols
+ * @param {number} snilsCol
+ * @returns {{logins:Array<Array<*>>,passwords:Array<Array<*>>,snilsValues:Array<Array<*>>|null}}
+ */
+function loadAuthColumns(sheet, rowCount, authCols, snilsCol) {
+  const requestedCols = [authCols.loginCol, authCols.passCol];
+  if (snilsCol >= 0) requestedCols.push(snilsCol);
+
+  const minCol = Math.min(...requestedCols);
+  const maxCol = Math.max(...requestedCols);
+  const width = maxCol - minCol + 1;
+  const block = sheet.getRange(2, minCol + 1, rowCount, width).getValues();
+
+  const rel = col => col - minCol;
+  const logins = block.map(row => [row[rel(authCols.loginCol)]]);
+  const passwords = block.map(row => [row[rel(authCols.passCol)]]);
+  const snilsValues = snilsCol >= 0 ? block.map(row => [row[rel(snilsCol)]]) : null;
+
+  return { logins, passwords, snilsValues };
+}
+
+/**
  * Нормализует СНИЛС к формату 000-000-000-00.
  * @param {*} value Исходный СНИЛС.
  * @returns {string}
@@ -168,70 +196,6 @@ function formatCellValue(value) {
 }
 
 /**
- * Загружает контекст авторизации из листа результатов.
- * @returns {{
- *   sheet: GoogleAppsScript.Spreadsheet.Sheet,
- *   lastRow: number,
- *   lastCol: number,
- *   rowCount: number,
- *   header: string[],
- *   headerColors: string[],
- *   authCols: {loginCol:number, passCol:number},
- *   allowedCols: number[],
- *   snilsCol: number
- * } | { error: string }}
- */
-function getAuthSheetContext() {
-  const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
-  if (!sheet) return { error: 'Лист с результатами не найден.' };
-
-  const lastRow = sheet.getLastRow();
-  const lastCol = sheet.getLastColumn();
-  if (lastRow < 2 || lastCol < 1) return { error: 'Таблица пуста.' };
-
-  const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
-  const headerColors = sheet.getRange(1, 1, 1, lastCol).getBackgrounds()[0];
-
-  let authCols;
-  let allowedCols;
-  try {
-    authCols = getAuthColumnIndexes(header);
-    allowedCols = getAllowedColumnIndexes(headerColors);
-  } catch (_error) {
-    return { error: 'Ошибка структуры таблицы.' };
-  }
-
-  return {
-    sheet,
-    lastRow,
-    lastCol,
-    rowCount: lastRow - 1,
-    header,
-    headerColors,
-    authCols,
-    allowedCols,
-    snilsCol: getSnilsColumnIndex(header)
-  };
-}
-
-/**
- * Ищет индекс строки по логину и дате рождения.
- * @param {Array<Array<*>>} logins
- * @param {Array<Array<*>>} passwords
- * @param {string} normalizedLogin
- * @param {string} password
- * @returns {number} Индекс массива (0-based) или -1.
- */
-function findAuthRowIndex(logins, passwords, normalizedLogin, password) {
-  for (let i = 0; i < logins.length; i++) {
-    const rowLogin = normalizeLogin(logins[i][0]);
-    const rowPassword = formatCellValue(passwords[i][0]).trim();
-    if (rowLogin === normalizedLogin && rowPassword === password) return i;
-  }
-  return -1;
-}
-
-/**
  * Собирает данные строки только по разрешенным колонкам.
  * @param {Array<*>} row Значения строки.
  * @param {string[]} header Заголовки.
@@ -244,6 +208,21 @@ function prepareRowForClient(row, header, backgrounds, allowedCols) {
     row: allowedCols.map(i => formatCellValue(row[i])),
     colors: allowedCols.map(i => backgrounds[i])
   };
+}
+
+/**
+ * Собирает payload строки для ответа клиенту.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @param {number} rowIndex
+ * @param {number} lastCol
+ * @param {string[]} header
+ * @param {number[]} allowedCols
+ * @returns {{header:string[],row:string[],colors:string[]}}
+ */
+function buildClientRowPayload(sheet, rowIndex, lastCol, header, allowedCols) {
+  const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
+  const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
+  return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
 }
 
 /**
@@ -267,42 +246,65 @@ function checkLogin(login, password, clientInfo = {}, snils = '') {
   const startedAt = Date.now();
   logStage('Начало checkLogin', startedAt);
 
-  const context = getAuthSheetContext();
-  if (context.error) {
+  const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
+
+  if (!sheet) {
     logAccess({ login, password, clientInfo, status: 'Лист не найден' });
-    return { error: context.error };
+    return { error: 'Лист с результатами не найден.' };
   }
-  const { sheet, lastCol, rowCount, header, headerColors, authCols, allowedCols, snilsCol } = context;
-  logStage(`Получены границы листа: rows=${context.lastRow}, cols=${lastCol}`, startedAt);
+
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  logStage(`Получены границы листа: rows=${lastRow}, cols=${lastCol}`, startedAt);
+
+  if (lastRow < 2 || lastCol < 1) {
+    return { error: 'Таблица пуста.' };
+  }
+
+  const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+  const headerColors = sheet.getRange(1, 1, 1, lastCol).getBackgrounds()[0];
   logStage('Загружены заголовки и цвета заголовков', startedAt);
 
-  const logins = sheet.getRange(2, authCols.loginCol + 1, rowCount, 1).getValues();
-  const passwords = sheet.getRange(2, authCols.passCol + 1, rowCount, 1).getValues();
+  let authCols;
+  let allowedCols;
+
+  try {
+    authCols = getAuthColumnIndexes(header);
+    allowedCols = getAllowedColumnIndexes(headerColors);
+  } catch (_error) {
+    logAccess({ login, password, clientInfo, status: 'Ошибка конфигурации столбцов' });
+    return { error: 'Ошибка структуры таблицы.' };
+  }
+
+  const rowCount = lastRow - 1;
   const normalizedLogin = normalizeLogin(login);
-  const snilsValues = snilsCol >= 0 ? sheet.getRange(2, snilsCol + 1, rowCount, 1).getValues() : null;
+  const snilsCol = getSnilsColumnIndex(header);
+  const { logins, passwords, snilsValues } = loadAuthColumns(sheet, rowCount, authCols, snilsCol);
   const expectedSnils = normalizeSnils(snils);
   logStage('Загружены только колонки авторизации/СНИЛС', startedAt);
 
-  const matchedIndex = findAuthRowIndex(logins, passwords, normalizedLogin, password);
-  if (matchedIndex === -1) {
-    logAccess({ login, password, clientInfo, status: 'Неудачный вход: ФИО/дата' });
-    logStage('Совпадение не найдено', startedAt);
-    return { error: 'Неправильно введены ФИО или дата рождения.' };
+  for (let i = 0; i < rowCount; i++) {
+    const rowLogin = normalizeLogin(logins[i][0]);
+    const rowPassword = formatCellValue(passwords[i][0]).trim();
+
+    if (rowLogin === normalizedLogin && rowPassword === password) {
+      const rowSnils = snilsValues ? normalizeSnils(snilsValues[i][0]) : '';
+      if (rowSnils && rowSnils !== expectedSnils) {
+        logAccess({ login, password, clientInfo, status: 'Требуется ввод СНИЛС' });
+        logStage('Совпадение найдено, требуется СНИЛС', startedAt);
+        return { requiresSnils: true };
+      }
+
+      const rowIndex = i + 2;
+      logAccess({ login, password, clientInfo, status: 'Удачный вход' });
+      logStage('Совпадение найдено, данные строки загружены', startedAt);
+      return buildClientRowPayload(sheet, rowIndex, lastCol, header, allowedCols);
+    }
   }
 
-  const rowSnils = snilsValues ? normalizeSnils(snilsValues[matchedIndex][0]) : '';
-  if (rowSnils && rowSnils !== expectedSnils) {
-    logAccess({ login, password, clientInfo, status: 'Требуется ввод СНИЛС' });
-    logStage('Совпадение найдено, требуется СНИЛС', startedAt);
-    return { requiresSnils: true };
-  }
-
-  const rowIndex = matchedIndex + 2;
-  const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
-  const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
-  logAccess({ login, password, clientInfo, status: 'Удачный вход' });
-  logStage('Совпадение найдено, данные строки загружены', startedAt);
-  return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
+  logAccess({ login, password, clientInfo, status: 'Неудачный вход: ФИО/дата' });
+  logStage('Совпадение не найдено', startedAt);
+  return { error: 'Неправильно введены ФИО или дата рождения.' };
 }
 
 
@@ -318,42 +320,67 @@ function verifySnils(login, password, snils, clientInfo = {}) {
   const startedAt = Date.now();
   logStage('Начало verifySnils', startedAt);
 
-  const context = getAuthSheetContext();
-  if (context.error) return { error: context.error };
-  const { sheet, lastCol, rowCount, header, authCols, allowedCols, snilsCol } = context;
+  const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
+  if (!sheet) {
+    return { error: 'Лист с результатами не найден.' };
+  }
+
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+
+  if (lastRow < 2 || lastCol < 1) {
+    return { error: 'Таблица пуста.' };
+  }
+
+  const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+  const headerColors = sheet.getRange(1, 1, 1, lastCol).getBackgrounds()[0];
+
+  let authCols;
+  let allowedCols;
+  try {
+    authCols = getAuthColumnIndexes(header);
+    allowedCols = getAllowedColumnIndexes(headerColors);
+  } catch (_error) {
+    return { error: 'Ошибка структуры таблицы.' };
+  }
+
+  const snilsCol = getSnilsColumnIndex(header);
   if (snilsCol === -1) {
     return { error: 'Ошибка структуры таблицы.' };
   }
 
-  const logins = sheet.getRange(2, authCols.loginCol + 1, rowCount, 1).getValues();
-  const passwords = sheet.getRange(2, authCols.passCol + 1, rowCount, 1).getValues();
-  const snilsValues = sheet.getRange(2, snilsCol + 1, rowCount, 1).getValues();
+  const rowCount = lastRow - 1;
+  const { logins, passwords, snilsValues } = loadAuthColumns(sheet, rowCount, authCols, snilsCol);
   logStage('Загружены колонки для проверки СНИЛС', startedAt);
 
   const normalizedLogin = normalizeLogin(login);
   const expectedSnils = normalizeSnils(snils);
-  const matchedIndex = findAuthRowIndex(logins, passwords, normalizedLogin, password);
-  if (matchedIndex === -1) return { error: 'Неправильно введены ФИО или дата рождения.' };
 
-  const rowSnils = normalizeSnils(snilsValues[matchedIndex][0]);
-  const rowIndex = matchedIndex + 2;
-  const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
-  const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
+  for (let i = 0; i < rowCount; i++) {
+    const rowLogin = normalizeLogin(logins[i][0]);
+    const rowPassword = formatCellValue(passwords[i][0]).trim();
 
-  if (!rowSnils) {
-    logAccess({ login, password, clientInfo, status: 'Удачный вход без СНИЛС' });
-    return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
+    if (rowLogin === normalizedLogin && rowPassword === password) {
+      const rowSnils = normalizeSnils(snilsValues[i][0]);
+      if (!rowSnils) {
+        const rowIndex = i + 2;
+        logAccess({ login, password, clientInfo, status: 'Удачный вход без СНИЛС' });
+        return buildClientRowPayload(sheet, rowIndex, lastCol, header, allowedCols);
+      }
+
+      if (rowSnils !== expectedSnils) {
+        logAccess({ login, password, clientInfo, status: 'Неудачный вход: СНИЛС' });
+        return { error: 'Неправильно введён СНИЛС' };
+      }
+
+      const rowIndex = i + 2;
+      logAccess({ login, password, clientInfo, status: 'Удачный вход по СНИЛС' });
+      logStage('СНИЛС подтвержден, данные строки загружены', startedAt);
+      return buildClientRowPayload(sheet, rowIndex, lastCol, header, allowedCols);
+    }
   }
 
-  if (rowSnils !== expectedSnils) {
-    logAccess({ login, password, clientInfo, status: 'Неудачный вход: СНИЛС' });
-    return { error: 'Неправильно введён СНИЛС' };
-  }
-
-  logAccess({ login, password, clientInfo, status: 'Удачный вход по СНИЛС' });
-  logStage('СНИЛС подтвержден, данные строки загружены', startedAt);
-  return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
-
+  return { error: 'Неправильно введены ФИО или дата рождения.' };
 }
 
 /*************************************************
