@@ -218,6 +218,21 @@ function prepareRowForClient(row, header, backgrounds, allowedCols) {
 }
 
 /**
+ * Собирает payload строки для ответа клиенту.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @param {number} rowIndex
+ * @param {number} lastCol
+ * @param {string[]} header
+ * @param {number[]} allowedCols
+ * @returns {{header:string[],row:string[],colors:string[]}}
+ */
+function buildClientRowPayload(sheet, rowIndex, lastCol, header, allowedCols) {
+  const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
+  const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
+  return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
+}
+
+/**
  * Техническое логирование этапов выполнения (для поиска зависаний).
  * @param {string} stage
  * @param {number} startedAt
@@ -288,11 +303,9 @@ function checkLogin(login, password, clientInfo = {}, snils = '') {
       }
 
       const rowIndex = i + 2;
-      const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
-      const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
       logAccess({ login, password, clientInfo, status: 'Удачный вход' });
       logStage('Совпадение найдено, данные строки загружены', startedAt);
-      return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
+      return buildClientRowPayload(sheet, rowIndex, lastCol, header, allowedCols);
     }
   }
 
@@ -358,10 +371,8 @@ function verifySnils(login, password, snils, clientInfo = {}) {
       const rowSnils = normalizeSnils(snilsValues[i][0]);
       if (!rowSnils) {
         const rowIndex = i + 2;
-        const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
-        const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
         logAccess({ login, password, clientInfo, status: 'Удачный вход без СНИЛС' });
-        return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
+        return buildClientRowPayload(sheet, rowIndex, lastCol, header, allowedCols);
       }
 
       if (rowSnils !== expectedSnils) {
@@ -370,11 +381,9 @@ function verifySnils(login, password, snils, clientInfo = {}) {
       }
 
       const rowIndex = i + 2;
-      const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
-      const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
       logAccess({ login, password, clientInfo, status: 'Удачный вход по СНИЛС' });
       logStage('СНИЛС подтвержден, данные строки загружены', startedAt);
-      return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
+      return buildClientRowPayload(sheet, rowIndex, lastCol, header, allowedCols);
     }
   }
 
