@@ -145,6 +145,32 @@ function getSnilsColumnIndex(header) {
 }
 
 /**
+ * Пакетно загружает колонки авторизации из минимального диапазона.
+ * Это снижает число обращений к Spreadsheet API.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @param {number} rowCount
+ * @param {{loginCol:number,passCol:number}} authCols
+ * @param {number} snilsCol
+ * @returns {{logins:Array<Array<*>>,passwords:Array<Array<*>>,snilsValues:Array<Array<*>>|null}}
+ */
+function loadAuthColumns(sheet, rowCount, authCols, snilsCol) {
+  const requestedCols = [authCols.loginCol, authCols.passCol];
+  if (snilsCol >= 0) requestedCols.push(snilsCol);
+
+  const minCol = Math.min(...requestedCols);
+  const maxCol = Math.max(...requestedCols);
+  const width = maxCol - minCol + 1;
+  const block = sheet.getRange(2, minCol + 1, rowCount, width).getValues();
+
+  const rel = col => col - minCol;
+  const logins = block.map(row => [row[rel(authCols.loginCol)]]);
+  const passwords = block.map(row => [row[rel(authCols.passCol)]]);
+  const snilsValues = snilsCol >= 0 ? block.map(row => [row[rel(snilsCol)]]) : null;
+
+  return { logins, passwords, snilsValues };
+}
+
+/**
  * Нормализует СНИЛС к формату 000-000-000-00.
  * @param {*} value Исходный СНИЛС.
  * @returns {string}
@@ -243,11 +269,9 @@ function checkLogin(login, password, clientInfo = {}, snils = '') {
   }
 
   const rowCount = lastRow - 1;
-  const logins = sheet.getRange(2, authCols.loginCol + 1, rowCount, 1).getValues();
-  const passwords = sheet.getRange(2, authCols.passCol + 1, rowCount, 1).getValues();
   const normalizedLogin = normalizeLogin(login);
   const snilsCol = getSnilsColumnIndex(header);
-  const snilsValues = snilsCol >= 0 ? sheet.getRange(2, snilsCol + 1, rowCount, 1).getValues() : null;
+  const { logins, passwords, snilsValues } = loadAuthColumns(sheet, rowCount, authCols, snilsCol);
   const expectedSnils = normalizeSnils(snils);
   logStage('Загружены только колонки авторизации/СНИЛС', startedAt);
 
@@ -320,9 +344,7 @@ function verifySnils(login, password, snils, clientInfo = {}) {
   }
 
   const rowCount = lastRow - 1;
-  const logins = sheet.getRange(2, authCols.loginCol + 1, rowCount, 1).getValues();
-  const passwords = sheet.getRange(2, authCols.passCol + 1, rowCount, 1).getValues();
-  const snilsValues = sheet.getRange(2, snilsCol + 1, rowCount, 1).getValues();
+  const { logins, passwords, snilsValues } = loadAuthColumns(sheet, rowCount, authCols, snilsCol);
   logStage('Загружены колонки для проверки СНИЛС', startedAt);
 
   const normalizedLogin = normalizeLogin(login);
