@@ -622,14 +622,6 @@
     return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 9)}-${digits.slice(9)}`;
   }
 
-  function resetSnilsStep() {
-    authState.awaitingSnils = false;
-    authState.login = '';
-    authState.password = '';
-    dom.snils.value = '';
-    dom.snilsWrap.style.display = 'none';
-  }
-
   function hideSnilsStep() {
     authState.awaitingSnils = false;
     authState.login = '';
