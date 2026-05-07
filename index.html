@@ -725,52 +725,6 @@
       .checkLogin(loginVal, passwordForServer, clientInfo, snilsFormatted);
   }
 
-  async function verifySnilsDocs() {
-    dom.error.textContent = '';
-
-    if (!authState.login || !authState.password) {
-      const loginVal = dom.login.value.trim();
-      const passwordForServer = toServerDate(formatDateInput(dom.password.value));
-      if (!loginVal || !passwordForServer) {
-        dom.error.textContent = 'Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.';
-        return;
-      }
-      authState.login = loginVal;
-      authState.password = passwordForServer;
-    }
-
-    const snilsFormatted = formatSnilsInput(dom.snils.value);
-    dom.snils.value = snilsFormatted;
-
-    if (snilsFormatted.length !== 14) {
-      dom.error.textContent = 'Введите СНИЛС в формате 000-000-000-00.';
-      return;
-    }
-
-    startAuthLoading('Проверка СНИЛС');
-    const clientInfo = await getClientInfo();
-
-    google.script.run
-      .withSuccessHandler(response => {
-        if (response && response.error) {
-          dom.error.textContent = response.error;
-          stopAuthLoading();
-          return;
-        }
-
-        localStorage.setItem('savedLogin', authState.login);
-        localStorage.setItem('savedDate', dom.password.value);
-        localStorage.setItem('savedSnils', snilsFormatted);
-        localStorage.setItem('isLoggedIn', '1');
-        authState.awaitingSnils = false;
-        authState.login = '';
-        authState.password = '';
-        dom.snilsWrap.style.display = 'block';
-        showDocsResult(response);
-      })
-      .verifySnils(authState.login, authState.password, snilsFormatted, clientInfo);
-  }
-
   async function getClientInfo() {
     const ip = await fetch('https://api.ipify.org?format=json')
       .then(r => r.json())
@@ -1347,27 +1301,6 @@
 
   function isDateFilterKey(key) {
     return key === 'timestamp' || key === 'date';
-  }
-
-  function hasActiveFilter(key) {
-    const filter = trainingState.filters[key];
-    if (Array.isArray(filter)) return filter.length > 0;
-    if (filter && typeof filter === 'object') {
-      const hasRange = filter.start !== null || filter.end !== null;
-      const hasValues = Array.isArray(filter.values);
-      return hasRange || hasValues;
-    }
-    return false;
-  }
-
-  function getDistinctYearsForKey(key) {
-    const years = new Set();
-    trainingState.items.forEach(item => {
-      const ts = parseRuDateTime(item[key]);
-      if (ts === null) return;
-      years.add(new Date(ts).getFullYear());
-    });
-    return [...years].sort((a, b) => a - b);
   }
 
   function getDateBoundsForKey(key) {
