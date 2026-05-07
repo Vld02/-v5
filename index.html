@@ -450,6 +450,43 @@
       padding: 14px;
     }
   }
+
+  @media (max-width: 600px) {
+    :root {
+      --left-safe-zone: 0px;
+    }
+
+    .left-safe-border {
+      display: none;
+    }
+
+    .tabs {
+      position: static;
+      flex-direction: row;
+      justify-content: center;
+      gap: 8px;
+      margin: 0 0 12px;
+    }
+
+    .tab-flag,
+    .tab-flag.active,
+    .tab-flag:hover {
+      width: 82px;
+      height: 58px;
+      transform: none;
+      border-radius: 10px;
+    }
+
+    .page {
+      width: calc(100vw - 16px);
+      margin: 10px auto;
+      padding: 12px;
+    }
+
+    h2 {
+      margin-top: 6px;
+    }
+  }
 </style>
 </head>
 <body>
