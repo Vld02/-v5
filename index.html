@@ -14,6 +14,18 @@
 <link rel="apple-touch-icon" sizes="180x180" href="https://raw.githubusercontent.com/Vld02/-v5/refs/heads/main/192.png" />
 <link rel="apple-touch-icon" sizes="512x512" href="https://raw.githubusercontent.com/Vld02/-v5/refs/heads/main/512.png" />
 <title>ДБВv5</title>
+<script>
+  (function ensureMobileViewport() {
+    var vp = document.querySelector('meta[name="viewport"]');
+    var content = "width=device-width,initial-scale=1,maximum-scale=1";
+    if (!vp) {
+      vp = document.createElement("meta");
+      vp.setAttribute("name", "viewport");
+      document.head.appendChild(vp);
+    }
+    vp.setAttribute("content", content);
+  })();
+</script>
 <style>
   :root {
     --card-bg: rgba(255, 255, 255, 0.92);
@@ -430,7 +442,7 @@
 
   @media (max-width: 820px) {
     :root {
-      --left-safe-zone: 98px;
+      --left-safe-zone: 0px;
     }
 
     .tabs {
@@ -439,15 +451,29 @@
     }
 
     .tab-flag {
-      width: 84px;
-      height: 66px;
+      width: 58px;
+      height: 46px;
       transform: translateX(-24px);
     }
 
     .page {
-      margin-left: var(--left-safe-zone);
-      margin-right: 8px;
+      width: calc(100vw - 16px) !important;
+      max-width: none;
+      margin: 8px !important;
+      margin-left: 8px !important;
+      margin-right: 8px !important;
       padding: 14px;
+      box-sizing: border-box;
+    }
+
+    .table-wrapper,
+    table,
+    .block,
+    .training-list-wrap,
+    .training-filter-menu,
+    input,
+    button {
+      max-width: 100%;
     }
   }
 </style>
