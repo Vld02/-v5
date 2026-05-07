@@ -1,1 +1,288 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ДБВv5</title>
+    <style>
+      :root {
+        --bg: #e6e6e6;
+        --surface: #f4f4f4;
+        --header: #3e3e3e;
+        --header-text: #f0f0f0;
+        --text: #232323;
+        --muted: #6a6a6a;
+        --border: #b8b8b8;
+        --accent: #5b5b5b;
+      }
 
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Arial, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 30;
+        height: 64px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 0 16px;
+        background: var(--header);
+        color: var(--header-text);
+        border-bottom: 1px solid #2f2f2f;
+      }
+
+      .menu-btn {
+        border: 1px solid #707070;
+        background: transparent;
+        color: inherit;
+        border-radius: 8px;
+        width: 44px;
+        height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+      }
+
+      .menu-btn:focus-visible,
+      .drawer-item:focus-visible,
+      .tab-btn:focus-visible {
+        outline: 3px solid #9c9c9c;
+        outline-offset: 2px;
+      }
+
+      .burger {
+        width: 22px;
+        height: 15px;
+        position: relative;
+      }
+
+      .burger::before,
+      .burger::after,
+      .burger span {
+        content: "";
+        display: block;
+        width: 100%;
+        height: 3px;
+        border-radius: 2px;
+        background: var(--header-text);
+        position: absolute;
+        left: 0;
+      }
+
+      .burger::before { top: 0; }
+      .burger span { top: 6px; }
+      .burger::after { top: 12px; }
+
+      .title {
+        font-size: 1.05rem;
+        font-weight: 700;
+        letter-spacing: 0.2px;
+      }
+
+      .overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s ease;
+        z-index: 35;
+      }
+
+      .overlay.open {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .drawer {
+        position: fixed;
+        z-index: 40;
+        top: 0;
+        left: 0;
+        width: min(82vw, 340px);
+        height: 100vh;
+        background: #dcdcdc;
+        border-right: 1px solid var(--border);
+        transform: translateX(-102%);
+        transition: transform 0.24s ease;
+        padding: 84px 14px 18px;
+      }
+
+      .drawer.open { transform: translateX(0); }
+
+      .drawer-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .drawer-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--surface);
+        cursor: pointer;
+        width: 100%;
+        text-align: left;
+      }
+
+      .drawer-item img {
+        width: 36px;
+        height: 36px;
+        object-fit: cover;
+        border-radius: 6px;
+        border: 1px solid #a0a0a0;
+      }
+
+      main {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 18px 14px 30px;
+      }
+
+      .tabs {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .tab-btn {
+        border: 1px solid var(--border);
+        background: #d6d6d6;
+        color: #252525;
+        border-radius: 8px;
+        padding: 10px 12px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+
+      .tab-btn.active {
+        background: var(--accent);
+        color: #fff;
+        border-color: #454545;
+      }
+
+      .tab-panel {
+        display: none;
+        margin-top: 16px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--surface);
+        padding: 16px;
+      }
+
+      .tab-panel.active { display: block; }
+
+      h2 { margin: 0 0 10px; font-size: 1.2rem; }
+      p { margin: 0; color: var(--muted); line-height: 1.45; }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <button class="menu-btn" id="menuBtn" aria-label="Открыть меню" aria-expanded="false" aria-controls="drawer">
+        <span class="burger"><span></span></span>
+      </button>
+      <div class="title" id="pageTitle">ДБВv5 Документы</div>
+    </header>
+
+    <aside class="drawer" id="drawer" aria-label="Главное меню">
+      <div class="drawer-list">
+        <button class="drawer-item" data-tab="documents">
+          <img src="32.png" alt="Иконка документов" />
+          <span>ДБВv5 Документы</span>
+        </button>
+        <button class="drawer-item" data-tab="attendance">
+          <img src="72.png" alt="Иконка посещаемости" />
+          <span>ДБВv5 Посещаемость</span>
+        </button>
+        <button class="drawer-item" data-tab="gear">
+          <img src="192.png" alt="Иконка снаряжения" />
+          <span>ДБВv5 Снаряжение</span>
+        </button>
+      </div>
+    </aside>
+    <div class="overlay" id="overlay" aria-hidden="true"></div>
+
+    <main>
+      <nav class="tabs" aria-label="Вкладки">
+        <button class="tab-btn active" data-tab="documents">ДБВv5 Документы</button>
+        <button class="tab-btn" data-tab="attendance">ДБВv5 Посещаемость</button>
+        <button class="tab-btn" data-tab="gear">ДБВv5 Снаряжение</button>
+      </nav>
+
+      <section class="tab-panel active" data-panel="documents">
+        <h2>ДБВv5 Документы</h2>
+        <p>Раздел для размещения внутренних документов, инструкций и регламентов.</p>
+      </section>
+      <section class="tab-panel" data-panel="attendance">
+        <h2>ДБВv5 Посещаемость</h2>
+        <p>Раздел для контроля отметок, графика и общей статистики посещаемости.</p>
+      </section>
+      <section class="tab-panel" data-panel="gear">
+        <h2>ДБВv5 Снаряжение</h2>
+        <p>Раздел для учета выданного снаряжения, состояния и сроков обслуживания.</p>
+      </section>
+    </main>
+
+    <script>
+      const labels = {
+        documents: "ДБВv5 Документы",
+        attendance: "ДБВv5 Посещаемость",
+        gear: "ДБВv5 Снаряжение",
+      };
+
+      const menuBtn = document.getElementById("menuBtn");
+      const drawer = document.getElementById("drawer");
+      const overlay = document.getElementById("overlay");
+      const pageTitle = document.getElementById("pageTitle");
+      const tabButtons = document.querySelectorAll(".tab-btn");
+      const drawerItems = document.querySelectorAll(".drawer-item");
+      const panels = document.querySelectorAll(".tab-panel");
+
+      const setMenuOpen = (open) => {
+        drawer.classList.toggle("open", open);
+        overlay.classList.toggle("open", open);
+        menuBtn.setAttribute("aria-expanded", String(open));
+      };
+
+      const activateTab = (tabId) => {
+        tabButtons.forEach((btn) => btn.classList.toggle("active", btn.dataset.tab === tabId));
+        panels.forEach((panel) => panel.classList.toggle("active", panel.dataset.panel === tabId));
+        pageTitle.textContent = labels[tabId] || "ДБВv5";
+      };
+
+      menuBtn.addEventListener("click", () => {
+        const isOpen = drawer.classList.contains("open");
+        setMenuOpen(!isOpen);
+      });
+
+      overlay.addEventListener("click", () => setMenuOpen(false));
+
+      tabButtons.forEach((btn) => {
+        btn.addEventListener("click", () => activateTab(btn.dataset.tab));
+      });
+
+      drawerItems.forEach((item) => {
+        item.addEventListener("click", () => {
+          activateTab(item.dataset.tab);
+          setMenuOpen(false);
+        });
+      });
+
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") setMenuOpen(false);
+      });
+    </script>
+  </body>
+</html>
