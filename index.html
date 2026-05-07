@@ -145,7 +145,7 @@
   .auth-actions {
     display: flex;
     align-items: flex-end;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 10px;
     margin-top: 10px;
   }
@@ -157,7 +157,7 @@
     white-space: nowrap;
     margin-bottom: 2px;
   }
-  #error { color: red; font-weight: bold; text-align: left; margin: 0; }
+  #error { color: red; font-weight: bold; text-align: center; margin: 8px 0 0; }
   #loading { color: #555; margin: 0; }
 
   .controls { display: flex; justify-content: center; margin-bottom: 10px; }
@@ -493,9 +493,9 @@
       <button onclick="loginDocs()">Войти</button>
       <div class="auth-feedback">
         <div id="loading"></div>
-        <div id="error"></div>
       </div>
     </div>
+    <div id="error"></div>
     <div id="result"></div>
     <div id="formContainer" style="margin-top:20px;"></div>
   </section>
@@ -600,10 +600,10 @@
     stopAuthLoading();
     authLoadingBaseText = baseText;
     let dots = 0;
-    dom.loading.innerText = `${authLoadingBaseText}.`;
+    dom.loading.innerText = `${authLoadingBaseText}`;
     authLoadingTimer = setInterval(() => {
       dots = (dots + 1) % 4;
-      dom.loading.innerText = `${authLoadingBaseText}${'.'.repeat(dots || 1)}`;
+      dom.loading.innerText = `${authLoadingBaseText}${'.'.repeat(dots)}`;
     }, 450);
   }
 
@@ -702,7 +702,7 @@
     dom.snils.value = snilsFormatted;
     saveAuthInputs(loginVal, dateInput.value, snilsFormatted);
 
-    startAuthLoading('Аутентификация');
+    startAuthLoading('Аунтификация');
 
     const clientInfo = await getClientInfo();
 
