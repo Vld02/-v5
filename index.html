@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="theme-color" content="#179bcf" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -453,38 +453,53 @@
 
   @media (max-width: 600px) {
     :root {
-      --left-safe-zone: 0px;
+      --left-safe-zone: 0px !important;
     }
 
     .left-safe-border {
-      display: none;
+      display: none !important;
     }
 
     .tabs {
-      position: static;
-      flex-direction: row;
-      justify-content: center;
-      gap: 8px;
-      margin: 0 0 12px;
+      position: static !important;
+      top: auto !important;
+      left: auto !important;
+      width: 100% !important;
+      height: auto !important;
+      flex-direction: row !important;
+      justify-content: center !important;
+      align-items: center !important;
+      gap: 8px !important;
+      margin: 0 0 12px !important;
+      z-index: auto !important;
     }
 
     .tab-flag,
     .tab-flag.active,
     .tab-flag:hover {
-      width: 82px;
-      height: 58px;
-      transform: none;
-      border-radius: 10px;
+      width: auto !important;
+      min-width: 44px !important;
+      height: 44px !important;
+      transform: none !important;
+      border-radius: 10px !important;
     }
 
     .page {
-      width: calc(100vw - 16px);
-      margin: 10px auto;
-      padding: 12px;
+      width: calc(100vw - 16px) !important;
+      max-width: 100% !important;
+      margin: 0 auto !important;
+      margin-left: auto !important;
+      margin-right: auto !important;
+      padding: 8px !important;
+      box-sizing: border-box !important;
     }
 
     h2 {
       margin-top: 6px;
+    }
+
+    body {
+      overflow-x: hidden !important;
     }
   }
 </style>
