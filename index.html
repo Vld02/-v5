@@ -142,7 +142,22 @@
   .item-title { font-weight: bold; width: 45%; }
   .item-value { width: 55%; }
 
-  #error { color: red; margin-top: 12px; font-weight: bold; text-align: center; }
+  .auth-actions {
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-start;
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .auth-feedback {
+    position: relative;
+    width: min(520px, calc(100vw - 240px));
+    min-height: 22px;
+    display: block;
+    margin-bottom: 2px;
+  }
+  #error { color: red; font-weight: bold; text-align: center; margin: 0; width: 100%; }
+  #loading { color: #555; margin: 0; position: absolute; left: 0; bottom: 0; white-space: nowrap; }
 
   .controls { display: flex; justify-content: center; margin-bottom: 10px; }
   .table-wrapper {
@@ -473,10 +488,13 @@
       <input id="snils" type="text" inputmode="numeric" maxlength="14" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="000-000-000-00" />
     </div>
 
-    <button onclick="loginDocs()">Войти</button>
-
-    <div id="error"></div>
-    <div id="loading" style="margin-top:10px;color:#555;"></div>
+    <div class="auth-actions">
+      <button onclick="loginDocs()">Войти</button>
+      <div class="auth-feedback">
+        <div id="loading"></div>
+        <div id="error"></div>
+      </div>
+    </div>
     <div id="result"></div>
     <div id="formContainer" style="margin-top:20px;"></div>
   </section>
@@ -574,6 +592,27 @@
     login: '',
     password: ''
   };
+  let authLoadingTimer = null;
+  let authLoadingBaseText = '';
+
+  function startAuthLoading(baseText) {
+    stopAuthLoading();
+    authLoadingBaseText = baseText;
+    let dots = 0;
+    dom.loading.innerText = authLoadingBaseText;
+    authLoadingTimer = setInterval(() => {
+      dots = (dots + 1) % 4;
+      dom.loading.innerText = `${authLoadingBaseText}${'.'.repeat(dots)}`;
+    }, 450);
+  }
+
+  function stopAuthLoading() {
+    if (authLoadingTimer) {
+      clearInterval(authLoadingTimer);
+      authLoadingTimer = null;
+    }
+    dom.loading.innerText = '';
+  }
 
   function formatSnilsInput(value) {
     const digits = (value || '').replace(/\D/g, '').slice(0, 11);
@@ -581,14 +620,6 @@
     if (digits.length <= 6) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
     if (digits.length <= 9) return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
     return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 9)}-${digits.slice(9)}`;
-  }
-
-  function resetSnilsStep() {
-    authState.awaitingSnils = false;
-    authState.login = '';
-    authState.password = '';
-    dom.snils.value = '';
-    dom.snilsWrap.style.display = 'none';
   }
 
   function hideSnilsStep() {
@@ -610,7 +641,7 @@
 
     dom.snilsWrap.style.display = 'block';
     dom.snils.focus();
-    dom.loading.innerText = '';
+    stopAuthLoading();
   }
 
   function saveAuthInputs(loginVal, dateVal, snilsVal) {
@@ -646,7 +677,7 @@
 
   async function loginDocs() {
     dom.error.textContent = '';
-    dom.loading.innerText = '';
+    stopAuthLoading();
 
     const loginVal = dom.login.value.trim();
     const dateInput = dom.password;
@@ -662,7 +693,7 @@
     dom.snils.value = snilsFormatted;
     saveAuthInputs(loginVal, dateInput.value, snilsFormatted);
 
-    dom.loading.innerText = 'Аутентификация...';
+    startAuthLoading('Аутентификация');
 
     const clientInfo = await getClientInfo();
 
@@ -670,7 +701,7 @@
       .withSuccessHandler(response => {
         if (response && response.error) {
           dom.error.textContent = response.error;
-          dom.loading.innerText = '';
+          stopAuthLoading();
           return;
         }
 
@@ -717,14 +748,14 @@
       return;
     }
 
-    dom.loading.innerText = 'Проверка СНИЛС...';
+    startAuthLoading('Проверка СНИЛС');
     const clientInfo = await getClientInfo();
 
     google.script.run
       .withSuccessHandler(response => {
         if (response && response.error) {
           dom.error.textContent = response.error;
-          dom.loading.innerText = '';
+          stopAuthLoading();
           return;
         }
 
@@ -868,7 +899,7 @@
   function showDocsResult(response) {
     if (response.error) {
       dom.error.textContent = response.error;
-      dom.loading.innerText = '';
+      stopAuthLoading();
       return;
     }
 
@@ -883,6 +914,7 @@
         <div id="externalFormBtnWrapper" style="display:none;margin-top:10px;">
           <button class="button-link" onclick="openFormInNewWindow('${formUrl}')">Открыть форму в отдельной вкладке</button>
         </div>
+        <div id="embeddedFormHolder"></div>
       </div>`;
 
     const SECTION_STARTS = {
@@ -925,7 +957,7 @@
     }
 
     document.getElementById('result').innerHTML = html;
-    dom.loading.innerText = '';
+    stopAuthLoading();
   }
 
   function openEmbeddedForm(formUrl) {
@@ -940,9 +972,18 @@
     const externalBtn = document.getElementById('externalFormBtnWrapper');
     if (externalBtn) externalBtn.style.display = 'block';
 
-    const container = document.getElementById('formContainer');
+    const container = document.getElementById('embeddedFormHolder');
+    if (!container) return;
+    container.style.overflow = 'hidden';
+    container.style.maxHeight = '0';
+    container.style.transition = 'max-height .45s ease, opacity .35s ease';
+    container.style.opacity = '0';
+    container.style.marginTop = '10px';
     container.innerHTML = `<iframe src="${formUrl}&embedded=true" width="100%" height="1000" frameborder="0">Загрузка…</iframe>`;
-    container.scrollIntoView({ behavior: 'smooth' });
+    requestAnimationFrame(() => {
+      container.style.maxHeight = '1100px';
+      container.style.opacity = '1';
+    });
   }
 
   function openFormInNewWindow(formUrl) {
