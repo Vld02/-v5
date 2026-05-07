@@ -1,1 +1,252 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ДБВv5</title>
+  <style>
+    :root {
+      --bg: #efefef;
+      --panel: #f7f7f7;
+      --text: #1f1f1f;
+      --muted: #6b6b6b;
+      --line: #d0d0d0;
+      --accent: #444;
+      --shadow: rgba(0, 0, 0, 0.2);
+    }
 
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 14px;
+      background: linear-gradient(180deg, #f2f2f2 0%, #e5e5e5 100%);
+      border-bottom: 1px solid var(--line);
+      box-shadow: 0 1px 4px var(--shadow);
+    }
+
+    .menu-btn {
+      width: 42px;
+      height: 42px;
+      border: 1px solid #b7b7b7;
+      background: #ececec;
+      border-radius: 8px;
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+    }
+
+    .menu-btn:hover { background: #e1e1e1; }
+
+    .burger {
+      width: 20px;
+      height: 14px;
+      position: relative;
+    }
+
+    .burger span {
+      position: absolute;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background: #404040;
+      border-radius: 2px;
+    }
+
+    .burger span:nth-child(1) { top: 0; }
+    .burger span:nth-child(2) { top: 6px; }
+    .burger span:nth-child(3) { top: 12px; }
+
+    .topbar-title {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+    }
+
+    .content {
+      padding: 16px;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+
+    .tab {
+      display: none;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 20px;
+      min-height: 60vh;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+
+    .tab.active { display: block; }
+
+    h2 {
+      margin: 0 0 10px;
+      font-size: 24px;
+      color: #2a2a2a;
+    }
+
+    p { color: var(--muted); line-height: 1.5; }
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.35);
+      z-index: 1100;
+      display: none;
+    }
+
+    .overlay.open { display: block; }
+
+    .drawer {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: min(82vw, 330px);
+      height: 100vh;
+      background: #dedede;
+      border-right: 1px solid #bdbdbd;
+      box-shadow: 4px 0 12px rgba(0,0,0,0.25);
+      padding: 14px;
+      transform: translateX(-100%);
+      transition: transform 0.25s ease;
+      z-index: 1200;
+    }
+
+    .drawer.open { transform: translateX(0); }
+
+    .drawer h3 {
+      margin: 8px 4px 14px;
+      font-size: 18px;
+    }
+
+    .nav-item {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px;
+      border: 1px solid #b9b9b9;
+      border-radius: 10px;
+      margin-bottom: 10px;
+      background: #f2f2f2;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .nav-item:hover { background: #e8e8e8; }
+
+    .nav-item img {
+      width: 34px;
+      height: 34px;
+      object-fit: cover;
+      border-radius: 8px;
+      border: 1px solid #c1c1c1;
+      background: white;
+    }
+
+    .nav-item span {
+      font-weight: 600;
+      color: #2f2f2f;
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <button class="menu-btn" id="menuBtn" aria-label="Открыть меню">
+      <div class="burger" aria-hidden="true">
+        <span></span><span></span><span></span>
+      </div>
+    </button>
+    <div class="topbar-title" id="topbarTitle">ДБВv5 Документы</div>
+  </header>
+
+  <aside class="drawer" id="drawer" aria-label="Боковое меню">
+    <h3>Разделы</h3>
+
+    <button class="nav-item" data-tab="docs">
+      <img src="72.png" alt="Иконка документов" />
+      <span>ДБВv5 Документы</span>
+    </button>
+
+    <button class="nav-item" data-tab="attendance">
+      <img src="192.png" alt="Иконка посещаемости" />
+      <span>ДБВv5 Посещаемость</span>
+    </button>
+
+    <button class="nav-item" data-tab="gear">
+      <img src="32.png" alt="Иконка снаряжения" />
+      <span>ДБВv5 Снаряжение</span>
+    </button>
+  </aside>
+
+  <div class="overlay" id="overlay"></div>
+
+  <main class="content">
+    <section class="tab active" id="docs">
+      <h2>ДБВv5 Документы</h2>
+      <p>Здесь можно разместить список рабочих документов, шаблоны и инструкции.</p>
+    </section>
+
+    <section class="tab" id="attendance">
+      <h2>ДБВv5 Посещаемость</h2>
+      <p>Этот раздел подходит для журналов посещаемости и ежедневных отметок.</p>
+    </section>
+
+    <section class="tab" id="gear">
+      <h2>ДБВv5 Снаряжение</h2>
+      <p>Здесь можно вести учет выдачи, состояния и возврата снаряжения.</p>
+    </section>
+  </main>
+
+  <script>
+    const menuBtn = document.getElementById('menuBtn');
+    const drawer = document.getElementById('drawer');
+    const overlay = document.getElementById('overlay');
+    const topbarTitle = document.getElementById('topbarTitle');
+    const navItems = document.querySelectorAll('.nav-item');
+    const tabs = document.querySelectorAll('.tab');
+
+    function openMenu() {
+      drawer.classList.add('open');
+      overlay.classList.add('open');
+    }
+
+    function closeMenu() {
+      drawer.classList.remove('open');
+      overlay.classList.remove('open');
+    }
+
+    function switchTab(tabId, label) {
+      tabs.forEach(tab => tab.classList.toggle('active', tab.id === tabId));
+      topbarTitle.textContent = label;
+      closeMenu();
+    }
+
+    menuBtn.addEventListener('click', openMenu);
+    overlay.addEventListener('click', closeMenu);
+
+    navItems.forEach(item => {
+      item.addEventListener('click', () => {
+        const tabId = item.dataset.tab;
+        const label = item.querySelector('span').textContent;
+        switchTab(tabId, label);
+      });
+    });
+  </script>
+</body>
+</html>
