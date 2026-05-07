@@ -14,6 +14,14 @@ const CONFIG = Object.freeze({
   NAMES_CACHE_TTL_SECONDS: 300
 });
 
+const ERRORS = Object.freeze({
+  SHEET_NOT_FOUND: 'Лист с результатами не найден.',
+  TABLE_EMPTY: 'Таблица пуста.',
+  STRUCTURE_ERROR: 'Ошибка структуры таблицы.',
+  INVALID_LOGIN_OR_DATE: 'Неправильно введены ФИО или дата рождения.',
+  INVALID_SNILS: 'Неправильно введён СНИЛС'
+});
+
 /*************************************************
  * ИНФРАСТРУКТУРА: ДОСТУП К ТАБЛИЦАМ
  *************************************************/
@@ -49,15 +57,6 @@ function doGet() {
   }
 
   return output;
-}
-
-/**
- * Возвращает HTML-контент файла.
- * @param {string} name Имя HTML-файла.
- * @returns {string}
- */
-function getHtmlFile(name) {
-  return HtmlService.createHtmlOutputFromFile(name).getContent();
 }
 
 /*************************************************
@@ -192,6 +191,21 @@ function prepareRowForClient(row, header, backgrounds, allowedCols) {
 }
 
 /**
+ * Загружает строку и цвета строки, формирует ответ для клиента.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @param {number} rowIndex
+ * @param {number} lastCol
+ * @param {string[]} header
+ * @param {number[]} allowedCols
+ * @returns {{header:string[],row:string[],colors:string[]}}
+ */
+function loadPreparedClientRow(sheet, rowIndex, lastCol, header, allowedCols) {
+  const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
+  const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
+  return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
+}
+
+/**
  * Техническое логирование этапов выполнения (для поиска зависаний).
  * @param {string} stage
  * @param {number} startedAt
@@ -216,7 +230,7 @@ function checkLogin(login, password, clientInfo = {}, snils = '') {
 
   if (!sheet) {
     logAccess({ login, password, clientInfo, status: 'Лист не найден' });
-    return { error: 'Лист с результатами не найден.' };
+    return { error: ERRORS.SHEET_NOT_FOUND };
   }
 
   const lastRow = sheet.getLastRow();
@@ -224,7 +238,7 @@ function checkLogin(login, password, clientInfo = {}, snils = '') {
   logStage(`Получены границы листа: rows=${lastRow}, cols=${lastCol}`, startedAt);
 
   if (lastRow < 2 || lastCol < 1) {
-    return { error: 'Таблица пуста.' };
+    return { error: ERRORS.TABLE_EMPTY };
   }
 
   const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
@@ -239,7 +253,7 @@ function checkLogin(login, password, clientInfo = {}, snils = '') {
     allowedCols = getAllowedColumnIndexes(headerColors);
   } catch (_error) {
     logAccess({ login, password, clientInfo, status: 'Ошибка конфигурации столбцов' });
-    return { error: 'Ошибка структуры таблицы.' };
+    return { error: ERRORS.STRUCTURE_ERROR };
   }
 
   const rowCount = lastRow - 1;
@@ -264,17 +278,15 @@ function checkLogin(login, password, clientInfo = {}, snils = '') {
       }
 
       const rowIndex = i + 2;
-      const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
-      const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
       logAccess({ login, password, clientInfo, status: 'Удачный вход' });
       logStage('Совпадение найдено, данные строки загружены', startedAt);
-      return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
+      return loadPreparedClientRow(sheet, rowIndex, lastCol, header, allowedCols);
     }
   }
 
   logAccess({ login, password, clientInfo, status: 'Неудачный вход: ФИО/дата' });
   logStage('Совпадение не найдено', startedAt);
-  return { error: 'Неправильно введены ФИО или дата рождения.' };
+  return { error: ERRORS.INVALID_LOGIN_OR_DATE };
 }
 
 
@@ -292,14 +304,14 @@ function verifySnils(login, password, snils, clientInfo = {}) {
 
   const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
   if (!sheet) {
-    return { error: 'Лист с результатами не найден.' };
+    return { error: ERRORS.SHEET_NOT_FOUND };
   }
 
   const lastRow = sheet.getLastRow();
   const lastCol = sheet.getLastColumn();
 
   if (lastRow < 2 || lastCol < 1) {
-    return { error: 'Таблица пуста.' };
+    return { error: ERRORS.TABLE_EMPTY };
   }
 
   const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
@@ -311,12 +323,12 @@ function verifySnils(login, password, snils, clientInfo = {}) {
     authCols = getAuthColumnIndexes(header);
     allowedCols = getAllowedColumnIndexes(headerColors);
   } catch (_error) {
-    return { error: 'Ошибка структуры таблицы.' };
+    return { error: ERRORS.STRUCTURE_ERROR };
   }
 
   const snilsCol = getSnilsColumnIndex(header);
   if (snilsCol === -1) {
-    return { error: 'Ошибка структуры таблицы.' };
+    return { error: ERRORS.STRUCTURE_ERROR };
   }
 
   const rowCount = lastRow - 1;
@@ -336,27 +348,23 @@ function verifySnils(login, password, snils, clientInfo = {}) {
       const rowSnils = normalizeSnils(snilsValues[i][0]);
       if (!rowSnils) {
         const rowIndex = i + 2;
-        const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
-        const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
         logAccess({ login, password, clientInfo, status: 'Удачный вход без СНИЛС' });
-        return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
+        return loadPreparedClientRow(sheet, rowIndex, lastCol, header, allowedCols);
       }
 
       if (rowSnils !== expectedSnils) {
         logAccess({ login, password, clientInfo, status: 'Неудачный вход: СНИЛС' });
-        return { error: 'Неправильно введён СНИЛС' };
+        return { error: ERRORS.INVALID_SNILS };
       }
 
       const rowIndex = i + 2;
-      const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
-      const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
       logAccess({ login, password, clientInfo, status: 'Удачный вход по СНИЛС' });
       logStage('СНИЛС подтвержден, данные строки загружены', startedAt);
-      return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
+      return loadPreparedClientRow(sheet, rowIndex, lastCol, header, allowedCols);
     }
   }
 
-  return { error: 'Неправильно введены ФИО или дата рождения.' };
+  return { error: ERRORS.INVALID_LOGIN_OR_DATE };
 }
 
 /*************************************************
