@@ -51,15 +51,6 @@ function doGet() {
   return output;
 }
 
-/**
- * Возвращает HTML-контент файла.
- * @param {string} name Имя HTML-файла.
- * @returns {string}
- */
-function getHtmlFile(name) {
-  return HtmlService.createHtmlOutputFromFile(name).getContent();
-}
-
 /*************************************************
  * ЛОГИРОВАНИЕ
  *************************************************/
