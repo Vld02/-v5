@@ -430,7 +430,7 @@
 
   @media (max-width: 820px) {
     :root {
-      --left-safe-zone: 98px;
+      --left-safe-zone: clamp(74px, 22vw, 98px);
     }
 
     .tabs {
@@ -439,14 +439,15 @@
     }
 
     .tab-flag {
-      width: 84px;
-      height: 66px;
+      width: clamp(70px, 20vw, 84px);
+      height: clamp(54px, 16vw, 66px);
       transform: translateX(-24px);
     }
 
     .page {
-      margin-left: var(--left-safe-zone);
-      margin-right: 8px;
+      width: min(960px, calc(100vw - var(--left-safe-zone) - 12px));
+      margin-left: max(var(--left-safe-zone), calc((100vw - 960px) / 2));
+      margin-right: 6px;
       padding: 14px;
     }
   }
