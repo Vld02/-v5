@@ -19,7 +19,7 @@
     --card-bg: rgba(255, 255, 255, 0.92);
     --primary: #1a73e8;
     --border: #d8d8d8;
-    --base-font-size: clamp(1.35rem, 0.95rem + 1.35vw, 2rem);
+    --base-font-size: clamp(0.9rem, 0.63rem + 0.9vw, 1.34rem);
     --page-max-width: 68rem;
     --topbar-height: clamp(3.25rem, 7vh, 4.5rem);
     --flag-zone-width: clamp(6.5rem, 12vw, 8.5rem);
@@ -222,6 +222,7 @@
   .button-link {
     display: inline-block;
     padding: 0.7em 1.1em;
+    min-width: 14.5rem;
     background: #4285f4;
     color: #fff;
     text-decoration: none;
@@ -231,6 +232,8 @@
     margin-bottom: var(--space-sm);
     border: none;
     cursor: pointer;
+    text-align: center;
+    white-space: nowrap;
   }
 
   .button-link.disabled {
@@ -583,6 +586,11 @@
     .auth-feedback {
       width: 100%;
     }
+
+    .button-link {
+      min-width: 16rem;
+      max-width: 100%;
+    }
   }
 </style>
 </head>
@@ -767,17 +775,21 @@
     });
   }
 
-  dom.menuToggle.addEventListener('pointerenter', () => openFlagMenu({ pinned: false }));
-  dom.menuToggle.addEventListener('pointerleave', scheduleHoverFlagMenuClose);
+  const canHoverMenu = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+
+  if (canHoverMenu) {
+    dom.menuToggle.addEventListener('pointerenter', () => openFlagMenu({ pinned: false }));
+    dom.menuToggle.addEventListener('pointerleave', scheduleHoverFlagMenuClose);
+    dom.flagMenuZone.addEventListener('pointerenter', () => openFlagMenu());
+    dom.flagMenuZone.addEventListener('pointerleave', scheduleHoverFlagMenuClose);
+  }
+
   dom.menuToggle.addEventListener('click', event => {
     event.stopPropagation();
-    flagMenuPinned = !flagMenuPinned;
-    setFlagMenuOpen(flagMenuPinned || dom.flagMenuZone.classList.contains('open'));
-    if (!flagMenuPinned) closeFlagMenu({ force: true });
+    const willOpen = !dom.flagMenuZone.classList.contains('open');
+    flagMenuPinned = willOpen;
+    setFlagMenuOpen(willOpen);
   });
-
-  dom.flagMenuZone.addEventListener('pointerenter', () => openFlagMenu());
-  dom.flagMenuZone.addEventListener('pointerleave', scheduleHoverFlagMenuClose);
 
   tabFlags.forEach(btn => {
     btn.addEventListener('click', event => {
