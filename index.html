@@ -39,7 +39,7 @@
 
   @media (min-width: 52.0625em) and (pointer: fine) {
     html {
-      font-size: calc(var(--base-font-size) * 0.67);
+      font-size: calc(var(--base-font-size) * 0.5);
     }
   }
 
@@ -639,18 +639,21 @@
     overflow: auto;
     -webkit-overflow-scrolling: touch;
     touch-action: pan-x pan-y;
+    overscroll-behavior: contain;
+    max-height: 70vh;
   }
   .training-content-view.hidden {
     display: none;
   }
   .training-embedded-sheet iframe {
     width: 100%;
-    min-height: 38rem;
+    min-height: 52rem;
     border: 0;
     background: #fff;
     border-radius: var(--radius-sm);
     pointer-events: auto;
     touch-action: pan-x pan-y;
+    display: block;
   }
 
 </style>
@@ -753,7 +756,7 @@
     </div>
     <div id="trainingList" class="training-list"></div>
     </div>
-    <div id="trainingTableView" class="training-content-view training-embedded-sheet hidden">
+    <div id="trainingTableView" class="training-content-view training-embedded-sheet block hidden">
       <iframe src="https://docs.google.com/spreadsheets/d/e/2PACX-1vQAnNOAevcu7f79FGp8ol6XHXki2BUa_zXnujvbk-g3EzvQBXkVqFuK-SKMTfDHhMlRikuu220nf77D/pubhtml?gid=866330013&amp;single=true&amp;widget=true&amp;headers=false" loading="lazy" title="Таблица посещаемости"></iframe>
     </div>
     <label id="trainingVisibleCountWrap" class="training-visible-count" for="trainingVisibleCountInput">
