@@ -37,6 +37,12 @@
     font-size: var(--base-font-size);
   }
 
+  @media (min-width: 52.0625em) and (pointer: fine) {
+    html {
+      font-size: calc(var(--base-font-size) * 0.67);
+    }
+  }
+
   body {
     font-family: Arial, sans-serif;
     font-size: 1rem;
@@ -221,6 +227,7 @@
 
   .button-link {
     display: inline-block;
+    white-space: nowrap;
     padding: 0.7em 1.1em;
     background: #4285f4;
     color: #fff;
@@ -231,6 +238,10 @@
     margin-bottom: var(--space-sm);
     border: none;
     cursor: pointer;
+  }
+
+  .button-link.form-action {
+    min-width: min(100%, 18rem);
   }
 
   .button-link.disabled {
@@ -767,8 +778,12 @@
     });
   }
 
-  dom.menuToggle.addEventListener('pointerenter', () => openFlagMenu({ pinned: false }));
-  dom.menuToggle.addEventListener('pointerleave', scheduleHoverFlagMenuClose);
+  const supportsHoverPointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+
+  if (supportsHoverPointer) {
+    dom.menuToggle.addEventListener('pointerenter', () => openFlagMenu({ pinned: false }));
+    dom.menuToggle.addEventListener('pointerleave', scheduleHoverFlagMenuClose);
+  }
   dom.menuToggle.addEventListener('click', event => {
     event.stopPropagation();
     flagMenuPinned = !flagMenuPinned;
@@ -776,8 +791,10 @@
     if (!flagMenuPinned) closeFlagMenu({ force: true });
   });
 
-  dom.flagMenuZone.addEventListener('pointerenter', () => openFlagMenu());
-  dom.flagMenuZone.addEventListener('pointerleave', scheduleHoverFlagMenuClose);
+  if (supportsHoverPointer) {
+    dom.flagMenuZone.addEventListener('pointerenter', () => openFlagMenu());
+    dom.flagMenuZone.addEventListener('pointerleave', scheduleHoverFlagMenuClose);
+  }
 
   tabFlags.forEach(btn => {
     btn.addEventListener('click', event => {
@@ -1145,7 +1162,7 @@
     const formUrl = buildFormUrl(header, row);
     let html = `
       <div class="block" id="formBlock">
-        <button id="openFormBtn" class="button-link" onclick="openEmbeddedForm('${formUrl}')">Заполнить / редактировать</button>
+        <button id="openFormBtn" class="button-link form-action" onclick="openEmbeddedForm('${formUrl}')">Заполнить / редактировать</button>
         <div id="externalFormBtnWrapper" style="display:none;margin-top:0.75rem;">
           <button class="button-link" onclick="openFormInNewWindow('${formUrl}')">Открыть форму в отдельной вкладке</button>
         </div>
