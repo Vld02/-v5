@@ -629,11 +629,17 @@
       width: 100%;
     }
   }
+  .hidden { display: none !important; }
   .training-content-view {
     margin-top: var(--space-sm);
   }
   .training-content-view.hidden {
     display: none;
+  }
+  .training-embedded-sheet {
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x pan-y;
   }
   .training-embedded-sheet iframe {
     width: 100%;
@@ -746,7 +752,7 @@
     <div id="trainingTableView" class="training-content-view training-embedded-sheet hidden">
       <iframe src="https://docs.google.com/spreadsheets/d/e/2PACX-1vQAnNOAevcu7f79FGp8ol6XHXki2BUa_zXnujvbk-g3EzvQBXkVqFuK-SKMTfDHhMlRikuu220nf77D/pubhtml?gid=866330013&amp;single=true&amp;widget=true&amp;headers=false" loading="lazy" title="Таблица посещаемости"></iframe>
     </div>
-    <label class="training-visible-count" for="trainingVisibleCountInput">
+    <label id="trainingVisibleCountWrap" class="training-visible-count" for="trainingVisibleCountInput">
       <span>Показать тренировок</span>
       <input id="trainingVisibleCountInput" type="number" min="1" step="1" value="5" />
     </label>
@@ -1360,6 +1366,7 @@
   const trainingTableView = document.getElementById('trainingTableView');
   const trainingViewListBtn = document.getElementById('trainingViewListBtn');
   const trainingViewTableBtn = document.getElementById('trainingViewTableBtn');
+  const trainingVisibleCountWrap = document.getElementById('trainingVisibleCountWrap');
   const trainingSortButtons = [...document.querySelectorAll('.training-sort')];
   const trainingFilterMenu = document.getElementById('trainingFilterMenu');
   let debounceTimer = null;
@@ -2393,6 +2400,7 @@
     trainingTableView.classList.toggle('hidden', !isTable);
     trainingViewListBtn.classList.toggle('active', !isTable);
     trainingViewTableBtn.classList.toggle('active', isTable);
+    trainingVisibleCountWrap.classList.toggle('hidden', isTable);
   }
 
   trainingViewListBtn.addEventListener('click', () => setTrainingView('list'));
