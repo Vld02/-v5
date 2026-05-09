@@ -714,7 +714,14 @@
         }
 
         localStorage.setItem('isLoggedIn', '1');
-        hideSnilsStep();
+        if (response && response.showSnils) {
+          authState.awaitingSnils = false;
+          authState.login = '';
+          authState.password = '';
+          dom.snilsWrap.style.display = 'block';
+        } else {
+          hideSnilsStep();
+        }
         showDocsResult(response);
       })
       .checkLogin(loginVal, passwordForServer, clientInfo, snilsFormatted);
@@ -832,6 +839,7 @@
     if (savedLogin) dom.login.value = savedLogin;
     if (savedDate) dom.password.value = formatDateInput(savedDate);
     if (savedSnils) dom.snils.value = formatSnilsInput(savedSnils);
+    dom.snilsWrap.style.display = 'none';
 
     logInitialPageOpen();
   });

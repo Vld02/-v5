@@ -531,9 +531,11 @@ function checkLogin(login, password, clientInfo = {}, snils = '') {
       const rowIndex = i + 2;
       const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
       const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
+      const response = prepareRowForClient(row, header, rowBackgrounds, allowedCols);
+      response.showSnils = Boolean(rowSnils && expectedSnils === rowSnils);
       logAuthAttempt({ login, password, snils, clientInfo, status: 'Удачный вход' });
       logStage('Совпадение найдено, данные строки загружены', startedAt);
-      return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
+      return response;
     }
   }
 
