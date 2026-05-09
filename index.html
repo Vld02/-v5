@@ -37,6 +37,12 @@
     font-size: var(--base-font-size);
   }
 
+  @media (min-width: 52.0625em) and (pointer: fine) {
+    html {
+      font-size: calc(var(--base-font-size) * 0.67);
+    }
+  }
+
   body {
     font-family: Arial, sans-serif;
     font-size: 1rem;
@@ -221,6 +227,7 @@
 
   .button-link {
     display: inline-block;
+    white-space: nowrap;
     padding: 0.7em 1.1em;
     background: #4285f4;
     color: #fff;
@@ -231,6 +238,10 @@
     margin-bottom: var(--space-sm);
     border: none;
     cursor: pointer;
+  }
+
+  .button-link.form-action {
+    min-width: min(100%, 18rem);
   }
 
   .button-link.disabled {
@@ -290,12 +301,12 @@
 
   .training-topbar {
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
     margin: var(--space-lg) 0 var(--space-sm);
     gap: var(--space-md);
   }
-  .training-title { margin: 0; }
+  .training-title { margin: 0; text-align: center; width: 100%; }
   .training-controls {
     display: flex;
     justify-content: flex-end;
@@ -324,6 +335,51 @@
     animation: training-spin .8s linear infinite;
   }
   .training-loading.show { display: inline-block; }
+  .training-view-content { display: none; }
+  .training-view-content.active { display: block; }
+
+  .training-view-switch {
+    display: flex;
+    justify-content: center;
+    gap: var(--space-sm);
+    margin: var(--space-sm) 0 var(--space-md);
+  }
+  .training-view-btn {
+    margin: 0;
+    border: 0.05rem solid #c4c4c4;
+    background: #f6f6f6;
+    border-radius: var(--radius-sm);
+    padding: 0.45em 0.75em;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35em;
+  }
+  .training-view-btn.active {
+    background: #e7f0ff;
+    border-color: #7aa7ff;
+    color: #1a73e8;
+    font-weight: 700;
+  }
+  .training-sheet-wrap {
+    display: none;
+    margin-top: var(--space-sm);
+  }
+  .training-sheet-wrap.active {
+    display: block;
+  }
+  .training-sheet-wrap iframe {
+    width: 100%;
+    min-height: 28rem;
+    border: 0.05rem solid #ccc;
+    border-radius: var(--radius-sm);
+    background: #fff;
+  }
+  .training-visible-count-row {
+    margin-top: var(--space-md);
+    display: flex;
+    justify-content: flex-end;
+  }
+
   @keyframes training-spin {
     to { transform: rotate(360deg); }
   }
@@ -339,6 +395,14 @@
     padding: 0.55em 0.7em;
     border: 0.05rem solid #ccc;
     border-bottom: none;
+  }
+  .training-head-cell {
+    border-right: 0.05rem solid #d5d5d5;
+    padding-right: var(--space-sm);
+  }
+  .training-head-cell:last-child {
+    border-right: none;
+    padding-right: 0;
   }
   .training-sort {
     border: none;
@@ -669,22 +733,33 @@
     </div>
 
     <div class="training-topbar">
-      <h3 class="training-title">Последние отмеченные тренировки</h3>
-      <div class="training-controls">
-        <span id="trainingLoading" class="training-loading" aria-hidden="true"></span>
-        <label class="training-visible-count" for="trainingVisibleCountInput">
-          <span>Показать тренировок</span>
-          <input id="trainingVisibleCountInput" type="number" min="1" step="1" value="5" />
-        </label>
-      </div>
+      <h3 class="training-title">Отмеченные тренировки</h3>
     </div>
-    <div class="training-list-head">
+    <div class="training-controls">
+      <span id="trainingLoading" class="training-loading" aria-hidden="true"></span>
+    </div>
+    <div class="training-view-switch" role="tablist" aria-label="Вид отмеченных тренировок">
+      <button id="trainingViewListBtn" class="training-view-btn active" type="button" data-view="list" aria-selected="true">☰ Список</button>
+      <button id="trainingViewTableBtn" class="training-view-btn" type="button" data-view="table" aria-selected="false">▦ Таблица</button>
+    </div>
+    <div id="trainingListView" class="training-view-content active">
+      <div class="training-list-head">
       <div class="training-head-cell"><button type="button" class="training-sort" data-sort-key="timestamp">Отметка времени</button></div>
       <div class="training-head-cell"><button type="button" class="training-sort" data-sort-key="date">Дата тренировки</button></div>
       <div class="training-head-cell"><button type="button" class="training-sort" data-sort-key="coach">Тренер присутствовал</button></div>
       <div class="training-head-cell"><button type="button" class="training-sort" data-sort-key="place">Место проведения занятия</button></div>
     </div>
     <div id="trainingList" class="training-list"></div>
+      <div class="training-visible-count-row">
+        <label class="training-visible-count" for="trainingVisibleCountInput">
+          <span>Показать тренировок</span>
+          <input id="trainingVisibleCountInput" type="number" min="1" step="1" value="5" />
+        </label>
+      </div>
+    </div>
+    <div id="trainingSheetWrap" class="training-sheet-wrap">
+      <iframe src="https://docs.google.com/spreadsheets/d/e/2PACX-1vQAnNOAevcu7f79FGp8ol6XHXki2BUa_zXnujvbk-g3EzvQBXkVqFuK-SKMTfDHhMlRikuu220nf77D/pubhtml?gid=866330013&amp;single=true&amp;widget=true&amp;headers=false" loading="lazy"></iframe>
+    </div>
     <div id="trainingFilterMenu" class="training-filter-menu"></div>
   </section>
 
@@ -767,8 +842,12 @@
     });
   }
 
-  dom.menuToggle.addEventListener('pointerenter', () => openFlagMenu({ pinned: false }));
-  dom.menuToggle.addEventListener('pointerleave', scheduleHoverFlagMenuClose);
+  const supportsHoverPointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+
+  if (supportsHoverPointer) {
+    dom.menuToggle.addEventListener('pointerenter', () => openFlagMenu({ pinned: false }));
+    dom.menuToggle.addEventListener('pointerleave', scheduleHoverFlagMenuClose);
+  }
   dom.menuToggle.addEventListener('click', event => {
     event.stopPropagation();
     flagMenuPinned = !flagMenuPinned;
@@ -776,8 +855,10 @@
     if (!flagMenuPinned) closeFlagMenu({ force: true });
   });
 
-  dom.flagMenuZone.addEventListener('pointerenter', () => openFlagMenu());
-  dom.flagMenuZone.addEventListener('pointerleave', scheduleHoverFlagMenuClose);
+  if (supportsHoverPointer) {
+    dom.flagMenuZone.addEventListener('pointerenter', () => openFlagMenu());
+    dom.flagMenuZone.addEventListener('pointerleave', scheduleHoverFlagMenuClose);
+  }
 
   tabFlags.forEach(btn => {
     btn.addEventListener('click', event => {
@@ -1145,7 +1226,7 @@
     const formUrl = buildFormUrl(header, row);
     let html = `
       <div class="block" id="formBlock">
-        <button id="openFormBtn" class="button-link" onclick="openEmbeddedForm('${formUrl}')">Заполнить / редактировать</button>
+        <button id="openFormBtn" class="button-link form-action" onclick="openEmbeddedForm('${formUrl}')">Заполнить / редактировать</button>
         <div id="externalFormBtnWrapper" style="display:none;margin-top:0.75rem;">
           <button class="button-link" onclick="openFormInNewWindow('${formUrl}')">Открыть форму в отдельной вкладке</button>
         </div>
@@ -1287,6 +1368,10 @@
   const trainingVisibleCountInput = document.getElementById('trainingVisibleCountInput');
   const trainingSortButtons = [...document.querySelectorAll('.training-sort')];
   const trainingFilterMenu = document.getElementById('trainingFilterMenu');
+  const trainingListView = document.getElementById('trainingListView');
+  const trainingSheetWrap = document.getElementById('trainingSheetWrap');
+  const trainingViewListBtn = document.getElementById('trainingViewListBtn');
+  const trainingViewTableBtn = document.getElementById('trainingViewTableBtn');
   let debounceTimer = null;
   const attendanceState = {
     nextId: 1,
@@ -2282,6 +2367,21 @@
     }
     closeTrainingFilterMenu();
   });
+
+  function setTrainingView(view) {
+    const isList = view === 'list';
+    trainingListView.classList.toggle('active', isList);
+    trainingSheetWrap.classList.toggle('active', !isList);
+    trainingViewListBtn.classList.toggle('active', isList);
+    trainingViewTableBtn.classList.toggle('active', !isList);
+    trainingViewListBtn.setAttribute('aria-selected', String(isList));
+    trainingViewTableBtn.setAttribute('aria-selected', String(!isList));
+    trainingFilterMenu.style.display = isList ? '' : 'none';
+    if (!isList) closeTrainingFilterMenu();
+  }
+
+  trainingViewListBtn.addEventListener('click', () => setTrainingView('list'));
+  trainingViewTableBtn.addEventListener('click', () => setTrainingView('table'));
 
   function getMaxVisibleCount() {
     return Math.max(1, trainingState.items.length || 1);
