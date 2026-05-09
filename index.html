@@ -647,7 +647,7 @@
   function saveAuthInputs(loginVal, dateVal, snilsVal) {
     localStorage.setItem('savedLogin', loginVal);
     localStorage.setItem('savedDate', dateVal);
-    if (snilsVal) localStorage.setItem('savedSnils', snilsVal);
+    localStorage.setItem('savedSnils', snilsVal);
   }
 
   function parseDateString(value) {
@@ -683,15 +683,14 @@
     const dateInput = dom.password;
     dateInput.value = formatDateInput(dateInput.value);
     const passwordForServer = toServerDate(dateInput.value);
+    const snilsFormatted = formatSnilsInput(dom.snils.value);
+    dom.snils.value = snilsFormatted;
+    saveAuthInputs(loginVal, dateInput.value, snilsFormatted);
 
     if (!loginVal || !passwordForServer) {
       dom.error.textContent = 'Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.';
       return;
     }
-
-    const snilsFormatted = formatSnilsInput(dom.snils.value);
-    dom.snils.value = snilsFormatted;
-    saveAuthInputs(loginVal, dateInput.value, snilsFormatted);
 
     startAuthLoading('Аутентификация');
 
@@ -715,12 +714,7 @@
         }
 
         localStorage.setItem('isLoggedIn', '1');
-        if (snilsFormatted.length === 14) {
-          dom.snilsWrap.style.display = 'block';
-        }
-        authState.awaitingSnils = false;
-        authState.login = '';
-        authState.password = '';
+        hideSnilsStep();
         showDocsResult(response);
       })
       .checkLogin(loginVal, passwordForServer, clientInfo, snilsFormatted);
