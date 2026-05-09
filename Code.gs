@@ -63,35 +63,249 @@ function getHtmlFile(name) {
 /*************************************************
  * ЛОГИРОВАНИЕ
  *************************************************/
+const LOG_COLUMNS = Object.freeze({
+  ENTERED_AT: 0,
+  LOGIN: 1,
+  PASSWORD: 2,
+  SNILS: 3,
+  IP: 4,
+  DEVICE: 5,
+  BROWSER: 6,
+  STATUS: 7
+});
+
+const LOG_HEADERS = Object.freeze([
+  'Дата/время входа',
+  'Логин',
+  'Пароль',
+  'СНИЛС',
+  'IP',
+  'Устройство',
+  'Браузер',
+  'Статус входа'
+]);
+
+const LOG_MATCH_WINDOW_MS = 30 * 60 * 1000;
+
 /**
- * Пишет запись об авторизации/действии в лист логов.
- * @param {{login?:string,password?:string,clientInfo?:Object,status:string}} payload
+ * Форматирует дату/время для записи в лог.
+ * @param {Date} date
+ * @returns {string}
  */
-function logAccess({ login = '', password = '', clientInfo = {}, status }) {
+function formatLogDateTime(date) {
+  return Utilities.formatDate(date, CONFIG.TIMEZONE, 'dd.MM.yyyy HH:mm:ss');
+}
+
+/**
+ * Проверяет, что IP можно использовать для поиска первичной строки входа.
+ * @param {*} ip
+ * @returns {boolean}
+ */
+function isRecognizedIp(ip) {
+  const value = String(ip || '').trim().toLowerCase();
+  return Boolean(value && value !== 'не определён' && value !== 'не определен' && value !== 'unknown');
+}
+
+/**
+ * Возвращает лист логов с актуальной строкой заголовков.
+ * @returns {GoogleAppsScript.Spreadsheet.Sheet | null}
+ */
+function getLogSheet() {
   const sheet = getSheet(CONFIG.LOG_SHEET_NAME, true);
-  if (!sheet) return;
+  if (!sheet) return null;
 
   if (sheet.getLastRow() === 0) {
-    sheet.appendRow([
-      'Дата/время',
-      'Логин',
-      'Пароль',
-      'IP',
-      'Устройство',
-      'Браузер',
-      'Статус'
-    ]);
+    sheet.appendRow(LOG_HEADERS);
+    return sheet;
   }
 
-  sheet.appendRow([
-    new Date(),
-    login,
-    password,
+  const currentHeaders = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), LOG_HEADERS.length)).getValues()[0];
+  const shouldRewriteHeaders = LOG_HEADERS.some((header, index) => currentHeaders[index] !== header);
+  if (shouldRewriteHeaders) {
+    sheet.getRange(1, 1, 1, LOG_HEADERS.length).setValues([LOG_HEADERS]);
+  }
+
+  return sheet;
+}
+
+/**
+ * Возвращает последнюю строку из многострочной ячейки лога.
+ * @param {*} value
+ * @returns {string}
+ */
+function getLastLogLine(value) {
+  const lines = String(value || '').split('\n');
+  return String(lines[lines.length - 1] || '').trim();
+}
+
+/**
+ * Приводит дату из ячейки логов к Date.
+ * @param {*} value
+ * @returns {Date | null}
+ */
+function getLogDate(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+
+  const text = getLastLogLine(value);
+  const match = text.match(/^(\d{2})\.(\d{2})\.(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (match) {
+    const [, day, month, year, hours = '0', minutes = '0', seconds = '0'] = match;
+    return new Date(Number(year), Number(month) - 1, Number(day), Number(hours), Number(minutes), Number(seconds));
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+/**
+ * Ищет строку первичного открытия сайта, которую можно дополнить после нажатия «Войти».
+ * Сначала используется IP, если он распознан; если IP неизвестен — ФИО. Учитываются только
+ * записи не старше 30 минут.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @param {{login?:string,clientInfo?:Object}} payload
+ * @returns {number}
+ */
+function findRecentLogRow(sheet, payload) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 0;
+
+  const values = sheet.getRange(2, 1, lastRow - 1, LOG_HEADERS.length).getValues();
+  const now = Date.now();
+  const ip = String(payload.clientInfo?.ip || '').trim();
+  const login = normalizeLogin(payload.login);
+  const useIp = isRecognizedIp(ip);
+
+  for (let i = values.length - 1; i >= 0; i--) {
+    const row = values[i];
+    const enteredAt = getLogDate(row[LOG_COLUMNS.ENTERED_AT]);
+    if (!enteredAt || now - enteredAt.getTime() > LOG_MATCH_WINDOW_MS) continue;
+
+    if (useIp) {
+      if (getLastLogLine(row[LOG_COLUMNS.IP]) === ip) return i + 2;
+      continue;
+    }
+
+    if (login && normalizeLogin(getLastLogLine(row[LOG_COLUMNS.LOGIN])) === login) return i + 2;
+  }
+
+  return 0;
+}
+
+/**
+ * Создаёт RichText для многострочной ячейки: все предыдущие строки зачёркнуты, новая строка обычная.
+ * @param {string[]} previousLines
+ * @param {string} newLine
+ * @returns {GoogleAppsScript.Spreadsheet.RichTextValue}
+ */
+function buildLogRichText(previousLines, newLine) {
+  const oldText = previousLines.join('\n');
+  const text = previousLines.length ? `${oldText}\n${newLine}` : newLine;
+  const builder = SpreadsheetApp.newRichTextValue().setText(text);
+
+  if (oldText) {
+    const strikethroughStyle = SpreadsheetApp.newTextStyle().setStrikethrough(true).build();
+    builder.setTextStyle(0, oldText.length, strikethroughStyle);
+  }
+
+  return builder.build();
+}
+
+/**
+ * Дополняет строку логов. Если хотя бы в одном столбце появляется новая строка, пустая
+ * синхронизирующая строка добавляется во все остальные столбцы, чтобы значения оставались напротив друг друга.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @param {number} rowIndex
+ * @param {Array<*>} newValues
+ */
+function appendLogValuesToRow(sheet, rowIndex, newValues) {
+  const range = sheet.getRange(rowIndex, 1, 1, LOG_HEADERS.length);
+  const currentValues = range.getDisplayValues()[0];
+  const currentRichValues = range.getRichTextValues()[0];
+  const previousLinesByColumn = [];
+  let hasExistingData = false;
+
+  for (let col = 0; col < LOG_HEADERS.length; col++) {
+    const currentText = String(currentRichValues[col]?.getText() || currentValues[col] || '');
+    previousLinesByColumn[col] = currentText ? currentText.split('\n') : [];
+    if (currentText) hasExistingData = true;
+  }
+
+  if (!hasExistingData) {
+    range.setValues([newValues]);
+    return;
+  }
+
+  const previousLineCount = Math.max(1, ...previousLinesByColumn.map(lines => lines.length));
+  const richTextRow = previousLinesByColumn.map((lines, col) => {
+    const alignedPreviousLines = lines.slice();
+    while (alignedPreviousLines.length < previousLineCount) alignedPreviousLines.push('');
+    return buildLogRichText(alignedPreviousLines, String(newValues[col] ?? ''));
+  });
+
+  range.setRichTextValues([richTextRow]);
+}
+
+/**
+ * Собирает строку логов в едином порядке столбцов.
+ * @param {{login?:string,password?:string,snils?:string,clientInfo?:Object,status?:string,enteredAt?:Date}} payload
+ * @returns {Array<*>}
+ */
+function makeLogRow(payload) {
+  const clientInfo = payload.clientInfo || {};
+  return [
+    formatLogDateTime(payload.enteredAt || new Date()),
+    payload.login || '',
+    payload.password || '',
+    payload.snils || '',
     clientInfo.ip || '',
     clientInfo.device || '',
     clientInfo.browser || '',
-    status
-  ]);
+    payload.status || ''
+  ];
+}
+
+/**
+ * Записывает первичное открытие сайта в лист «Входы».
+ * @param {{login?:string,password?:string,snils?:string,clientInfo?:Object}} payload
+ */
+function logSiteOpen(payload = {}) {
+  const sheet = getLogSheet();
+  if (!sheet) return;
+  sheet.appendRow(makeLogRow(payload));
+}
+
+/**
+ * Пишет или дополняет запись об авторизации/действии в лист логов.
+ * @param {{login?:string,password?:string,snils?:string,clientInfo?:Object,status:string,updateRecent?:boolean}} payload
+ */
+function logAccess(payload) {
+  const sheet = getLogSheet();
+  if (!sheet) return;
+
+  const row = makeLogRow(payload || {});
+  const rowIndex = payload?.updateRecent ? findRecentLogRow(sheet, payload) : 0;
+
+  if (rowIndex > 0) {
+    appendLogValuesToRow(sheet, rowIndex, row);
+    return;
+  }
+
+  sheet.appendRow(row);
+}
+
+/**
+ * Дополняет свежую строку входа статусом ошибки, определённой на клиенте до проверки таблицы.
+ * @param {{login?:string,password?:string,snils?:string,clientInfo?:Object,status:string}} payload
+ */
+function logLoginAttempt(payload = {}) {
+  logAccess({
+    login: payload.login || '',
+    password: payload.password || '',
+    snils: payload.snils || '',
+    clientInfo: payload.clientInfo || {},
+    status: payload.status || '',
+    updateRecent: true
+  });
 }
 
 /**
@@ -241,7 +455,7 @@ function checkLogin(login, password, clientInfo = {}, snils = '') {
   const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
 
   if (!sheet) {
-    logAccess({ login, password, clientInfo, status: 'Лист не найден' });
+    if (!clientInfo?.silent) logAccess({ login, password, snils, clientInfo, status: 'Лист не найден', updateRecent: true });
     return { error: 'Лист с результатами не найден.' };
   }
 
@@ -250,6 +464,7 @@ function checkLogin(login, password, clientInfo = {}, snils = '') {
   logStage(`Получены границы листа: rows=${lastRow}, cols=${lastCol}`, startedAt);
 
   if (lastRow < 2 || lastCol < 1) {
+    if (!clientInfo?.silent) logAccess({ login, password, snils, clientInfo, status: 'Таблица пуста', updateRecent: true });
     return { error: 'Таблица пуста.' };
   }
 
@@ -264,7 +479,7 @@ function checkLogin(login, password, clientInfo = {}, snils = '') {
     authCols = getAuthColumnIndexes(header);
     allowedCols = getAllowedColumnIndexes(headerColors);
   } catch (_error) {
-    logAccess({ login, password, clientInfo, status: 'Ошибка конфигурации столбцов' });
+    if (!clientInfo?.silent) logAccess({ login, password, snils, clientInfo, status: 'Ошибка конфигурации столбцов', updateRecent: true });
     return { error: 'Ошибка структуры таблицы.' };
   }
 
@@ -282,7 +497,7 @@ function checkLogin(login, password, clientInfo = {}, snils = '') {
     if (rowLogin === normalizedLogin && rowPassword === password) {
       const rowSnils = snilsValues ? normalizeSnils(snilsValues[i][0]) : '';
       if (rowSnils && rowSnils !== expectedSnils) {
-        logAccess({ login, password, clientInfo, status: 'Требуется ввод СНИЛС' });
+        if (!clientInfo?.silent) logAccess({ login, password, snils, clientInfo, status: 'Требуется ввод СНИЛС', updateRecent: true });
         logStage('Совпадение найдено, требуется СНИЛС', startedAt);
         return { requiresSnils: true };
       }
@@ -290,13 +505,13 @@ function checkLogin(login, password, clientInfo = {}, snils = '') {
       const rowIndex = i + 2;
       const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
       const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
-      logAccess({ login, password, clientInfo, status: 'Удачный вход' });
+      if (!clientInfo?.silent) logAccess({ login, password, snils, clientInfo, status: 'Вошел', updateRecent: true });
       logStage('Совпадение найдено, данные строки загружены', startedAt);
       return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
     }
   }
 
-  logAccess({ login, password, clientInfo, status: 'Неудачный вход: ФИО/дата' });
+  if (!clientInfo?.silent) logAccess({ login, password, snils, clientInfo, status: 'Неудачный вход: ФИО/дата', updateRecent: true });
   logStage('Совпадение не найдено', startedAt);
   return { error: 'Неправильно введены ФИО или дата рождения.' };
 }
@@ -316,6 +531,7 @@ function verifySnils(login, password, snils, clientInfo = {}) {
 
   const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
   if (!sheet) {
+    logAccess({ login, password, snils, clientInfo, status: 'Лист не найден', updateRecent: true });
     return { error: 'Лист с результатами не найден.' };
   }
 
@@ -323,6 +539,7 @@ function verifySnils(login, password, snils, clientInfo = {}) {
   const lastCol = sheet.getLastColumn();
 
   if (lastRow < 2 || lastCol < 1) {
+    logAccess({ login, password, snils, clientInfo, status: 'Таблица пуста', updateRecent: true });
     return { error: 'Таблица пуста.' };
   }
 
@@ -335,11 +552,13 @@ function verifySnils(login, password, snils, clientInfo = {}) {
     authCols = getAuthColumnIndexes(header);
     allowedCols = getAllowedColumnIndexes(headerColors);
   } catch (_error) {
+    logAccess({ login, password, snils, clientInfo, status: 'Ошибка конфигурации столбцов', updateRecent: true });
     return { error: 'Ошибка структуры таблицы.' };
   }
 
   const snilsCol = getSnilsColumnIndex(header);
   if (snilsCol === -1) {
+    logAccess({ login, password, snils, clientInfo, status: 'Ошибка конфигурации столбцов', updateRecent: true });
     return { error: 'Ошибка структуры таблицы.' };
   }
 
@@ -360,24 +579,25 @@ function verifySnils(login, password, snils, clientInfo = {}) {
         const rowIndex = i + 2;
         const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
         const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
-        logAccess({ login, password, clientInfo, status: 'Удачный вход без СНИЛС' });
+        logAccess({ login, password, snils, clientInfo, status: 'Вошел без СНИЛС', updateRecent: true });
         return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
       }
 
       if (rowSnils !== expectedSnils) {
-        logAccess({ login, password, clientInfo, status: 'Неудачный вход: СНИЛС' });
+        logAccess({ login, password, snils, clientInfo, status: 'Неудачный вход: СНИЛС', updateRecent: true });
         return { error: 'Неправильно введён СНИЛС' };
       }
 
       const rowIndex = i + 2;
       const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
       const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
-      logAccess({ login, password, clientInfo, status: 'Удачный вход по СНИЛС' });
+      if (!clientInfo?.silent) logAccess({ login, password, snils, clientInfo, status: 'Вошел', updateRecent: true });
       logStage('СНИЛС подтвержден, данные строки загружены', startedAt);
       return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
     }
   }
 
+  logAccess({ login, password, snils, clientInfo, status: 'Неудачный вход: ФИО/дата', updateRecent: true });
   return { error: 'Неправильно введены ФИО или дата рождения.' };
 }
 
