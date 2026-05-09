@@ -594,6 +594,7 @@
   };
   let authLoadingTimer = null;
   let authLoadingBaseText = '';
+  let pageOpenLogPromise = null;
 
   function startAuthLoading(baseText) {
     stopAuthLoading();
@@ -695,6 +696,7 @@
 
     startAuthLoading('Аутентификация');
 
+    if (pageOpenLogPromise) await pageOpenLogPromise;
     const clientInfo = await getClientInfo();
 
     google.script.run
@@ -749,6 +751,7 @@
     }
 
     startAuthLoading('Проверка СНИЛС');
+    if (pageOpenLogPromise) await pageOpenLogPromise;
     const clientInfo = await getClientInfo();
 
     google.script.run
@@ -803,6 +806,29 @@
     google.script.run.checkLogin(loginVal, passwordForServer, { silent: true });
   }
 
+  async function logPageOpenClient() {
+    pageOpenLogPromise = (async () => {
+      const loginVal = dom.login.value.trim() || localStorage.getItem('savedLogin') || '';
+      const passwordForServer = toServerDate(formatDateInput(dom.password.value || localStorage.getItem('savedDate') || ''));
+      const snilsFormatted = formatSnilsInput(dom.snils.value || localStorage.getItem('savedSnils') || '');
+      const clientInfo = await getClientInfo();
+
+      await new Promise(resolve => {
+        google.script.run
+          .withSuccessHandler(resolve)
+          .withFailureHandler(resolve)
+          .logPageOpen({
+            login: loginVal,
+            password: passwordForServer,
+            snils: snilsFormatted,
+            clientInfo
+          });
+      });
+    })();
+
+    return pageOpenLogPromise;
+  }
+
   function logFormClickClient() {
     const loginVal = localStorage.getItem('savedLogin') || 'неизвестно';
     google.script.run.logFormClick(loginVal);
@@ -816,6 +842,8 @@
     if (savedLogin) dom.login.value = savedLogin;
     if (savedDate) dom.password.value = formatDateInput(savedDate);
     if (savedSnils) dom.snils.value = formatSnilsInput(savedSnils);
+
+    logPageOpenClient();
   });
 
   const ENTRY_MAP = {
