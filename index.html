@@ -37,6 +37,12 @@
     font-size: var(--base-font-size);
   }
 
+  @media (min-width: 52.0625em) and (pointer: fine) {
+    html {
+      font-size: calc(var(--base-font-size) * 0.67);
+    }
+  }
+
   body {
     font-family: Arial, sans-serif;
     font-size: 1rem;
@@ -221,6 +227,7 @@
 
   .button-link {
     display: inline-block;
+    white-space: nowrap;
     padding: 0.7em 1.1em;
     background: #4285f4;
     color: #fff;
@@ -231,6 +238,10 @@
     margin-bottom: var(--space-sm);
     border: none;
     cursor: pointer;
+  }
+
+  .button-link.form-action {
+    min-width: min(100%, 18rem);
   }
 
   .button-link.disabled {
@@ -290,17 +301,35 @@
 
   .training-topbar {
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
     margin: var(--space-lg) 0 var(--space-sm);
     gap: var(--space-md);
   }
-  .training-title { margin: 0; }
+  .training-title { margin: 0; text-align: center; }
   .training-controls {
     display: flex;
-    justify-content: flex-end;
+    justify-content: center;
     align-items: center;
     gap: var(--space-sm);
+  }
+  .training-view-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin: 0;
+    padding: 0.45em 0.8em;
+    border: 0.06rem solid #b8b8b8;
+    border-radius: var(--radius-sm);
+    background: #fff;
+    color: #333;
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+  .training-view-btn.active {
+    border-color: var(--primary);
+    background: #e7f0ff;
+    color: var(--primary);
   }
   .training-visible-count {
     display: inline-flex;
@@ -362,6 +391,12 @@
     align-items: center;
     gap: var(--space-xs);
     min-width: 0;
+    padding-right: var(--space-sm);
+    border-right: 0.05rem solid #d5d5d5;
+  }
+  .training-head-cell:last-child {
+    border-right: none;
+    padding-right: 0;
   }
   .training-sort {
     flex: 1;
@@ -584,6 +619,20 @@
       width: 100%;
     }
   }
+  .training-content-view {
+    margin-top: var(--space-sm);
+  }
+  .training-content-view.hidden {
+    display: none;
+  }
+  .training-embedded-sheet iframe {
+    width: 100%;
+    min-height: 38rem;
+    border: 0;
+    background: #fff;
+    border-radius: var(--radius-sm);
+  }
+
 </style>
 </head>
 <body>
@@ -669,15 +718,14 @@
     </div>
 
     <div class="training-topbar">
-      <h3 class="training-title">Последние отмеченные тренировки</h3>
+      <h3 class="training-title">Отмеченные тренировки</h3>
       <div class="training-controls">
         <span id="trainingLoading" class="training-loading" aria-hidden="true"></span>
-        <label class="training-visible-count" for="trainingVisibleCountInput">
-          <span>Показать тренировок</span>
-          <input id="trainingVisibleCountInput" type="number" min="1" step="1" value="5" />
-        </label>
+        <button id="trainingViewListBtn" type="button" class="training-view-btn active" data-view="list"><span aria-hidden="true">☰</span><span>Список</span></button>
+        <button id="trainingViewTableBtn" type="button" class="training-view-btn" data-view="table"><span aria-hidden="true">▦</span><span>Таблица</span></button>
       </div>
     </div>
+    <div id="trainingListView" class="training-content-view">
     <div class="training-list-head">
       <div class="training-head-cell"><button type="button" class="training-sort" data-sort-key="timestamp">Отметка времени</button></div>
       <div class="training-head-cell"><button type="button" class="training-sort" data-sort-key="date">Дата тренировки</button></div>
@@ -685,6 +733,14 @@
       <div class="training-head-cell"><button type="button" class="training-sort" data-sort-key="place">Место проведения занятия</button></div>
     </div>
     <div id="trainingList" class="training-list"></div>
+    </div>
+    <div id="trainingTableView" class="training-content-view training-embedded-sheet hidden">
+      <iframe src="https://docs.google.com/spreadsheets/d/e/2PACX-1vQAnNOAevcu7f79FGp8ol6XHXki2BUa_zXnujvbk-g3EzvQBXkVqFuK-SKMTfDHhMlRikuu220nf77D/pubhtml?gid=866330013&amp;single=true&amp;widget=true&amp;headers=false" loading="lazy" title="Таблица посещаемости"></iframe>
+    </div>
+    <label class="training-visible-count" for="trainingVisibleCountInput">
+      <span>Показать тренировок</span>
+      <input id="trainingVisibleCountInput" type="number" min="1" step="1" value="5" />
+    </label>
     <div id="trainingFilterMenu" class="training-filter-menu"></div>
   </section>
 
@@ -767,8 +823,12 @@
     });
   }
 
-  dom.menuToggle.addEventListener('pointerenter', () => openFlagMenu({ pinned: false }));
-  dom.menuToggle.addEventListener('pointerleave', scheduleHoverFlagMenuClose);
+  const supportsHoverPointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+
+  if (supportsHoverPointer) {
+    dom.menuToggle.addEventListener('pointerenter', () => openFlagMenu({ pinned: false }));
+    dom.menuToggle.addEventListener('pointerleave', scheduleHoverFlagMenuClose);
+  }
   dom.menuToggle.addEventListener('click', event => {
     event.stopPropagation();
     flagMenuPinned = !flagMenuPinned;
@@ -776,8 +836,10 @@
     if (!flagMenuPinned) closeFlagMenu({ force: true });
   });
 
-  dom.flagMenuZone.addEventListener('pointerenter', () => openFlagMenu());
-  dom.flagMenuZone.addEventListener('pointerleave', scheduleHoverFlagMenuClose);
+  if (supportsHoverPointer) {
+    dom.flagMenuZone.addEventListener('pointerenter', () => openFlagMenu());
+    dom.flagMenuZone.addEventListener('pointerleave', scheduleHoverFlagMenuClose);
+  }
 
   tabFlags.forEach(btn => {
     btn.addEventListener('click', event => {
@@ -1145,7 +1207,7 @@
     const formUrl = buildFormUrl(header, row);
     let html = `
       <div class="block" id="formBlock">
-        <button id="openFormBtn" class="button-link" onclick="openEmbeddedForm('${formUrl}')">Заполнить / редактировать</button>
+        <button id="openFormBtn" class="button-link form-action" onclick="openEmbeddedForm('${formUrl}')">Заполнить / редактировать</button>
         <div id="externalFormBtnWrapper" style="display:none;margin-top:0.75rem;">
           <button class="button-link" onclick="openFormInNewWindow('${formUrl}')">Открыть форму в отдельной вкладке</button>
         </div>
@@ -1285,6 +1347,10 @@
   const trainingList = document.getElementById('trainingList');
   const trainingLoading = document.getElementById('trainingLoading');
   const trainingVisibleCountInput = document.getElementById('trainingVisibleCountInput');
+  const trainingListView = document.getElementById('trainingListView');
+  const trainingTableView = document.getElementById('trainingTableView');
+  const trainingViewListBtn = document.getElementById('trainingViewListBtn');
+  const trainingViewTableBtn = document.getElementById('trainingViewTableBtn');
   const trainingSortButtons = [...document.querySelectorAll('.training-sort')];
   const trainingFilterMenu = document.getElementById('trainingFilterMenu');
   let debounceTimer = null;
@@ -2306,6 +2372,17 @@
     e.preventDefault();
     trainingVisibleCountInput.blur();
   });
+
+  function setTrainingView(view) {
+    const isTable = view === 'table';
+    trainingListView.classList.toggle('hidden', isTable);
+    trainingTableView.classList.toggle('hidden', !isTable);
+    trainingViewListBtn.classList.toggle('active', !isTable);
+    trainingViewTableBtn.classList.toggle('active', isTable);
+  }
+
+  trainingViewListBtn.addEventListener('click', () => setTrainingView('list'));
+  trainingViewTableBtn.addEventListener('click', () => setTrainingView('table'));
 
   function renderResult(row, data) {
     const rowId = getRowId(row);
