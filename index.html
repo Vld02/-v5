@@ -301,15 +301,15 @@
 
   .training-topbar {
     display: flex;
-    justify-content: center;
+    justify-content: space-between;
     align-items: center;
     margin: var(--space-lg) 0 var(--space-sm);
     gap: var(--space-md);
   }
-  .training-title { margin: 0; text-align: center; }
+  .training-title { margin: 0; text-align: left; }
   .training-controls {
     display: flex;
-    justify-content: center;
+    justify-content: flex-end;
     align-items: center;
     gap: var(--space-sm);
   }
@@ -365,9 +365,7 @@
     align-items: center;
   }
   .training-list-head {
-    padding: 0.55em 0.7em;
-    border: 0.05rem solid #ccc;
-    border-bottom: none;
+    display: none;
   }
   .training-sort {
     border: none;
@@ -486,18 +484,23 @@
     border: none;
     background: #fff;
     text-align: left;
-    padding: 0.8em;
+    padding: 0.8em 2.1em 0.8em 0.8em;
     cursor: pointer;
     font-size: 1rem;
+    position: relative;
+    display: block;
   }
   .training-toggle::after {
     content: '▾';
-    justify-self: end;
+    position: absolute;
+    right: 0.8em;
+    top: 50%;
+    transform: translateY(-50%);
     color: #4a5a6a;
     transition: transform .5s ease;
   }
   .training-item.open .training-toggle::after {
-    transform: rotate(180deg);
+    transform: translateY(-50%) rotate(180deg);
   }
   .training-fio-list {
     border-top: 0.05rem dashed #ccc;
@@ -518,6 +521,11 @@
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
     gap: var(--space-sm);
+  }
+  .training-meta-line {
+    font-size: 0.82rem;
+    color: #666;
+    margin-bottom: var(--space-sm);
   }
   .training-fio-group {
     border: 0.05rem solid #ddd;
@@ -726,12 +734,6 @@
       </div>
     </div>
     <div id="trainingListView" class="training-content-view">
-    <div class="training-list-head">
-      <div class="training-head-cell"><button type="button" class="training-sort" data-sort-key="timestamp">Отметка времени</button></div>
-      <div class="training-head-cell"><button type="button" class="training-sort" data-sort-key="date">Дата тренировки</button></div>
-      <div class="training-head-cell"><button type="button" class="training-sort" data-sort-key="coach">Тренер присутствовал</button></div>
-      <div class="training-head-cell"><button type="button" class="training-sort" data-sort-key="place">Место проведения занятия</button></div>
-    </div>
     <div id="trainingList" class="training-list"></div>
     </div>
     <div id="trainingTableView" class="training-content-view training-embedded-sheet hidden">
@@ -2243,10 +2245,8 @@
       const toggle = document.createElement('button');
       toggle.type = 'button';
       toggle.className = 'training-toggle';
-      const coachLinesHtml = splitCoachValues(item.coach)
-        .map(v => escapeHtml(v))
-        .join('<br>');
-      toggle.innerHTML = `<span>${escapeHtml(item.timestamp || '')}</span><span>${escapeHtml(item.date || '')}</span><span>${coachLinesHtml}</span><span>${escapeHtml(item.place || '')}</span>`;
+      const coachText = splitCoachValues(item.coach).map(v => escapeHtml(v)).join(', ');
+      toggle.innerHTML = `<span>${escapeHtml(item.date || '')} • ${coachText} • ${escapeHtml(item.place || '')}</span>`;
 
       const isOpen = trainingState.opened.has(itemKey);
       card.classList.toggle('open', isOpen);
@@ -2257,6 +2257,10 @@
 
       const groupsWrap = document.createElement('div');
       groupsWrap.className = 'training-fio-groups';
+
+      const metaLine = document.createElement('div');
+      metaLine.className = 'training-meta-line';
+      metaLine.textContent = `Отметка времени: ${item.timestamp || '—'}`;
 
       const groups = Array.isArray(item.fioGroups) ? item.fioGroups : [];
       if (!groups.length) {
@@ -2283,6 +2287,7 @@
         });
       }
 
+      fio.appendChild(metaLine);
       fio.appendChild(groupsWrap);
 
       card.appendChild(toggle);
