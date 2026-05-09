@@ -84,12 +84,12 @@ function getLogSheet() {
   if (!sheet) return null;
 
   if (sheet.getLastRow() === 0) {
-    sheet.appendRow(LOG_COLUMNS);
+    appendPlainLogRow(sheet, LOG_COLUMNS);
   } else {
     const currentHeader = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), LOG_COLUMNS.length)).getValues()[0];
     const needsHeaderUpdate = LOG_COLUMNS.some((title, index) => currentHeader[index] !== title);
     if (needsHeaderUpdate) {
-      sheet.getRange(1, 1, 1, LOG_COLUMNS.length).setValues([LOG_COLUMNS]);
+      sheet.getRange(1, 1, 1, LOG_COLUMNS.length).setNumberFormat('@').setValues([LOG_COLUMNS]);
     }
   }
 
@@ -103,6 +103,30 @@ function getLogSheet() {
  */
 function formatLogDateTime(value) {
   return Utilities.formatDate(value, CONFIG.TIMEZONE, `${CONFIG.DATE_FORMAT} HH:mm:ss`);
+}
+
+/**
+ * Форматирует значение для конкретной колонки лога без добавления лишнего времени к паролю/дате рождения.
+ * @param {number} col Индекс колонки лога.
+ * @param {*} value Значение ячейки.
+ * @returns {string}
+ */
+function formatLogCellValue(col, value) {
+  if (value instanceof Date) {
+    return col === 0 ? formatLogDateTime(value) : formatCellValue(value);
+  }
+  return String(value ?? '');
+}
+
+/**
+ * Добавляет строку в лог как текст, чтобы Google Sheets не преобразовывал даты рождения в дату-время.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet Лист логов.
+ * @param {string[]} values Значения строки.
+ */
+function appendPlainLogRow(sheet, values) {
+  const rowIndex = sheet.getLastRow() + 1;
+  const range = sheet.getRange(rowIndex, 1, 1, LOG_COLUMNS.length);
+  range.setNumberFormat('@').setValues([values]).setWrap(true);
 }
 
 /**
@@ -233,7 +257,7 @@ function appendLogLine(sheet, rowIndex, newValues) {
   const richValues = [];
 
   for (let col = 0; col < LOG_COLUMNS.length; col++) {
-    const oldText = oldValues[col] instanceof Date ? formatLogDateTime(oldValues[col]) : String(oldValues[col] ?? '');
+    const oldText = formatLogCellValue(col, oldValues[col]);
     const oldLines = oldText === '' ? [''] : oldText.split('\n');
     const nextValue = newValues[col] == null ? '' : String(newValues[col]);
     const lines = oldLines.length ? oldLines.concat([nextValue]) : [nextValue];
@@ -251,7 +275,7 @@ function logPageOpen({ login = '', password = '', snils = '', clientInfo = {} } 
   const sheet = getLogSheet();
   if (!sheet) return;
 
-  sheet.appendRow([
+  appendPlainLogRow(sheet, [
     formatLogDateTime(new Date()),
     login,
     password,
@@ -288,7 +312,7 @@ function logAccess({ login = '', password = '', snils = '', clientInfo = {}, sta
     return;
   }
 
-  sheet.appendRow(values);
+  appendPlainLogRow(sheet, values);
 }
 
 
@@ -307,6 +331,14 @@ function logAuthAttempt(payload) {
  */
 function logFormClick(login) {
   logAccess({ login, status: 'Нажал: Заполнить форму' });
+}
+
+/**
+ * Логирует открытие формы в отдельной вкладке.
+ * @param {string} login Логин пользователя.
+ */
+function logExternalFormClick(login) {
+  logAccess({ login, status: 'Нажал: Открыть форму в отдельной вкладке' });
 }
 
 /*************************************************
@@ -489,9 +521,11 @@ function checkLogin(login, password, clientInfo = {}, snils = '') {
     if (rowLogin === normalizedLogin && rowPassword === password) {
       const rowSnils = snilsValues ? normalizeSnils(snilsValues[i][0]) : '';
       if (rowSnils && rowSnils !== expectedSnils) {
-        logAuthAttempt({ login, password, snils, clientInfo, status: 'Требуется ввод СНИЛС' });
-        logStage('Совпадение найдено, требуется СНИЛС', startedAt);
-        return { requiresSnils: true };
+        const snilsVisible = Boolean(clientInfo.snilsVisible);
+        const snilsStatus = expectedSnils && snilsVisible ? 'Неверный СНИЛС' : 'Требуется ввод СНИЛС';
+        logAuthAttempt({ login, password, snils, clientInfo, status: snilsStatus });
+        logStage(expectedSnils && snilsVisible ? 'Совпадение найдено, СНИЛС неверный' : 'Совпадение найдено, требуется СНИЛС', startedAt);
+        return { requiresSnils: true, snilsError: expectedSnils && snilsVisible ? 'invalid' : 'required' };
       }
 
       const rowIndex = i + 2;
@@ -572,8 +606,8 @@ function verifySnils(login, password, snils, clientInfo = {}) {
       }
 
       if (rowSnils !== expectedSnils) {
-        logAuthAttempt({ login, password, snils, clientInfo, status: 'Неудачный вход: СНИЛС' });
-        return { error: 'Неправильно введён СНИЛС' };
+        logAuthAttempt({ login, password, snils, clientInfo, status: 'Неверный СНИЛС' });
+        return { error: 'Неверный СНИЛС.' };
       }
 
       const rowIndex = i + 2;

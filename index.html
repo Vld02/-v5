@@ -696,6 +696,7 @@
     startAuthLoading('Аутентификация');
 
     const clientInfo = await getClientInfo();
+    clientInfo.snilsVisible = dom.snilsWrap.style.display !== 'none';
 
     google.script.run
       .withSuccessHandler(response => {
@@ -706,10 +707,9 @@
         }
 
         if (response && response.requiresSnils) {
-          const isSnilsAlreadyVisible = dom.snilsWrap.style.display !== 'none';
           startSnilsStep(loginVal, passwordForServer);
-          dom.error.textContent = isSnilsAlreadyVisible
-            ? 'СНИЛС неверный.'
+          dom.error.textContent = response.snilsError === 'invalid'
+            ? 'Неверный СНИЛС.'
             : 'Для входа введите СНИЛС.';
           return;
         }
@@ -744,12 +744,13 @@
     dom.snils.value = snilsFormatted;
 
     if (snilsFormatted.length !== 14) {
-      dom.error.textContent = 'Введите СНИЛС в формате 000-000-000-00.';
+      dom.error.textContent = snilsFormatted ? 'Неверный СНИЛС.' : 'Для входа введите СНИЛС.';
       return;
     }
 
     startAuthLoading('Проверка СНИЛС');
     const clientInfo = await getClientInfo();
+    clientInfo.snilsVisible = true;
 
     google.script.run
       .withSuccessHandler(response => {
@@ -803,9 +804,16 @@
     google.script.run.checkLogin(loginVal, passwordForServer, { silent: true });
   }
 
+  function getSavedLoginForLog() {
+    return localStorage.getItem('savedLogin') || dom.login.value.trim() || 'неизвестно';
+  }
+
   function logFormClickClient() {
-    const loginVal = localStorage.getItem('savedLogin') || 'неизвестно';
-    google.script.run.logFormClick(loginVal);
+    google.script.run.logFormClick(getSavedLoginForLog());
+  }
+
+  function logExternalFormClickClient() {
+    google.script.run.logExternalFormClick(getSavedLoginForLog());
   }
 
   async function logInitialPageOpen() {
@@ -1003,6 +1011,7 @@
   }
 
   function openFormInNewWindow(formUrl) {
+    logExternalFormClickClient();
     window.open(formUrl, '_blank', 'noopener');
   }
 
