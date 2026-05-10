@@ -50,6 +50,12 @@
     overflow-x: hidden;
   }
 
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
   .page {
     max-width: var(--page-max-width);
     width: min(var(--page-max-width), calc(100vw - var(--space-lg) * 2));
@@ -265,6 +271,8 @@
     width: 100%;
     display: flex;
     justify-content: center;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
   table {
     border-collapse: collapse;
@@ -582,6 +590,148 @@
 
     .auth-feedback {
       width: 100%;
+    }
+  }
+
+  @media (max-width: 600px) {
+    :root {
+      --left-safe-zone: 0px;
+    }
+
+    body {
+      background-attachment: scroll;
+      overflow-x: hidden;
+    }
+
+    .left-safe-border {
+      display: none;
+    }
+
+    .page {
+      width: 100%;
+      max-width: none;
+      margin: 0;
+      padding: 88px 10px 14px;
+      border-radius: 0;
+    }
+
+    .tabs {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      flex-direction: row;
+      justify-content: center;
+      gap: 8px;
+      padding: 8px 10px;
+      background: rgba(255, 255, 255, 0.92);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.16);
+      z-index: 30;
+    }
+
+    .tab-flag,
+    .tab-flag:hover,
+    .tab-flag.active {
+      width: 76px;
+      height: 58px;
+      border-radius: 12px;
+      transform: none;
+    }
+
+    h2 {
+      font-size: 20px;
+      margin-top: 0;
+    }
+
+    .block {
+      padding: 12px 10px;
+    }
+
+    .button-link {
+      display: block;
+      width: 100%;
+      margin-left: 0;
+      transform: none;
+      text-align: center;
+    }
+
+    .item {
+      display: block;
+    }
+
+    .item-title,
+    .item-value {
+      width: 100%;
+    }
+
+    .item-value {
+      margin-top: 2px;
+    }
+
+    .controls,
+    .training-topbar,
+    .training-controls {
+      flex-wrap: wrap;
+    }
+
+    .training-topbar,
+    .training-controls {
+      justify-content: center;
+    }
+
+    .training-title {
+      width: 100%;
+      text-align: center;
+    }
+
+    .training-list-head,
+    .training-toggle {
+      grid-template-columns: minmax(90px, 1.2fr) repeat(3, minmax(62px, 1fr));
+      gap: 6px;
+      font-size: 12px;
+    }
+
+    .training-toggle {
+      padding: 10px 8px;
+    }
+
+    .training-filter-menu {
+      width: calc(100vw - 20px);
+      left: 10px !important;
+      right: 10px;
+    }
+
+    .attendance-notice {
+      right: 10px;
+      left: 10px;
+      bottom: 10px;
+      text-align: center;
+    }
+  }
+
+  @media (max-width: 380px) {
+    .page {
+      padding-left: 8px;
+      padding-right: 8px;
+    }
+
+    .tab-flag,
+    .tab-flag:hover,
+    .tab-flag.active {
+      width: 68px;
+      height: 52px;
+    }
+
+    th,
+    td {
+      padding: 5px 6px;
+      font-size: 13px;
+    }
+
+    .training-list-head,
+    .training-toggle {
+      grid-template-columns: minmax(78px, 1.15fr) repeat(3, minmax(54px, 1fr));
+      gap: 4px;
     }
   }
 </style>
