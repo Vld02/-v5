@@ -803,6 +803,8 @@
   };
   const ACTIVE_TAB_STORAGE_KEY = 'activeTab';
   const ATTENDANCE_ROWS_STORAGE_KEY = 'attendanceRowsDraftV1';
+  const ATTENDANCE_DRAFT_EXPIRES_AT_STORAGE_KEY = 'attendanceDraftExpiresAt';
+  const ATTENDANCE_DRAFT_TTL_MS = 30 * 60 * 1000;
   const LAST_SILENT_SYNC_KEY = 'lastSilentSyncAt';
   const SILENT_SYNC_INTERVAL_MS = 15 * 60 * 1000;
 
@@ -1436,6 +1438,13 @@
   }
 
   function restoreAttendanceDraft() {
+    const expiresAt = Number(localStorage.getItem(ATTENDANCE_DRAFT_EXPIRES_AT_STORAGE_KEY) || 0);
+    if (expiresAt && Date.now() >= expiresAt) {
+      localStorage.removeItem(ATTENDANCE_ROWS_STORAGE_KEY);
+      localStorage.removeItem(ATTENDANCE_DRAFT_EXPIRES_AT_STORAGE_KEY);
+      return false;
+    }
+
     let rows = [];
     try {
       rows = JSON.parse(localStorage.getItem(ATTENDANCE_ROWS_STORAGE_KEY) || '[]');
@@ -2574,6 +2583,7 @@
 
     const prefillValue = encodeURIComponent(values.join('\n'));
     const url = 'https://docs.google.com/forms/d/e/1FAIpQLSdGwQQhPaY3wXjT90TX2daQx7U-mjnfkoL_7VZ9nJ8NUqbKtw/viewform?entry.286976530=' + prefillValue;
+    localStorage.setItem(ATTENDANCE_DRAFT_EXPIRES_AT_STORAGE_KEY, String(Date.now() + ATTENDANCE_DRAFT_TTL_MS));
     window.open(url, '_blank');
   }
 </script>
