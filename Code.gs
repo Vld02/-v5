@@ -948,6 +948,36 @@
     localStorage.setItem('savedSnils', snilsVal);
   }
 
+  const FORM_FILL_CLEANUP_KEY = 'formFillCleanupAt';
+  const FORM_FILL_CLEANUP_DELAY_MS = 30 * 60 * 1000;
+
+  function markLocalDataForCleanup() {
+    localStorage.setItem(FORM_FILL_CLEANUP_KEY, String(Date.now()));
+  }
+
+  function clearSavedLocalData() {
+    localStorage.removeItem('savedLogin');
+    localStorage.removeItem('savedDate');
+    localStorage.removeItem('savedSnils');
+    localStorage.removeItem('isLoggedIn');
+    localStorage.removeItem(FORM_FILL_CLEANUP_KEY);
+  }
+
+  function applyDeferredLocalCleanupIfNeeded() {
+    const cleanupAtRaw = localStorage.getItem(FORM_FILL_CLEANUP_KEY);
+    if (!cleanupAtRaw) return;
+
+    const cleanupAt = Number(cleanupAtRaw);
+    if (!Number.isFinite(cleanupAt)) {
+      clearSavedLocalData();
+      return;
+    }
+
+    if (Date.now() - cleanupAt >= FORM_FILL_CLEANUP_DELAY_MS) {
+      clearSavedLocalData();
+    }
+  }
+
   function parseDateString(value) {
     if (!value) return null;
     value = value.trim();
@@ -1123,6 +1153,8 @@
   }
 
   window.addEventListener('DOMContentLoaded', () => {
+    applyDeferredLocalCleanupIfNeeded();
+
     const savedLogin = localStorage.getItem('savedLogin');
     const savedDate = localStorage.getItem('savedDate');
     const savedSnils = localStorage.getItem('savedSnils');
@@ -2526,6 +2558,7 @@
 
     const prefillValue = encodeURIComponent(values.join('\n'));
     const url = 'https://docs.google.com/forms/d/e/1FAIpQLSdGwQQhPaY3wXjT90TX2daQx7U-mjnfkoL_7VZ9nJ8NUqbKtw/viewform?entry.286976530=' + prefillValue;
+    markLocalDataForCleanup();
     window.open(url, '_blank');
   }
 </script>
