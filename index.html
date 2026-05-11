@@ -801,6 +801,10 @@
     attendance: document.getElementById('tab-attendance'),
     gear: document.getElementById('tab-gear')
   };
+  const ACTIVE_TAB_STORAGE_KEY = 'activeTab';
+  const ATTENDANCE_ROWS_STORAGE_KEY = 'attendanceRowsDraftV1';
+  const LAST_SILENT_SYNC_KEY = 'lastSilentSyncAt';
+  const SILENT_SYNC_INTERVAL_MS = 15 * 60 * 1000;
 
   function setFlagMenuOpen(isOpen) {
     dom.flagMenuZone.classList.toggle('open', isOpen);
@@ -827,6 +831,7 @@
   }
 
   function switchTab(key) {
+    if (!tabPanels[key]) return;
     tabFlags.forEach(btn => {
       const isActive = btn.dataset.tab === key;
       btn.classList.toggle('active', isActive);
@@ -840,6 +845,7 @@
     Object.entries(tabPanels).forEach(([name, panel]) => {
       panel.classList.toggle('active', name === key);
     });
+    localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, key);
   }
 
   const supportsHoverPointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
@@ -871,6 +877,11 @@
   topbarTabs.forEach(btn => {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));
   });
+
+  const savedTab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
+  if (savedTab && tabPanels[savedTab]) {
+    switchTab(savedTab);
+  }
 
   document.addEventListener('click', event => {
     if (!flagMenuPinned) return;
@@ -1356,6 +1367,10 @@
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
     if (localStorage.getItem('isLoggedIn') !== '1') return;
+    const now = Date.now();
+    const lastSyncAt = Number(localStorage.getItem(LAST_SILENT_SYNC_KEY) || 0);
+    if (now - lastSyncAt < SILENT_SYNC_INTERVAL_MS) return;
+    localStorage.setItem(LAST_SILENT_SYNC_KEY, String(now));
     loadDataSilently();
   });
 
@@ -1415,7 +1430,34 @@
     return tr;
   }
 
+  function saveAttendanceDraft() {
+    const rows = [...tbody.rows].map(row => normalizeAttendanceInput(row.cells[0].innerText));
+    localStorage.setItem(ATTENDANCE_ROWS_STORAGE_KEY, JSON.stringify(rows));
+  }
+
+  function restoreAttendanceDraft() {
+    let rows = [];
+    try {
+      rows = JSON.parse(localStorage.getItem(ATTENDANCE_ROWS_STORAGE_KEY) || '[]');
+    } catch (_) {
+      rows = [];
+    }
+    if (!Array.isArray(rows) || !rows.length) return false;
+    tbody.innerHTML = '';
+    rows
+      .map(value => normalizeAttendanceInput(value))
+      .forEach(value => tbody.appendChild(createRow(value)));
+    return true;
+  }
+
   function hydrateExistingRows() {
+    if (restoreAttendanceDraft()) {
+      const lastRestored = tbody.lastElementChild;
+      if (lastRestored && lastRestored.cells[0].innerText.trim()) {
+        tbody.appendChild(createRow());
+      }
+      return;
+    }
     const rows = [...tbody.rows];
     rows.forEach(row => {
       const rowId = getRowId(row);
@@ -1491,6 +1533,7 @@
       const r = createRow(text.slice(pos));
       row.after(r);
       setCaret(r.cells[0], 0);
+      saveAttendanceDraft();
       scheduleMatch();
     }
 
@@ -1503,6 +1546,7 @@
       p.innerText += text;
       removeRowAndState(row);
       setCaret(p, len);
+      saveAttendanceDraft();
       scheduleMatch();
     }
 
@@ -1515,6 +1559,7 @@
       cell.innerText += n.innerText;
       removeRowAndState(next);
       setCaret(cell, len);
+      saveAttendanceDraft();
       scheduleMatch();
     }
 
@@ -1538,6 +1583,7 @@
     if (lines.length <= 1) {
       const last = tbody.lastElementChild;
       if (last && last.cells[0].innerText.trim()) tbody.appendChild(createRow());
+      saveAttendanceDraft();
       scheduleMatch();
       return;
     }
@@ -1551,6 +1597,7 @@
     }
 
     setCaret(currentRow.cells[0], currentRow.cells[0].innerText.length);
+    saveAttendanceDraft();
     scheduleMatch();
   });
 
@@ -1571,6 +1618,7 @@
       }
     });
 
+    saveAttendanceDraft();
     scheduleMatch();
   });
 
