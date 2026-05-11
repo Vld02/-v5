@@ -271,13 +271,13 @@
   #error { color: red; font-weight: bold; text-align: center; margin: 0; width: 100%; }
   #loading { color: #555; margin: 0; position: absolute; left: 0; bottom: 0; white-space: nowrap; }
 
-  .controls { display: flex; justify-content: center; margin-bottom: var(--space-md); }
-  .attendance-toolbar {
+  .controls {
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: var(--space-sm);
-    margin-bottom: var(--space-sm);
+    margin-bottom: var(--space-md);
+    flex-wrap: wrap;
   }
   .attendance-toolbar-group { display: flex; gap: var(--space-sm); }
   .attendance-icon-btn {
@@ -732,14 +732,12 @@
 
   <section id="tab-attendance" class="tab-panel">
     <h2 class="section-heading">ДБВv5 Посещаемость</h2>
-    <div class="controls">
-      <button onclick="openAttendanceForm()">Заполнить форму</button>
-    </div>
-    <div class="attendance-toolbar" aria-label="Инструменты таблицы посещаемости">
+    <div class="controls" aria-label="Инструменты таблицы посещаемости">
       <div class="attendance-toolbar-group">
         <button type="button" class="attendance-icon-btn" title="Вставить" aria-label="Вставить" onclick="pasteAttendanceToLastCell()">📋</button>
         <button type="button" class="attendance-icon-btn" title="Очистить" aria-label="Очистить" onclick="clearAttendanceTable()">🗑️</button>
       </div>
+      <button onclick="openAttendanceForm()">Заполнить форму</button>
       <div class="attendance-toolbar-group">
         <button type="button" class="attendance-icon-btn" title="Скопировать полное ФИО" aria-label="Скопировать полное ФИО" onclick="copyAttendanceFullFio()">📄</button>
       </div>
