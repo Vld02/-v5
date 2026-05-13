@@ -271,7 +271,22 @@
   #error { color: red; font-weight: bold; text-align: center; margin: 0; width: 100%; }
   #loading { color: #555; margin: 0; position: absolute; left: 0; bottom: 0; white-space: nowrap; }
 
-  .controls { display: flex; justify-content: center; margin-bottom: var(--space-md); }
+  .controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-md);
+    flex-wrap: wrap;
+  }
+  .attendance-toolbar-group { display: flex; gap: var(--space-sm); }
+  .attendance-icon-btn {
+    border: 0.05rem solid var(--border);
+    background: #fff;
+    border-radius: var(--radius-sm);
+    padding: 0.45em 0.7em;
+    margin-top: 0;
+  }
   .table-wrapper {
     width: 100%;
     display: flex;
@@ -717,8 +732,15 @@
 
   <section id="tab-attendance" class="tab-panel">
     <h2 class="section-heading">ДБВv5 Посещаемость</h2>
-    <div class="controls">
+    <div class="controls" aria-label="Инструменты таблицы посещаемости">
+      <div class="attendance-toolbar-group">
+        <button type="button" class="attendance-icon-btn" title="Вставить" aria-label="Вставить" onclick="pasteAttendanceToLastCell()">📋</button>
+        <button type="button" class="attendance-icon-btn" title="Очистить" aria-label="Очистить" onclick="clearAttendanceTable()">🗑️</button>
+      </div>
       <button onclick="openAttendanceForm()">Заполнить форму</button>
+      <div class="attendance-toolbar-group">
+        <button type="button" class="attendance-icon-btn" title="Скопировать полное ФИО" aria-label="Скопировать полное ФИО" onclick="copyAttendanceFullFio()">📄</button>
+      </div>
     </div>
     <div class="table-wrapper">
       <table id="fioTable">
@@ -803,6 +825,8 @@
   };
   const ACTIVE_TAB_STORAGE_KEY = 'activeTab';
   const ATTENDANCE_ROWS_STORAGE_KEY = 'attendanceRowsDraftV1';
+  const ATTENDANCE_DRAFT_DELETE_AFTER_KEY = 'attendanceDraftDeleteAfterAtV1';
+  const ATTENDANCE_DRAFT_TTL_MS = 30 * 60 * 1000;
   const LAST_SILENT_SYNC_KEY = 'lastSilentSyncAt';
   const SILENT_SYNC_INTERVAL_MS = 15 * 60 * 1000;
 
@@ -1436,6 +1460,13 @@
   }
 
   function restoreAttendanceDraft() {
+    const deleteAfterAt = Number(localStorage.getItem(ATTENDANCE_DRAFT_DELETE_AFTER_KEY) || 0);
+    if (deleteAfterAt && Date.now() >= deleteAfterAt) {
+      localStorage.removeItem(ATTENDANCE_ROWS_STORAGE_KEY);
+      localStorage.removeItem(ATTENDANCE_DRAFT_DELETE_AFTER_KEY);
+      return false;
+    }
+
     let rows = [];
     try {
       rows = JSON.parse(localStorage.getItem(ATTENDANCE_ROWS_STORAGE_KEY) || '[]');
@@ -1456,6 +1487,7 @@
       if (lastRestored && lastRestored.cells[0].innerText.trim()) {
         tbody.appendChild(createRow());
       }
+      scheduleMatch();
       return;
     }
     const rows = [...tbody.rows];
@@ -1621,6 +1653,70 @@
     saveAttendanceDraft();
     scheduleMatch();
   });
+
+
+  function getAttendanceSelectedValues() {
+    return [...tbody.rows]
+      .map(r => {
+        const selected = r.querySelector('.fio-option.selected');
+        return selected ? selected.innerText : '';
+      })
+      .filter(Boolean);
+  }
+
+  async function pasteAttendanceToLastCell() {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text.trim()) return;
+
+      let targetRow = tbody.lastElementChild;
+      if (!targetRow || targetRow.cells[0].innerText.trim()) {
+        targetRow = createRow();
+        tbody.appendChild(targetRow);
+      }
+
+      const lines = text.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+      if (!lines.length) return;
+
+      targetRow.cells[0].innerText = lines[0];
+      let row = targetRow;
+      for (let i = 1; i < lines.length; i++) {
+        const r = createRow(lines[i]);
+        row.after(r);
+        row = r;
+      }
+
+      saveAttendanceDraft();
+      scheduleMatch();
+    } catch (_) {
+      showAttendanceNotice('Не удалось вставить из буфера');
+    }
+  }
+
+  function clearAttendanceTable() {
+    attendanceState.rows.clear();
+    attendanceState.nextId = 1;
+    tbody.innerHTML = '';
+    tbody.appendChild(createRow());
+    saveAttendanceDraft();
+    localStorage.removeItem(ATTENDANCE_DRAFT_DELETE_AFTER_KEY);
+    showAttendanceNotice('Таблица очищена');
+  }
+
+  async function copyAttendanceFullFio() {
+    const values = getAttendanceSelectedValues();
+    if (!values.length) {
+      showAttendanceNotice('Нет выбранных ФИО для копирования');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(values.join('\n'));
+      showAttendanceNotice('Полные ФИО скопированы');
+    } catch (_) {
+      showAttendanceNotice('Не удалось скопировать в буфер');
+    }
+  }
 
   function scheduleMatch() {
     clearTimeout(debounceTimer);
@@ -2565,12 +2661,9 @@
       return;
     }
 
-    const values = rows
-      .map(r => {
-        const selected = r.querySelector('.fio-option.selected');
-        return selected ? selected.innerText : '';
-      })
-      .filter(Boolean);
+    const values = getAttendanceSelectedValues();
+
+    localStorage.setItem(ATTENDANCE_DRAFT_DELETE_AFTER_KEY, String(Date.now() + ATTENDANCE_DRAFT_TTL_MS));
 
     const prefillValue = encodeURIComponent(values.join('\n'));
     const url = 'https://docs.google.com/forms/d/e/1FAIpQLSdGwQQhPaY3wXjT90TX2daQx7U-mjnfkoL_7VZ9nJ8NUqbKtw/viewform?entry.286976530=' + prefillValue;
