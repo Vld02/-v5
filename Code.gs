@@ -292,10 +292,13 @@ function logPageOpen({ login = '', password = '', snils = '', clientInfo = {} } 
  * @param {{login?:string,password?:string,snils?:string,clientInfo?:Object,status:string}} payload
  */
 function logAccess({ login = '', password = '', snils = '', clientInfo = {}, status }) {
-  const sheet = getLogSheet();
-  if (!sheet) return;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const sheet = getLogSheet();
+    if (!sheet) return;
 
-  const values = [
+    const values = [
     formatLogDateTime(new Date()),
     login,
     password,
@@ -308,11 +311,14 @@ function logAccess({ login = '', password = '', snils = '', clientInfo = {}, sta
   const rowIndex = findRecentLogRow(sheet, { login, clientInfo });
 
   if (rowIndex > 0) {
-    appendLogLine(sheet, rowIndex, values);
-    return;
-  }
+      appendLogLine(sheet, rowIndex, values);
+      return;
+    }
 
-  appendPlainLogRow(sheet, values);
+    appendPlainLogRow(sheet, values);
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 
@@ -329,7 +335,38 @@ function logAuthAttempt(payload) {
  * Логирует клик по кнопке открытия формы.
  * @param {string} login Логин пользователя.
  */
-function logFormClick(login) {
+function logEditFormClick(login) {
+  logAccess({ login, status: 'Нажал: Заполнить / редактировать' });
+}
+
+/**
+ * Логирует нажатие кнопки входа.
+ * @param {string} login Логин пользователя.
+ */
+function logLoginButtonClick(login) {
+  logAccess({ login, status: 'Нажал: Войти' });
+}
+
+/**
+ * Логирует переход в раздел.
+ * @param {string} login Логин пользователя.
+ * @param {string} section Ключ раздела.
+ */
+function logSectionVisit(login, section) {
+  const sectionMap = {
+    docs: 'ДБВv5 Документы',
+    attendance: 'ДБВv5 Посещаемость',
+    gear: 'ДБВv5 Снаряжение'
+  };
+  const sectionName = sectionMap[section] || section;
+  logAccess({ login, status: `Перешёл в раздел ${sectionName}` });
+}
+
+/**
+ * Логирует клик по кнопке заполнения формы.
+ * @param {string} login Логин пользователя.
+ */
+function logFillFormClick(login) {
   logAccess({ login, status: 'Нажал: Заполнить форму' });
 }
 
@@ -620,6 +657,56 @@ function verifySnils(login, password, snils, clientInfo = {}) {
   }
 
   return { error: 'Неправильно введены ФИО или дата рождения.' };
+}
+
+
+/**
+ * Обновляет значение ячейки в листе "Результат" по названию столбца для авторизованного пользователя.
+ * @param {{login:string,password:string,snils?:string,columnTitle:string,value:string}} payload
+ * @returns {{ok:boolean,error?:string,value?:string}}
+ */
+function updateResultCell(payload) {
+  const login = String(payload.login || '');
+  const password = String(payload.password || '');
+  const columnTitle = String(payload.columnTitle || '');
+  const value = String(payload.value ?? '');
+
+  const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
+  if (!sheet) return { ok: false, error: 'Лист с результатами не найден.' };
+
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) return { ok: false, error: 'Таблица пуста.' };
+
+  const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+  const targetCol = header.indexOf(columnTitle);
+  if (targetCol === -1) return { ok: false, error: 'Столбец не найден.' };
+
+  const authCols = getAuthColumnIndexes(header);
+  const snilsCol = getSnilsColumnIndex(header);
+  const rowCount = lastRow - 1;
+  const { logins, passwords, snilsValues } = loadAuthColumns(sheet, rowCount, authCols, snilsCol);
+  const normalizedLogin = normalizeLogin(login);
+  const expectedSnils = normalizeSnils(payload.snils || '');
+
+  for (let i = 0; i < rowCount; i++) {
+    const rowLogin = normalizeLogin(logins[i][0]);
+    const rowPassword = formatCellValue(passwords[i][0]).trim();
+    if (rowLogin !== normalizedLogin || rowPassword !== password) continue;
+
+    if (snilsCol >= 0) {
+      const rowSnils = normalizeSnils(snilsValues[i][0]);
+      if (rowSnils && expectedSnils && rowSnils !== expectedSnils) {
+        return { ok: false, error: 'Неверный СНИЛС.' };
+      }
+    }
+
+    const rowIndex = i + 2;
+    sheet.getRange(rowIndex, targetCol + 1).setValue(value);
+    return { ok: true, value };
+  }
+
+  return { ok: false, error: 'Пользователь не найден.' };
 }
 
 /*************************************************
