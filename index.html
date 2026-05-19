@@ -224,6 +224,16 @@
     border-radius: var(--radius-md);
     background: #fafafa;
   }
+  .result-table { width: 100%; border-collapse: collapse; margin-top: .75rem; }
+  .result-table th, .result-table td { border: 0.08rem solid #bfc9d8; padding: 0.5rem; vertical-align: top; }
+  .result-table th { background: #eef4ff; text-align: left; }
+  .editable-cell-wrap { position: relative; padding-right: 2.2rem; min-height: 1.5rem; }
+  .cell-edit-btn { position: absolute; top: 0.1rem; right: 0.1rem; border: 0.06rem solid #b8c4d8; background: #fff; border-radius: .3rem; padding: .2rem .35rem; margin: 0; }
+  .cell-edit-btn.readonly { opacity: .45; cursor: default; }
+  .cell-edit-btn.save-disabled { opacity: .5; cursor: not-allowed; }
+  .cell-value-editable { outline: 0.12rem solid #1a73e8; background: #fff; }
+  .loading-dot { display:inline-block; width: .8rem; height: .8rem; border:.12rem solid #86a2d8; border-top-color: transparent; border-radius:50%; animation:spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   .button-link {
     display: inline-block;
@@ -923,8 +933,14 @@
   const authState = {
     awaitingSnils: false,
     login: '',
-    password: ''
+    password: '',
+    serverPassword: ''
   };
+  const CELL_EDIT_RULES = Object.freeze({
+    '__default__': { editable: true, regex: '^.*$', inputType: 'text' },
+    'Дата ввода': { editable: true, regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', inputType: 'date' },
+    'Отметка времени': { editable: true, regex: '^\\d{2}\\.\\d{2}\\.\\d{4}(\\s\\d{2}:\\d{2}(:\\d{2})?)?$', inputType: 'datetime' }
+  });
   let authLoadingTimer = null;
   let authLoadingBaseText = '';
 
@@ -1047,6 +1063,7 @@
         }
 
         localStorage.setItem('isLoggedIn', '1');
+        authState.serverPassword = passwordForServer;
         hideSnilsStep();
         showDocsResult(response);
       })
@@ -1091,6 +1108,7 @@
         localStorage.setItem('savedDate', dom.password.value);
         localStorage.setItem('savedSnils', snilsFormatted);
         localStorage.setItem('isLoggedIn', '1');
+        authState.serverPassword = authState.password;
         authState.awaitingSnils = false;
         authState.login = '';
         authState.password = '';
@@ -1268,47 +1286,74 @@
         <div id="embeddedFormHolder"></div>
       </div>`;
 
-    const SECTION_STARTS = {
-      'Фамилия Имя Отчество (С)': 'Спортсмен',
-      'Фамилия Имя Отчество (П)': 'Отец',
-      'Фамилия Имя Отчество (М)': 'Мать',
-      'Фамилия Имя Отчество (Д)': 'Другой законный представитель'
-    };
-
-    const sectionKeys = Object.keys(SECTION_STARTS);
-    const sectionPositions = [];
-
+    html += '<table class="result-table"><thead><tr><th>Поле</th><th>Значение</th><th>Правила</th></tr></thead><tbody>';
     for (let i = 0; i < header.length; i++) {
-      if (sectionKeys.includes(header[i])) sectionPositions.push(i);
+      const title = header[i];
+      const bg = colors[i] || '';
+      const value = row[i] ?? '';
+      const rule = CELL_EDIT_RULES[title] || CELL_EDIT_RULES.__default__;
+      const regexText = rule.regex || '^.*$';
+      const cond = rule.inputType === 'date' ? 'При входе: ДД.ММ.ГГГГ' : (rule.inputType === 'datetime' ? 'Дата/время' : 'Свободный ввод');
+      html += `<tr data-col-title="${escapeHtml(title)}" data-regex="${escapeHtml(regexText)}" data-editable="${rule.editable ? '1' : '0'}">
+        <td>${escapeHtml(title)}</td>
+        <td style="${bg ? `background:${bg};` : ''}">
+          <div class="editable-cell-wrap">
+            <div class="editable-cell-value">${escapeHtml(value)}</div>
+            <button type="button" class="cell-edit-btn ${rule.editable ? '' : 'readonly'}" title="Редактировать">${rule.editable ? '✏️' : '🔒'}</button>
+          </div>
+        </td>
+        <td>${rule.editable ? 'Да' : 'Нет'} / <code>${escapeHtml(regexText)}</code> / ${escapeHtml(cond)}</td>
+      </tr>`;
     }
-    sectionPositions.push(header.length);
-
-    for (let s = 0; s < sectionPositions.length - 1; s++) {
-      const startIndex = sectionPositions[s];
-      const endIndex = sectionPositions[s + 1];
-      const sectionTitle = SECTION_STARTS[header[startIndex]];
-
-      let hasValue = false;
-      for (let i = startIndex; i < endIndex; i++) {
-        if ((row[i] ?? '').trim() !== '') {
-          hasValue = true;
-          break;
-        }
-      }
-      if (!hasValue) continue;
-
-      html += `<div style="margin-top:1rem;margin-bottom:0.5rem;font-weight:bold;font-size:1.2rem;text-align:center;border-bottom:0.1rem solid #000;padding-bottom:0.35rem;">${sectionTitle}</div>`;
-
-      for (let i = startIndex; i < endIndex; i++) {
-        const cleanedTitle = header[i].replace(/\(С\)|\(П\)|\(М\)|\(Д\)/g, '').trim();
-        const bg = colors[i] || '';
-        const style = bg ? `background:${bg};padding:0.25rem;border-radius:0.25rem;` : '';
-        html += `<div class="item" style="margin-bottom:0.35rem;"><div class="item-title">${escapeHtml(cleanedTitle)}</div><div class="item-value" style="${style}">${escapeHtml(row[i] ?? '')}</div></div>`;
-      }
-    }
+    html += '</tbody></table>';
 
     document.getElementById('result').innerHTML = html;
+    bindResultCellEditors();
     stopAuthLoading();
+  }
+
+  function bindResultCellEditors() {
+    const root = document.getElementById('result');
+    root.querySelectorAll('.cell-edit-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (btn.classList.contains('readonly')) return;
+        const tr = btn.closest('tr');
+        const valueEl = tr.querySelector('.editable-cell-value');
+        const regex = new RegExp(tr.dataset.regex || '^.*$');
+        const editing = btn.dataset.editing === '1';
+        if (!editing) {
+          valueEl.contentEditable = 'true';
+          valueEl.classList.add('cell-value-editable');
+          btn.dataset.editing = '1';
+          btn.textContent = '💾';
+          const validate = () => btn.classList.toggle('save-disabled', !regex.test(valueEl.innerText.trim()));
+          valueEl.addEventListener('input', validate);
+          validate();
+          return;
+        }
+        if (btn.classList.contains('save-disabled')) return;
+        const newValue = valueEl.innerText.trim();
+        btn.innerHTML = '<span class="loading-dot"></span>';
+        btn.disabled = true;
+        google.script.run.withSuccessHandler(resp => {
+          if (resp && resp.ok) {
+            valueEl.textContent = resp.value ?? newValue;
+            valueEl.contentEditable = 'false';
+            valueEl.classList.remove('cell-value-editable');
+            btn.textContent = '✏️';
+            btn.dataset.editing = '0';
+            btn.classList.remove('save-disabled');
+            btn.disabled = false;
+          } else {
+            btn.textContent = '💾';
+            btn.disabled = false;
+          }
+        }).withFailureHandler(() => {
+          btn.textContent = '💾';
+          btn.disabled = false;
+        }).updateResultCell(dom.login.value.trim(), authState.serverPassword || toServerDate(dom.password.value), tr.dataset.colTitle, newValue);
+      });
+    });
   }
 
   function openEmbeddedForm(formUrl) {
