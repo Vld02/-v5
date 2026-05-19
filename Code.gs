@@ -341,6 +341,92 @@ function logExternalFormClick(login) {
   logAccess({ login, status: 'Нажал: Открыть форму в отдельной вкладке' });
 }
 
+
+
+/*************************************************
+ * РЕДАКТИРОВАНИЕ ДАННЫХ ЛИСТА «РЕЗУЛЬТАТ»
+ *************************************************/
+const DATE_REGEX_SOURCE = '^\d{2}\.\d{2}\.\d{4}$';
+const PHONE_REGEX_SOURCE = '^\+?\d[\d\s\-()]{8,}$';
+const EMAIL_REGEX_SOURCE = '^[^\s@]+@[^\s@]+\.[^\s@]+$';
+const SNILS_REGEX_SOURCE = '^\d{3}-?\d{3}-?\d{3}\s?\d{2}$';
+const PASSPORT_CODE_REGEX_SOURCE = '^\d{3}-?\d{3}$';
+const DEFAULT_TEXT_REGEX_SOURCE = '^[\s\S]{0,500}$';
+
+/**
+ * Возвращает правило редактирования для колонки.
+ * Блок: Название столбца / Возможность редактирования / Регулярное выражение / Особые условия ввода.
+ * @param {string} headerTitle
+ * @returns {{column:string,editable:boolean,pattern:string,specialInput:string}}
+ */
+function getEditRule(headerTitle) {
+  const column = String(headerTitle || '').trim();
+  const rule = { column, editable: true, pattern: DEFAULT_TEXT_REGEX_SOURCE, specialInput: 'text' };
+
+  if (/^Дата|Когда выдан|до$/i.test(column) || column.includes('Дата ')) {
+    rule.pattern = DATE_REGEX_SOURCE;
+    rule.specialInput = 'date_dd.mm.yyyy';
+  } else if (column.includes('Телефон')) {
+    rule.pattern = PHONE_REGEX_SOURCE;
+    rule.specialInput = 'phone';
+  } else if (column.includes('Электронная почта')) {
+    rule.pattern = EMAIL_REGEX_SOURCE;
+    rule.specialInput = 'email';
+  } else if (column.includes('Снилс')) {
+    rule.pattern = SNILS_REGEX_SOURCE;
+    rule.specialInput = 'snils';
+  } else if (column.includes('Код подразделения')) {
+    rule.pattern = PASSPORT_CODE_REGEX_SOURCE;
+    rule.specialInput = 'passport_code';
+  }
+
+  return rule;
+}
+
+function updateResultCell(payload) {
+  const { login = '', password = '', snils = '', columnName = '', value = '' } = payload || {};
+  const auth = resolveAuthorizedRow(login, password, snils);
+  if (auth.error) return { error: auth.error };
+
+  const { sheet, rowIndex, header } = auth;
+  const colIndex = header.indexOf(String(columnName));
+  if (colIndex === -1) return { error: 'Колонка не найдена.' };
+
+  const rule = getEditRule(columnName);
+  if (!rule.editable) return { error: 'Редактирование запрещено.' };
+
+  const textValue = String(value ?? '').trim();
+  const re = new RegExp(rule.pattern);
+  if (!re.test(textValue)) return { error: 'Значение не прошло проверку формата.' };
+
+  sheet.getRange(rowIndex, colIndex + 1).setValue(textValue);
+  return { ok: true, value: textValue };
+}
+
+function resolveAuthorizedRow(login, password, snils) {
+  const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
+  if (!sheet) return { error: 'Лист с результатами не найден.' };
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) return { error: 'Таблица пуста.' };
+  const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+  const authCols = getAuthColumnIndexes(header);
+  const snilsCol = getSnilsColumnIndex(header);
+  const rowCount = lastRow - 1;
+  const { logins, passwords, snilsValues } = loadAuthColumns(sheet, rowCount, authCols, snilsCol);
+  const normalizedLogin = normalizeLogin(login);
+  const expectedSnils = normalizeSnils(snils);
+
+  for (let i = 0; i < rowCount; i++) {
+    if (normalizeLogin(logins[i][0]) !== normalizedLogin) continue;
+    if (formatCellValue(passwords[i][0]).trim() !== password) continue;
+    const rowSnils = snilsValues ? normalizeSnils(snilsValues[i][0]) : '';
+    if (rowSnils && rowSnils !== expectedSnils) return { error: 'Неверный СНИЛС.' };
+    return { sheet, rowIndex: i + 2, header };
+  }
+  return { error: 'Пользователь не найден.' };
+}
+
 /*************************************************
  * ДОКУМЕНТЫ: АВТОРИЗАЦИЯ И ПОДГОТОВКА ДАННЫХ
  *************************************************/
@@ -452,7 +538,8 @@ function prepareRowForClient(row, header, backgrounds, allowedCols) {
   return {
     header: allowedCols.map(i => header[i]),
     row: allowedCols.map(i => formatCellValue(row[i])),
-    colors: allowedCols.map(i => backgrounds[i])
+    colors: allowedCols.map(i => backgrounds[i]),
+    editRules: allowedCols.map(i => getEditRule(header[i]))
   };
 }
 
