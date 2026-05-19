@@ -737,7 +737,7 @@
         <button type="button" class="attendance-icon-btn" title="Вставить" aria-label="Вставить" onclick="pasteAttendanceToLastCell()">📋</button>
         <button type="button" class="attendance-icon-btn" title="Очистить" aria-label="Очистить" onclick="clearAttendanceTable()">🗑️</button>
       </div>
-      <button onclick="openAttendanceForm()">Заполнить форму</button>
+      <button onclick="openAttendanceForm()" title="Откроется гугл форма для заполнения тренировки">Заполнить тренировку</button>
       <div class="attendance-toolbar-group">
         <button type="button" class="attendance-icon-btn" title="Скопировать полное ФИО" aria-label="Скопировать полное ФИО" onclick="copyAttendanceFullFio()">📄</button>
       </div>
@@ -856,6 +856,8 @@
 
   function switchTab(key) {
     if (!tabPanels[key]) return;
+    const currentTab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
+    if (currentTab !== key) logSectionVisitClient(key);
     tabFlags.forEach(btn => {
       const isActive = btn.dataset.tab === key;
       btn.classList.toggle('active', isActive);
@@ -1020,6 +1022,8 @@
     dom.snils.value = snilsFormatted;
     saveAuthInputs(loginVal, dateInput.value, snilsFormatted);
 
+    logLoginButtonClickClient();
+
     if (!loginVal || !passwordForServer) {
       dom.error.textContent = 'Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.';
       return;
@@ -1059,6 +1063,8 @@
     if (!authState.login || !authState.password) {
       const loginVal = dom.login.value.trim();
       const passwordForServer = toServerDate(formatDateInput(dom.password.value));
+      logLoginButtonClickClient();
+
       if (!loginVal || !passwordForServer) {
         dom.error.textContent = 'Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.';
         return;
@@ -1136,7 +1142,19 @@
   }
 
   function logFormClickClient() {
-    google.script.run.logFormClick(getSavedLoginForLog());
+    google.script.run.logEditFormClick(getSavedLoginForLog());
+  }
+
+  function logLoginButtonClickClient() {
+    google.script.run.logLoginButtonClick(getSavedLoginForLog());
+  }
+
+  function logSectionVisitClient(section) {
+    google.script.run.logSectionVisit(getSavedLoginForLog(), section);
+  }
+
+  function logFillFormClickClient() {
+    google.script.run.logFillFormClick(getSavedLoginForLog());
   }
 
   function logExternalFormClickClient() {
@@ -1261,7 +1279,7 @@
     const formUrl = buildFormUrl(header, row);
     let html = `
       <div class="block" id="formBlock">
-        <button id="openFormBtn" class="button-link form-action" onclick="openEmbeddedForm('${formUrl}')">Заполнить / редактировать</button>
+        <button id="openFormBtn" class="button-link form-action" onclick="openEmbeddedForm('${formUrl}')" title="Откроется Гугл форма для заполнения данных">Заполнить / редактировать</button>
         <div id="externalFormBtnWrapper" style="display:none;margin-top:0.75rem;">
           <button class="button-link" onclick="openFormInNewWindow('${formUrl}')">Открыть форму в отдельной вкладке</button>
         </div>
@@ -1325,16 +1343,12 @@
 
     const container = document.getElementById('embeddedFormHolder');
     if (!container) return;
-    container.style.overflow = 'hidden';
-    container.style.maxHeight = '0';
-    container.style.transition = 'max-height .45s ease, opacity .35s ease';
-    container.style.opacity = '0';
     container.style.marginTop = '0.75rem';
+    container.style.overflow = 'visible';
+    container.style.maxHeight = 'none';
+    container.style.transition = 'none';
+    container.style.opacity = '1';
     container.innerHTML = `<iframe src="${formUrl}&embedded=true" width="100%" height="1000" frameborder="0">Загрузка…</iframe>`;
-    requestAnimationFrame(() => {
-      container.style.maxHeight = '65rem';
-      container.style.opacity = '1';
-    });
   }
 
   function openFormInNewWindow(formUrl) {
@@ -2664,6 +2678,8 @@
     const values = getAttendanceSelectedValues();
 
     localStorage.setItem(ATTENDANCE_DRAFT_DELETE_AFTER_KEY, String(Date.now() + ATTENDANCE_DRAFT_TTL_MS));
+
+    logFillFormClickClient();
 
     const prefillValue = encodeURIComponent(values.join('\n'));
     const url = 'https://docs.google.com/forms/d/e/1FAIpQLSdGwQQhPaY3wXjT90TX2daQx7U-mjnfkoL_7VZ9nJ8NUqbKtw/viewform?entry.286976530=' + prefillValue;
