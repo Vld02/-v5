@@ -452,8 +452,37 @@ function prepareRowForClient(row, header, backgrounds, allowedCols) {
   return {
     header: allowedCols.map(i => header[i]),
     row: allowedCols.map(i => formatCellValue(row[i])),
-    colors: allowedCols.map(i => backgrounds[i])
+    colors: allowedCols.map(i => backgrounds[i]),
+    allowedIndexes: allowedCols
   };
+}
+
+function getRowByCredentials(sheet, login, password) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return -1;
+  const header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
+  const authCols = getAuthColumnIndexes(header);
+  const rowCount = lastRow - 1;
+  const { logins, passwords } = loadAuthColumns(sheet, rowCount, authCols, -1);
+  const normalizedLogin = normalizeLogin(login);
+  for (let i = 0; i < rowCount; i++) {
+    if (normalizeLogin(logins[i][0]) === normalizedLogin && formatCellValue(passwords[i][0]).trim() === password) {
+      return i + 2;
+    }
+  }
+  return -1;
+}
+
+function updateResultCell(login, password, headerName, value) {
+  const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
+  if (!sheet) return { error: 'Лист с результатами не найден.' };
+  const header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
+  const colIndex = header.indexOf(String(headerName || '').trim());
+  if (colIndex === -1) return { error: 'Столбец не найден.' };
+  const rowIndex = getRowByCredentials(sheet, login, password);
+  if (rowIndex === -1) return { error: 'Строка пользователя не найдена.' };
+  sheet.getRange(rowIndex, colIndex + 1).setValue(value ?? '');
+  return { ok: true, value: formatCellValue(value ?? '') };
 }
 
 /**
