@@ -622,6 +622,47 @@ function verifySnils(login, password, snils, clientInfo = {}) {
   return { error: 'Неправильно введены ФИО или дата рождения.' };
 }
 
+/**
+ * Обновляет одну ячейку в листе "Результат" по авторизации пользователя.
+ * @param {string} login ФИО.
+ * @param {string} password Дата рождения (yyyy-MM-dd).
+ * @param {string} snils СНИЛС.
+ * @param {string} columnName Название столбца.
+ * @param {string} value Новое значение.
+ * @returns {{ok:boolean}}
+ */
+function updateResultCell(login, password, snils, columnName, value) {
+  const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
+  if (!sheet) throw new Error('RESULT_SHEET_NOT_FOUND');
+
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) throw new Error('RESULT_EMPTY');
+
+  const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+  const authCols = getAuthColumnIndexes(header);
+  const snilsCol = getSnilsColumnIndex(header);
+  const targetCol = header.indexOf(String(columnName || ''));
+  if (targetCol < 0) throw new Error('COLUMN_NOT_FOUND');
+
+  const rowCount = lastRow - 1;
+  const { logins, passwords, snilsValues } = loadAuthColumns(sheet, rowCount, authCols, snilsCol);
+  const normalizedLogin = normalizeLogin(login);
+  const expectedSnils = normalizeSnils(snils);
+
+  for (let i = 0; i < rowCount; i++) {
+    if (normalizeLogin(logins[i][0]) !== normalizedLogin) continue;
+    if (formatCellValue(passwords[i][0]).trim() !== String(password || '').trim()) continue;
+    const rowSnils = snilsValues ? normalizeSnils(snilsValues[i][0]) : '';
+    if (rowSnils && expectedSnils && rowSnils !== expectedSnils) continue;
+
+    sheet.getRange(i + 2, targetCol + 1).setValue(String(value ?? ''));
+    return { ok: true };
+  }
+
+  throw new Error('AUTH_FAILED_FOR_UPDATE');
+}
+
 /*************************************************
  * ПОСЕЩАЕМОСТЬ: ПОДБОР ФИО
  *************************************************/

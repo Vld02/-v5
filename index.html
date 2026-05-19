@@ -310,6 +310,18 @@
   th { background: #eaeaea; }
   tbody tr:nth-child(even) { background: #f3f3f3; }
   td.input { outline: none; }
+  .result-table-wrap { overflow-x: auto; margin-top: var(--space-md); }
+  .result-data-table { border-collapse: collapse; width: 100%; background: #fff; }
+  .result-data-table th, .result-data-table td { border: 0.06rem solid #bfc8d1; padding: 0.5em 0.65em; }
+  .result-data-table th { background: #eef4fb; text-align: left; width: 40%; }
+  .editable-cell { position: relative; padding-right: 2.2rem; min-height: 1.8rem; }
+  .cell-edit-btn {
+    position: absolute; top: 0.2rem; right: 0.2rem; margin: 0; padding: 0.12rem 0.35rem;
+    border: 0.05rem solid #8fa1b3; border-radius: 0.35rem; background: #fff; font-size: 0.78rem; line-height: 1.2;
+  }
+  .cell-edit-btn[disabled] { opacity: 0.5; cursor: default; }
+  .cell-edit-btn.is-saving { pointer-events: none; }
+  .cell-value[contenteditable="true"] { display: inline-block; min-width: 96%; outline: 0.08rem solid #1a73e8; background: #f7fbff; }
   .fio-list { display: flex; flex-wrap: wrap; gap: var(--space-sm); }
   .fio-option { padding: 0.35em 0.6em; border: 0.05rem solid #999; border-radius: var(--radius-sm); background: #fff; cursor: pointer; user-select: none; font-size: 0.9rem; }
   .fio-option.selected { background: #cce5ff; border-color: #339; font-weight: bold; }
@@ -1275,40 +1287,103 @@
       'Фамилия Имя Отчество (Д)': 'Другой законный представитель'
     };
 
-    const sectionKeys = Object.keys(SECTION_STARTS);
-    const sectionPositions = [];
+    const EDIT_RULES = Object.fromEntries(header.map(title => {
+      const isDate = /\bДата\b/i.test(title);
+      return [title, { editable: true, pattern: isDate ? /^\d{2}\.\d{2}\.\d{4}$/ : /^.{0,500}$/, special: isDate ? 'date' : null }];
+    }));
 
+    html += `<div class="result-table-wrap"><table class="result-data-table"><thead><tr><th>Поле</th><th>Значение</th></tr></thead><tbody>`;
     for (let i = 0; i < header.length; i++) {
-      if (sectionKeys.includes(header[i])) sectionPositions.push(i);
+      const title = header[i];
+      const value = row[i] ?? '';
+      const bg = colors[i] || '';
+      const rule = EDIT_RULES[title] || { editable: false, pattern: /^.*$/ };
+      html += `<tr>
+        <th>${escapeHtml(title)}</th>
+        <td>
+          <div class="editable-cell" data-col-name="${escapeHtml(title)}" data-editable="${rule.editable ? '1' : '0'}" data-pattern="${escapeHtml(rule.pattern.source)}" data-special="${rule.special || ''}" style="${bg ? `background:${bg};` : ''}">
+            <span class="cell-value">${escapeHtml(value)}</span>
+            <button type="button" class="cell-edit-btn" ${rule.editable ? '' : 'disabled'} title="${rule.editable ? 'Редактировать' : 'Редактирование отключено'}">✏️</button>
+          </div>
+        </td>
+      </tr>`;
     }
-    sectionPositions.push(header.length);
-
-    for (let s = 0; s < sectionPositions.length - 1; s++) {
-      const startIndex = sectionPositions[s];
-      const endIndex = sectionPositions[s + 1];
-      const sectionTitle = SECTION_STARTS[header[startIndex]];
-
-      let hasValue = false;
-      for (let i = startIndex; i < endIndex; i++) {
-        if ((row[i] ?? '').trim() !== '') {
-          hasValue = true;
-          break;
-        }
-      }
-      if (!hasValue) continue;
-
-      html += `<div style="margin-top:1rem;margin-bottom:0.5rem;font-weight:bold;font-size:1.2rem;text-align:center;border-bottom:0.1rem solid #000;padding-bottom:0.35rem;">${sectionTitle}</div>`;
-
-      for (let i = startIndex; i < endIndex; i++) {
-        const cleanedTitle = header[i].replace(/\(С\)|\(П\)|\(М\)|\(Д\)/g, '').trim();
-        const bg = colors[i] || '';
-        const style = bg ? `background:${bg};padding:0.25rem;border-radius:0.25rem;` : '';
-        html += `<div class="item" style="margin-bottom:0.35rem;"><div class="item-title">${escapeHtml(cleanedTitle)}</div><div class="item-value" style="${style}">${escapeHtml(row[i] ?? '')}</div></div>`;
-      }
-    }
+    html += `</tbody></table></div>`;
 
     document.getElementById('result').innerHTML = html;
+    bindResultEditors();
     stopAuthLoading();
+  }
+
+  function bindResultEditors() {
+    document.querySelectorAll('.editable-cell').forEach(cell => {
+      const btn = cell.querySelector('.cell-edit-btn');
+      if (!btn) return;
+      btn.addEventListener('click', () => toggleCellEdit(cell, btn));
+    });
+  }
+
+  function toggleCellEdit(cell, btn) {
+    if (cell.dataset.editable !== '1') return;
+    const textNode = cell.querySelector('.cell-value');
+    const isEditing = textNode?.getAttribute('contenteditable') === 'true';
+    const pattern = new RegExp(cell.dataset.pattern || '.*');
+
+    if (!isEditing) {
+      if (!textNode) return;
+      textNode.setAttribute('contenteditable', 'true');
+      btn.textContent = '💾';
+      btn.title = 'Сохранить';
+      const raw = (textNode?.textContent || '').trim();
+      if (cell.dataset.special === 'date' && /^\d{2}\.\d{2}\.\d{4}$/.test(raw)) {
+        const [dd, mm, yyyy] = raw.split('.');
+        textNode.textContent = `${yyyy}-${mm}-${dd}`;
+      }
+      const onInput = () => {
+        const val = (textNode?.textContent || '').trim();
+        btn.disabled = !pattern.test(val);
+      };
+      cell._onInput = onInput;
+      textNode.addEventListener('input', onInput);
+      onInput();
+      return;
+    }
+
+    if (btn.disabled) return;
+    const valueForSave = (textNode?.textContent || '').trim();
+    const finalValue = cell.dataset.special === 'date' && /^\d{4}-\d{2}-\d{2}$/.test(valueForSave)
+      ? `${valueForSave.slice(8, 10)}.${valueForSave.slice(5, 7)}.${valueForSave.slice(0, 4)}`
+      : valueForSave;
+
+    btn.classList.add('is-saving');
+    btn.textContent = '⏳';
+    btn.disabled = true;
+
+    google.script.run
+      .withSuccessHandler(() => {
+        if (textNode) textNode.textContent = finalValue;
+        finishCellEdit(cell, btn, true);
+      })
+      .withFailureHandler(() => {
+        finishCellEdit(cell, btn, false);
+      })
+      .updateResultCell(
+        localStorage.getItem('savedLogin') || '',
+        toServerDate(formatDateInput(dom.password.value)) || authState.password || '',
+        formatSnilsInput(dom.snils.value || localStorage.getItem('savedSnils') || ''),
+        cell.dataset.colName,
+        finalValue
+      );
+  }
+
+  function finishCellEdit(cell, btn, ok) {
+    const textNode = cell.querySelector('.cell-value');
+    if (textNode && cell._onInput) textNode.removeEventListener('input', cell._onInput);
+    if (textNode) textNode.removeAttribute('contenteditable');
+    btn.classList.remove('is-saving');
+    btn.textContent = '✏️';
+    btn.title = 'Редактировать';
+    btn.disabled = !ok ? false : (cell.dataset.editable !== '1');
   }
 
   function openEmbeddedForm(formUrl) {
