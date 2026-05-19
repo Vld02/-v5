@@ -250,9 +250,16 @@
     pointer-events: none;
   }
 
-  .item { display: flex; border-bottom: 0.05rem solid #ddd; padding: var(--space-sm) 0; }
-  .item-title { font-weight: bold; width: 45%; }
-  .item-value { width: 55%; }
+  .item { display: flex; border: 0.05rem solid #d8d8d8; border-top: none; min-height: 2.2rem; }
+  .item:first-of-type { border-top: 0.05rem solid #d8d8d8; }
+  .item-title { font-weight: bold; width: 45%; padding: var(--space-sm); background:#f7f7f7; border-right:0.05rem solid #d8d8d8; }
+  .item-value { width: 55%; padding: var(--space-sm); position: relative; }
+  .cell-edit-btn { position:absolute; top:0.2rem; right:0.2rem; border:0.05rem solid #c5c5c5; background:#fff; border-radius:0.3rem; padding:0.1rem 0.35rem; margin:0; font-size:0.8rem; }
+  .cell-edit-btn.non-editable { opacity:0.45; cursor:not-allowed; }
+  .cell-edit-btn.save-ready { background:#e9f3ff; border-color:#8ab4f8; }
+  .cell-edit-btn:disabled { opacity:0.55; cursor:not-allowed; }
+  .cell-value-text { padding-right:2rem; white-space:pre-wrap; }
+  .cell-value-input { width:100%; box-sizing:border-box; margin-top:0; padding-right:2rem; }
 
   .auth-actions {
     display: flex;
@@ -830,6 +837,25 @@
   const LAST_SILENT_SYNC_KEY = 'lastSilentSyncAt';
   const SILENT_SYNC_INTERVAL_MS = 15 * 60 * 1000;
 
+  const FIELD_EDIT_RULES = {
+    default: { editable: true, regex: '^.*$', special: '' },
+    'Фамилия Имя Отчество (С)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' },
+    'Фамилия Имя Отчество (П)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' },
+    'Фамилия Имя Отчество (М)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' },
+    'Фамилия Имя Отчество (Д)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' }
+  };
+
+  let currentDocsRow = { header: [], row: [], colors: [] };
+
+  function getFieldEditRule(headerTitle) {
+    const specific = FIELD_EDIT_RULES[headerTitle] || FIELD_EDIT_RULES.default;
+    const isDateField = /дата|когда выдан|срок/i.test(headerTitle || '');
+    if (isDateField) {
+      return { editable: true, regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', special: 'date' };
+    }
+    return specific;
+  }
+
   function setFlagMenuOpen(isOpen) {
     dom.flagMenuZone.classList.toggle('open', isOpen);
     dom.menuToggle.setAttribute('aria-expanded', String(isOpen));
@@ -1257,6 +1283,7 @@
     const header = response.header;
     const row = response.row;
     const colors = response.colors || [];
+    currentDocsRow = { header: [...header], row: [...row], colors: [...colors] };
 
     const formUrl = buildFormUrl(header, row);
     let html = `
@@ -1302,8 +1329,10 @@
       for (let i = startIndex; i < endIndex; i++) {
         const cleanedTitle = header[i].replace(/\(С\)|\(П\)|\(М\)|\(Д\)/g, '').trim();
         const bg = colors[i] || '';
-        const style = bg ? `background:${bg};padding:0.25rem;border-radius:0.25rem;` : '';
-        html += `<div class="item" style="margin-bottom:0.35rem;"><div class="item-title">${escapeHtml(cleanedTitle)}</div><div class="item-value" style="${style}">${escapeHtml(row[i] ?? '')}</div></div>`;
+        const style = bg ? `background:${bg};` : '';
+        const rule = getFieldEditRule(header[i]);
+        const btnClass = rule.editable ? '' : 'non-editable';
+        html += `<div class="item"><div class="item-title">${escapeHtml(cleanedTitle)}</div><div class="item-value" style="${style}" data-col-index="${i}"><button type="button" class="cell-edit-btn ${btnClass}" data-col-index="${i}" data-mode="edit" ${rule.editable ? '' : 'disabled'}>✎</button><div class="cell-value-text">${escapeHtml(row[i] ?? '')}</div></div></div>`;
       }
     }
 
@@ -1340,6 +1369,56 @@
   function openFormInNewWindow(formUrl) {
     logExternalFormClickClient();
     window.open(formUrl, '_blank', 'noopener');
+  }
+
+
+  document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.cell-edit-btn');
+    if (!btn) return;
+    const colIndex = Number(btn.dataset.colIndex);
+    const rule = getFieldEditRule(currentDocsRow.header[colIndex]);
+    if (!rule.editable || Number.isNaN(colIndex)) return;
+    const cell = btn.closest('.item-value');
+    const mode = btn.dataset.mode || 'edit';
+    if (mode === 'edit') {
+      const textNode = cell.querySelector('.cell-value-text');
+      const value = textNode ? textNode.textContent : '';
+      cell.innerHTML = `<button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="save" disabled>💾</button><input class="cell-value-input" data-col-index="${colIndex}" value="${escapeHtmlAttr(value)}" />`;
+      const input = cell.querySelector('input');
+      if (rule.special === 'date') input.placeholder = 'ДД.ММ.ГГГГ';
+      input.focus();
+      const validate = () => {
+        const saveBtn = cell.querySelector('.cell-edit-btn');
+        const ok = new RegExp(rule.regex).test(input.value.trim());
+        saveBtn.disabled = !ok;
+        saveBtn.classList.toggle('save-ready', ok);
+      };
+      input.addEventListener('input', validate);
+      validate();
+      return;
+    }
+    const input = cell.querySelector('input');
+    const saveValue = (input?.value || '').trim();
+    if (!new RegExp(rule.regex).test(saveValue)) return;
+    btn.disabled = true;
+    btn.textContent = '⏳';
+    google.script.run
+      .withSuccessHandler(() => {
+        currentDocsRow.row[colIndex] = saveValue;
+        const bg = currentDocsRow.colors[colIndex] || '';
+        const style = bg ? `background:${bg};` : '';
+        cell.innerHTML = `<button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="edit">✎</button><div class="cell-value-text">${escapeHtml(saveValue)}</div>`;
+        cell.setAttribute('style', style);
+      })
+      .withFailureHandler(() => {
+        btn.disabled = false;
+        btn.textContent = '💾';
+      })
+      .updateResultCell(dom.login.value.trim(), dom.password.value.trim(), dom.snils.value.trim(), currentDocsRow.header[colIndex], saveValue);
+  });
+
+  function escapeHtmlAttr(s) {
+    return escapeHtml(s).replace(/`/g, '&#096;');
   }
 
   function escapeHtml(s) {
