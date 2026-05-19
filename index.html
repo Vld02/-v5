@@ -927,6 +927,14 @@
     login: '',
     password: ''
   };
+
+  const DOCS_EDIT_RULES = {
+    'Телефон +7 (С)': { editable: true, pattern: /^\+?7?\d{10}$/ },
+    'Электронная почта (С)': { editable: true, pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/ },
+    'Дата рождения (С)': { editable: true, pattern: /^\d{2}\.\d{2}\.\d{4}$/, normalize: normalizeDateInputOnCommit }
+  };
+  const DOCS_DEFAULT_RULE = { editable: false, pattern: /[\s\S]*/ };
+
   let authLoadingTimer = null;
   let authLoadingBaseText = '';
 
@@ -1310,6 +1318,24 @@
     return params.length ? `${base}?${params.join('&')}` : base;
   }
 
+  function getCellEditRule(title) {
+    return DOCS_EDIT_RULES[title] || DOCS_DEFAULT_RULE;
+  }
+
+  function buildDocsTableRows(header, row, colors) {
+    return header.map((title, i) => {
+      const bg = colors[i] || '';
+      const style = bg ? `background:${bg};` : '';
+      const rule = getCellEditRule(title);
+      const editClass = rule.editable ? 'editable' : 'readonly';
+      return `<tr>
+        <td class="docs-col-name">${escapeHtml(title)}</td>
+        <td class="docs-col-value" style="${style}" data-col-title="${escapeHtml(title)}" data-editable="${rule.editable ? '1' : '0'}" contenteditable="false">${escapeHtml(row[i] ?? '')}</td>
+        <td class="docs-col-action"><button type="button" class="docs-edit-btn ${editClass}" data-col-title="${escapeHtml(title)}" onclick="toggleDocsCellEdit(this)">${rule.editable ? '✏️' : '🔒'}</button></td>
+      </tr>`;
+    }).join('');
+  }
+
   function showDocsResult(response) {
     if (response.error) {
       dom.error.textContent = response.error;
@@ -1320,58 +1346,89 @@
     const header = response.header;
     const row = response.row;
     const colors = response.colors || [];
-
     const formUrl = buildFormUrl(header, row);
-    let html = `
+
+    const html = `
       <div class="block" id="formBlock">
         <button id="openFormBtn" class="button-link form-action" onclick="openEmbeddedForm('${formUrl}')" title="Откроется Гугл форма для заполнения данных">Заполнить / редактировать</button>
         <div id="externalFormBtnWrapper" style="display:none;margin-top:0.75rem;">
           <button class="button-link" onclick="openFormInNewWindow('${formUrl}')">Открыть форму в отдельной вкладке</button>
         </div>
         <div id="embeddedFormHolder"></div>
+      </div>
+      <div class="block" style="margin-top:1rem;overflow:auto;">
+        <table class="docs-data-table" style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr><th style="border:1px solid #ccc;padding:.4rem;">Столбец</th><th style="border:1px solid #ccc;padding:.4rem;">Значение</th><th style="border:1px solid #ccc;padding:.4rem;">Действие</th></tr>
+          </thead>
+          <tbody>
+            ${buildDocsTableRows(header, row, colors)}
+          </tbody>
+        </table>
       </div>`;
-
-    const SECTION_STARTS = {
-      'Фамилия Имя Отчество (С)': 'Спортсмен',
-      'Фамилия Имя Отчество (П)': 'Отец',
-      'Фамилия Имя Отчество (М)': 'Мать',
-      'Фамилия Имя Отчество (Д)': 'Другой законный представитель'
-    };
-
-    const sectionKeys = Object.keys(SECTION_STARTS);
-    const sectionPositions = [];
-
-    for (let i = 0; i < header.length; i++) {
-      if (sectionKeys.includes(header[i])) sectionPositions.push(i);
-    }
-    sectionPositions.push(header.length);
-
-    for (let s = 0; s < sectionPositions.length - 1; s++) {
-      const startIndex = sectionPositions[s];
-      const endIndex = sectionPositions[s + 1];
-      const sectionTitle = SECTION_STARTS[header[startIndex]];
-
-      let hasValue = false;
-      for (let i = startIndex; i < endIndex; i++) {
-        if ((row[i] ?? '').trim() !== '') {
-          hasValue = true;
-          break;
-        }
-      }
-      if (!hasValue) continue;
-
-      html += `<div style="margin-top:1rem;margin-bottom:0.5rem;font-weight:bold;font-size:1.2rem;text-align:center;border-bottom:0.1rem solid #000;padding-bottom:0.35rem;">${sectionTitle}</div>`;
-
-      for (let i = startIndex; i < endIndex; i++) {
-        const cleanedTitle = header[i].replace(/\(С\)|\(П\)|\(М\)|\(Д\)/g, '').trim();
-        const bg = colors[i] || '';
-        const style = bg ? `background:${bg};padding:0.25rem;border-radius:0.25rem;` : '';
-        html += `<div class="item" style="margin-bottom:0.35rem;"><div class="item-title">${escapeHtml(cleanedTitle)}</div><div class="item-value" style="${style}">${escapeHtml(row[i] ?? '')}</div></div>`;
-      }
-    }
 
     document.getElementById('result').innerHTML = html;
     stopAuthLoading();
+  }
+
+  function toggleDocsCellEdit(button) {
+    const colTitle = button.dataset.colTitle;
+    const rule = getCellEditRule(colTitle);
+    if (!rule.editable) return;
+
+    const cell = document.querySelector(`.docs-col-value[data-col-title="${CSS.escape(colTitle)}"]`);
+    if (!cell) return;
+
+    const isEditing = cell.getAttribute('contenteditable') === 'true';
+
+    if (!isEditing) {
+      cell.dataset.original = cell.textContent;
+      cell.setAttribute('contenteditable', 'true');
+      cell.focus();
+      button.textContent = '💾';
+      button.disabled = true;
+      cell.addEventListener('input', () => refreshDocsSaveButtonState(button, cell, rule), { passive: true });
+      refreshDocsSaveButtonState(button, cell, rule);
+      return;
+    }
+
+    saveDocsCell(button, cell, colTitle, rule);
+  }
+
+  function refreshDocsSaveButtonState(button, cell, rule) {
+    const raw = cell.textContent.trim();
+    const prepared = rule.normalize ? rule.normalize(raw) : raw;
+    button.disabled = !rule.pattern.test(prepared);
+  }
+
+  function saveDocsCell(button, cell, colTitle, rule) {
+    const raw = cell.textContent.trim();
+    const value = rule.normalize ? rule.normalize(raw) : raw;
+    if (!rule.pattern.test(value)) return;
+
+    button.disabled = true;
+    button.textContent = '⏳';
+
+    google.script.run
+      .withSuccessHandler(resp => {
+        if (!resp || !resp.ok) {
+          button.textContent = '💾';
+          button.disabled = false;
+          dom.error.textContent = resp && resp.error ? resp.error : 'Ошибка сохранения.';
+          return;
+        }
+        cell.textContent = resp.value;
+        cell.setAttribute('contenteditable', 'false');
+        button.textContent = '✏️';
+        button.disabled = false;
+      })
+      .updateResultCell({
+        login: dom.login.value.trim(),
+        password: toServerDate(formatDateInput(dom.password.value)),
+        snils: formatSnilsInput(dom.snils.value),
+        columnTitle: colTitle,
+        value
+      });
   }
 
   function openEmbeddedForm(formUrl) {

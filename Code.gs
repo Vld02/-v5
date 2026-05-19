@@ -659,6 +659,56 @@ function verifySnils(login, password, snils, clientInfo = {}) {
   return { error: 'Неправильно введены ФИО или дата рождения.' };
 }
 
+
+/**
+ * Обновляет значение ячейки в листе "Результат" по названию столбца для авторизованного пользователя.
+ * @param {{login:string,password:string,snils?:string,columnTitle:string,value:string}} payload
+ * @returns {{ok:boolean,error?:string,value?:string}}
+ */
+function updateResultCell(payload) {
+  const login = String(payload.login || '');
+  const password = String(payload.password || '');
+  const columnTitle = String(payload.columnTitle || '');
+  const value = String(payload.value ?? '');
+
+  const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
+  if (!sheet) return { ok: false, error: 'Лист с результатами не найден.' };
+
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) return { ok: false, error: 'Таблица пуста.' };
+
+  const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+  const targetCol = header.indexOf(columnTitle);
+  if (targetCol === -1) return { ok: false, error: 'Столбец не найден.' };
+
+  const authCols = getAuthColumnIndexes(header);
+  const snilsCol = getSnilsColumnIndex(header);
+  const rowCount = lastRow - 1;
+  const { logins, passwords, snilsValues } = loadAuthColumns(sheet, rowCount, authCols, snilsCol);
+  const normalizedLogin = normalizeLogin(login);
+  const expectedSnils = normalizeSnils(payload.snils || '');
+
+  for (let i = 0; i < rowCount; i++) {
+    const rowLogin = normalizeLogin(logins[i][0]);
+    const rowPassword = formatCellValue(passwords[i][0]).trim();
+    if (rowLogin !== normalizedLogin || rowPassword !== password) continue;
+
+    if (snilsCol >= 0) {
+      const rowSnils = normalizeSnils(snilsValues[i][0]);
+      if (rowSnils && expectedSnils && rowSnils !== expectedSnils) {
+        return { ok: false, error: 'Неверный СНИЛС.' };
+      }
+    }
+
+    const rowIndex = i + 2;
+    sheet.getRange(rowIndex, targetCol + 1).setValue(value);
+    return { ok: true, value };
+  }
+
+  return { ok: false, error: 'Пользователь не найден.' };
+}
+
 /*************************************************
  * ПОСЕЩАЕМОСТЬ: ПОДБОР ФИО
  *************************************************/
