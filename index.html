@@ -251,6 +251,15 @@
   }
 
   .item { display: flex; border-bottom: 0.05rem solid #ddd; padding: var(--space-sm) 0; }
+  .docs-table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+  .docs-table th, .docs-table td { border: 1px solid #c8d2e1; padding: 0.45rem; vertical-align: top; }
+  .docs-table th { background: #eef4ff; text-align: left; }
+  .cell-wrap { position: relative; min-height: 2rem; padding-right: 1.8rem; }
+  .cell-value[contenteditable="true"] { outline: 2px solid #8ab4f8; background: #fff; }
+  .cell-edit-btn { position: absolute; right: 0.1rem; top: 0.1rem; border: none; background: transparent; font-size: 0.9rem; cursor: pointer; opacity: .8; }
+  .cell-edit-btn.disabled { opacity: .35; cursor: not-allowed; }
+  .cell-edit-btn.save-disabled { opacity: .35; cursor: not-allowed; }
+
   .item-title { font-weight: bold; width: 45%; }
   .item-value { width: 55%; }
 
@@ -1247,6 +1256,20 @@
     return params.length ? `${base}?${params.join('&')}` : base;
   }
 
+
+  function escapeAttr(s) {
+    return escapeHtml(String(s ?? '')).replace(/"/g, '&quot;');
+  }
+
+  function renderEditableCell(title, value, bg, rule) {
+    const editable = !!(rule && rule.editable);
+    const pattern = (rule && rule.pattern) || '^[\s\S]{0,500}$';
+    const special = (rule && rule.specialInput) || 'text';
+    const btnCls = editable ? '' : 'disabled';
+    const bgStyle = bg ? `background:${bg};` : '';
+    return `<td><div class="cell-wrap" style="${bgStyle}"><div class="cell-value" data-title="${escapeAttr(title)}" data-pattern="${escapeAttr(pattern)}" data-special="${escapeAttr(special)}" contenteditable="false">${escapeHtml(value ?? '')}</div><button type="button" class="cell-edit-btn ${btnCls}" data-mode="edit" title="Редактировать">✏️</button></div></td>`;
+  }
+
   function showDocsResult(response) {
     if (response.error) {
       dom.error.textContent = response.error;
@@ -1268,46 +1291,60 @@
         <div id="embeddedFormHolder"></div>
       </div>`;
 
-    const SECTION_STARTS = {
-      'Фамилия Имя Отчество (С)': 'Спортсмен',
-      'Фамилия Имя Отчество (П)': 'Отец',
-      'Фамилия Имя Отчество (М)': 'Мать',
-      'Фамилия Имя Отчество (Д)': 'Другой законный представитель'
-    };
-
-    const sectionKeys = Object.keys(SECTION_STARTS);
-    const sectionPositions = [];
-
+    const editRules = response.editRules || [];
+    html += '<table class="docs-table"><thead><tr><th>Поле</th><th>Значение</th></tr></thead><tbody>';
     for (let i = 0; i < header.length; i++) {
-      if (sectionKeys.includes(header[i])) sectionPositions.push(i);
+      const cleanedTitle = header[i].replace(/\(С\)|\(П\)|\(М\)|\(Д\)/g, '').trim();
+      html += `<tr><th>${escapeHtml(cleanedTitle)}</th>${renderEditableCell(header[i], row[i] ?? '', colors[i] || '', editRules[i])}</tr>`;
     }
-    sectionPositions.push(header.length);
+    html += '</tbody></table>';
 
-    for (let s = 0; s < sectionPositions.length - 1; s++) {
-      const startIndex = sectionPositions[s];
-      const endIndex = sectionPositions[s + 1];
-      const sectionTitle = SECTION_STARTS[header[startIndex]];
+    const resultEl = document.getElementById('result');
+    resultEl.innerHTML = html;
 
-      let hasValue = false;
-      for (let i = startIndex; i < endIndex; i++) {
-        if ((row[i] ?? '').trim() !== '') {
-          hasValue = true;
-          break;
+    resultEl.querySelectorAll('.cell-edit-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (btn.classList.contains('disabled')) return;
+        const wrap = btn.closest('.cell-wrap');
+        const cell = wrap.querySelector('.cell-value');
+        const pattern = new RegExp(cell.dataset.pattern || '^[\s\S]{0,500}$');
+
+        if (btn.dataset.mode === 'edit') {
+          btn.dataset.mode = 'save';
+          btn.textContent = '💾';
+          cell.contentEditable = 'true';
+          cell.focus();
+          const validate = () => btn.classList.toggle('save-disabled', !pattern.test(cell.textContent.trim()));
+          validate();
+          cell.oninput = validate;
+          return;
         }
-      }
-      if (!hasValue) continue;
 
-      html += `<div style="margin-top:1rem;margin-bottom:0.5rem;font-weight:bold;font-size:1.2rem;text-align:center;border-bottom:0.1rem solid #000;padding-bottom:0.35rem;">${sectionTitle}</div>`;
-
-      for (let i = startIndex; i < endIndex; i++) {
-        const cleanedTitle = header[i].replace(/\(С\)|\(П\)|\(М\)|\(Д\)/g, '').trim();
-        const bg = colors[i] || '';
-        const style = bg ? `background:${bg};padding:0.25rem;border-radius:0.25rem;` : '';
-        html += `<div class="item" style="margin-bottom:0.35rem;"><div class="item-title">${escapeHtml(cleanedTitle)}</div><div class="item-value" style="${style}">${escapeHtml(row[i] ?? '')}</div></div>`;
-      }
-    }
-
-    document.getElementById('result').innerHTML = html;
+        if (btn.classList.contains('save-disabled')) return;
+        btn.textContent = '⏳';
+        btn.disabled = true;
+        google.script.run.withSuccessHandler(resp => {
+          btn.disabled = false;
+          if (!resp || resp.error) {
+            btn.textContent = '⚠️';
+            setTimeout(() => { btn.textContent = '💾'; }, 1200);
+            return;
+          }
+          cell.textContent = resp.value || '';
+          cell.contentEditable = 'false';
+          cell.oninput = null;
+          btn.dataset.mode = 'edit';
+          btn.textContent = '✏️';
+          btn.classList.remove('save-disabled');
+        }).updateResultCell({
+          login: (localStorage.getItem('savedLogin') || dom.login.value || '').trim(),
+          password: (localStorage.getItem('savedDate') || dom.password.value || '').trim(),
+          snils: (localStorage.getItem('savedSnils') || dom.snils.value || '').trim(),
+          columnName: cell.dataset.title,
+          value: cell.textContent.trim()
+        });
+      });
+    });
     stopAuthLoading();
   }
 
