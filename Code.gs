@@ -223,7 +223,7 @@ function findRecentLogRow(sheet, { login = '', clientInfo = {} }) {
       continue;
     }
 
-    if (canUseIp && getLastLogLine(row[4]) === targetIp) {
+    if (canUseIp && getLastLogLine(row[4]) === targetIp && (!targetLogin || normalizeLogin(getLastLogLine(row[1])) === targetLogin)) {
       return i + 2;
     }
   }
@@ -242,6 +242,22 @@ function findRecentLogRow(sheet, { login = '', clientInfo = {} }) {
   }
 
   return -1;
+}
+
+/**
+ * Безопасно пишет в лог с блокировкой, чтобы параллельные записи не перемешивались.
+ * @param {(sheet: GoogleAppsScript.Spreadsheet.Sheet) => void} action
+ */
+function withLogLock(action) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const sheet = getLogSheet();
+    if (!sheet) return;
+    action(sheet);
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /**
@@ -272,19 +288,18 @@ function appendLogLine(sheet, rowIndex, newValues) {
  * @param {{login?:string,password?:string,snils?:string,clientInfo?:Object}} payload Данные открытия.
  */
 function logPageOpen({ login = '', password = '', snils = '', clientInfo = {} } = {}) {
-  const sheet = getLogSheet();
-  if (!sheet) return;
-
-  appendPlainLogRow(sheet, [
-    formatLogDateTime(new Date()),
-    login,
-    password,
-    snils,
-    clientInfo.ip || '',
-    clientInfo.device || '',
-    clientInfo.browser || '',
-    ''
-  ]);
+  withLogLock(sheet => {
+    appendPlainLogRow(sheet, [
+      formatLogDateTime(new Date()),
+      login,
+      password,
+      snils,
+      clientInfo.ip || '',
+      clientInfo.device || '',
+      clientInfo.browser || '',
+      ''
+    ]);
+  });
 }
 
 /**
@@ -292,27 +307,26 @@ function logPageOpen({ login = '', password = '', snils = '', clientInfo = {} } 
  * @param {{login?:string,password?:string,snils?:string,clientInfo?:Object,status:string}} payload
  */
 function logAccess({ login = '', password = '', snils = '', clientInfo = {}, status }) {
-  const sheet = getLogSheet();
-  if (!sheet) return;
+  withLogLock(sheet => {
+    const values = [
+      formatLogDateTime(new Date()),
+      login,
+      password,
+      snils,
+      clientInfo.ip || '',
+      clientInfo.device || '',
+      clientInfo.browser || '',
+      status || ''
+    ];
+    const rowIndex = findRecentLogRow(sheet, { login, clientInfo });
 
-  const values = [
-    formatLogDateTime(new Date()),
-    login,
-    password,
-    snils,
-    clientInfo.ip || '',
-    clientInfo.device || '',
-    clientInfo.browser || '',
-    status || ''
-  ];
-  const rowIndex = findRecentLogRow(sheet, { login, clientInfo });
+    if (rowIndex > 0) {
+      appendLogLine(sheet, rowIndex, values);
+      return;
+    }
 
-  if (rowIndex > 0) {
-    appendLogLine(sheet, rowIndex, values);
-    return;
-  }
-
-  appendPlainLogRow(sheet, values);
+    appendPlainLogRow(sheet, values);
+  });
 }
 
 
@@ -339,6 +353,15 @@ function logFormClick(login) {
  */
 function logExternalFormClick(login) {
   logAccess({ login, status: 'Нажал: Открыть форму в отдельной вкладке' });
+}
+
+/**
+ * Универсальный лог действий пользователя в UI.
+ * @param {string} login Логин пользователя.
+ * @param {string} status Статус действия.
+ */
+function logUiAction(login, status) {
+  logAccess({ login, status });
 }
 
 /*************************************************
