@@ -854,7 +854,9 @@
     flagMenuCloseTimer = setTimeout(() => closeFlagMenu(), 120);
   }
 
-  function switchTab(key) {
+  const TAB_LABELS = { docs: 'ДБВv5 Документы', attendance: 'ДБВv5 Посещаемость', gear: 'ДБВv5 Снаряжение' };
+
+  function switchTab(key, { logNavigation = true } = {}) {
     if (!tabPanels[key]) return;
     tabFlags.forEach(btn => {
       const isActive = btn.dataset.tab === key;
@@ -870,6 +872,11 @@
       panel.classList.toggle('active', name === key);
     });
     localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, key);
+
+    const sectionTitle = TAB_LABELS[key];
+    if (logNavigation && sectionTitle) {
+      google.script.run.logTabNavigation(getSavedLoginForLog(), sectionTitle);
+    }
   }
 
   const supportsHoverPointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
@@ -904,7 +911,7 @@
 
   const savedTab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
   if (savedTab && tabPanels[savedTab]) {
-    switchTab(savedTab);
+    switchTab(savedTab, { logNavigation: false });
   }
 
   document.addEventListener('click', event => {
@@ -1025,6 +1032,7 @@
       return;
     }
 
+    logLoginButtonClickClient(loginVal);
     startAuthLoading('Аутентификация');
 
     const clientInfo = await getClientInfo();
@@ -1133,6 +1141,14 @@
 
   function getSavedLoginForLog() {
     return localStorage.getItem('savedLogin') || dom.login.value.trim() || 'неизвестно';
+  }
+
+  function logLoginButtonClickClient(login) {
+    google.script.run.logLoginButtonClick(login || getSavedLoginForLog());
+  }
+
+  function logEditFormClickClient() {
+    google.script.run.logEditFormClick(getSavedLoginForLog());
   }
 
   function logFormClickClient() {
@@ -1312,6 +1328,7 @@
   }
 
   function openEmbeddedForm(formUrl) {
+    logEditFormClickClient();
     logFormClickClient();
 
     const btn = document.getElementById('openFormBtn');

