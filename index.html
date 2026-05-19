@@ -1022,24 +1022,27 @@
     if (isoMatch) return { year: isoMatch[1], month: String(Number(isoMatch[2])), day: String(Number(isoMatch[3])) };
     const dotMatch = value.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
     if (dotMatch) return { year: dotMatch[3], month: String(Number(dotMatch[2])), day: String(Number(dotMatch[1])) };
-    const shortDotMatch = value.match(/^(\d{1,2})\.(\d{1,2})\.(\d{1,2})$/);
-    if (shortDotMatch) return { year: `20${shortDotMatch[3].padStart(2, '0')}`, month: String(Number(shortDotMatch[2])), day: String(Number(shortDotMatch[1])) };
     return null;
   }
 
   function formatDateInput(value) {
-    const raw = String(value || '').trim();
-    const compactDotDate = raw.match(/^(\d{1,2})\.(\d{1,2})\.(\d{1,2}|\d{4})$/);
-    if (compactDotDate) {
-      const day = compactDotDate[1].padStart(2, '0');
-      const month = compactDotDate[2].padStart(2, '0');
-      const year = compactDotDate[3].length === 2 ? `20${compactDotDate[3]}` : compactDotDate[3];
-      return `${day}.${month}.${year}`;
-    }
     const digits = (value || '').replace(/\D/g, '').slice(0, 8);
     if (digits.length <= 2) return digits;
     if (digits.length <= 4) return `${digits.slice(0, 2)}.${digits.slice(2)}`;
     return `${digits.slice(0, 2)}.${digits.slice(2, 4)}.${digits.slice(4)}`;
+  }
+
+  function formatTableDateInput(value) {
+    const raw = String(value || '').trim();
+    const shortDotMatch = raw.match(/^(\d{1,2})\.(\d{1,2})\.(\d{1,2})$/);
+    if (shortDotMatch) {
+      return `${shortDotMatch[1].padStart(2, '0')}.${shortDotMatch[2].padStart(2, '0')}.20${shortDotMatch[3].padStart(2, '0')}`;
+    }
+    const fullDotMatch = raw.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+    if (fullDotMatch) {
+      return `${fullDotMatch[1].padStart(2, '0')}.${fullDotMatch[2].padStart(2, '0')}.${fullDotMatch[3]}`;
+    }
+    return formatDateInput(raw);
   }
 
   function toServerDate(value) {
@@ -1411,7 +1414,7 @@
       };
       input.addEventListener('input', () => {
         if (rule.special === 'date') {
-          const formatted = formatDateInput(input.value);
+          const formatted = formatTableDateInput(input.value);
           if (formatted !== input.value) input.value = formatted;
         }
         validate();
