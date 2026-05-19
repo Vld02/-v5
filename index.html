@@ -870,6 +870,7 @@
       panel.classList.toggle('active', name === key);
     });
     localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, key);
+    if (TAB_LOG_LABELS[key]) logUserActionClient(TAB_LOG_LABELS[key]);
   }
 
   const supportsHoverPointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
@@ -1025,6 +1026,7 @@
       return;
     }
 
+    logUserActionClient('Нажал: Войти');
     startAuthLoading('Аутентификация');
 
     const clientInfo = await getClientInfo();
@@ -1134,6 +1136,16 @@
   function getSavedLoginForLog() {
     return localStorage.getItem('savedLogin') || dom.login.value.trim() || 'неизвестно';
   }
+
+  function logUserActionClient(status) {
+    google.script.run.logUserAction(getSavedLoginForLog(), status);
+  }
+
+  const TAB_LOG_LABELS = {
+    docs: 'Перешёл в раздел ДБВv5 Документы',
+    attendance: 'Перешёл в раздел ДБВv5 Посещаемость',
+    gear: 'Перешёл в раздел ДБВv5 Снаряжение'
+  };
 
   function logFormClickClient() {
     google.script.run.logFormClick(getSavedLoginForLog());
@@ -2639,6 +2651,7 @@
   hydrateExistingRows();
   loadTrainingHistory();
   async function openAttendanceForm() {
+    logUserActionClient('Нажал: Заполнить форму');
     if (debounceTimer) {
       clearTimeout(debounceTimer);
       debounceTimer = null;
