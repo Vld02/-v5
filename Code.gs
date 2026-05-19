@@ -74,6 +74,7 @@ const LOG_COLUMNS = Object.freeze([
   'Статус входа'
 ]);
 const LOG_MAX_AGE_MINUTES = 30;
+const LOG_BLOCK_SIZE = LOG_COLUMNS.length;
 
 /**
  * Подготавливает лист логов и гарантирует наличие актуальных заголовков.
@@ -210,63 +211,85 @@ function findRecentLogRow(sheet, { login = '', clientInfo = {} }) {
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return -1;
 
-  const values = sheet.getRange(2, 1, lastRow - 1, LOG_COLUMNS.length).getValues();
+  const lastCol = Math.max(sheet.getLastColumn(), LOG_BLOCK_SIZE);
+  const values = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
   const cutoff = Date.now() - LOG_MAX_AGE_MINUTES * 60 * 1000;
   const targetIp = String(clientInfo.ip || '').trim();
   const canUseIp = isRecognizedIp(targetIp);
   const targetLogin = normalizeLogin(login);
 
+  const getLastBlockCell = (row, blockIndex, fieldIndex) => {
+    const col = blockIndex * LOG_BLOCK_SIZE + fieldIndex;
+    return col < row.length ? row[col] : '';
+  };
+
   for (let i = values.length - 1; i >= 0; i--) {
     const row = values[i];
-    const dateValue = parseLogDateTime(row[0]);
-    if (!(dateValue instanceof Date) || Number.isNaN(dateValue.getTime()) || dateValue.getTime() < cutoff) {
-      continue;
-    }
+    const blockCount = Math.max(1, Math.ceil(row.length / LOG_BLOCK_SIZE));
+    const firstDate = parseLogDateTime(getLastBlockCell(row, 0, 0));
+    if (!(firstDate instanceof Date) || Number.isNaN(firstDate.getTime()) || firstDate.getTime() < cutoff) continue;
 
-    if (canUseIp && getLastLogLine(row[4]) === targetIp) {
-      return i + 2;
-    }
+    const lastBlock = blockCount - 1;
+    if (canUseIp && String(getLastBlockCell(row, lastBlock, 4)).trim() === targetIp) return i + 2;
   }
 
   if (canUseIp || !targetLogin) return -1;
   for (let i = values.length - 1; i >= 0; i--) {
     const row = values[i];
-    const dateValue = parseLogDateTime(row[0]);
-    if (!(dateValue instanceof Date) || Number.isNaN(dateValue.getTime()) || dateValue.getTime() < cutoff) {
-      continue;
-    }
+    const blockCount = Math.max(1, Math.ceil(row.length / LOG_BLOCK_SIZE));
+    const firstDate = parseLogDateTime(getLastBlockCell(row, 0, 0));
+    if (!(firstDate instanceof Date) || Number.isNaN(firstDate.getTime()) || firstDate.getTime() < cutoff) continue;
 
-    if (normalizeLogin(getLastLogLine(row[1])) === targetLogin) {
-      return i + 2;
-    }
+    const lastBlock = blockCount - 1;
+    if (normalizeLogin(getLastLogLine(getLastBlockCell(row, lastBlock, 1))) === targetLogin) return i + 2;
   }
 
   return -1;
 }
 
 /**
- * Добавляет новую логическую строку к найденной записи, зачеркивая предыдущие данные.
- * Если в одной ячейке появляется новая строка, перенос добавляется во все остальные ячейки строки.
- * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet Лист логов.
- * @param {number} rowIndex Номер строки.
- * @param {string[]} newValues Новые значения по колонкам лога.
+ * Зачеркивает диапазон ячеек блока лога.
+ * @param {GoogleAppsScript.Spreadsheet.Range} range
  */
-function appendLogLine(sheet, rowIndex, newValues) {
-  const range = sheet.getRange(rowIndex, 1, 1, LOG_COLUMNS.length);
-  const oldValues = range.getValues()[0];
-  const richValues = [];
-
-  for (let col = 0; col < LOG_COLUMNS.length; col++) {
-    const oldText = formatLogCellValue(col, oldValues[col]);
-    const oldLines = oldText === '' ? [''] : oldText.split('\n');
-    const nextValue = newValues[col] == null ? '' : String(newValues[col]);
-    const lines = oldLines.length ? oldLines.concat([nextValue]) : [nextValue];
-    richValues.push(buildLogRichText(lines));
-  }
-
-  range.setRichTextValues([richValues]).setWrap(true);
+function strikeLogBlock(range) {
+  const style = SpreadsheetApp.newTextStyle().setStrikethrough(true).build();
+  const values = range.getDisplayValues()[0];
+  const rich = values.map(text => {
+    const t = String(text || '');
+    const b = SpreadsheetApp.newRichTextValue().setText(t);
+    if (t) b.setTextStyle(0, t.length, style);
+    return b.build();
+  });
+  range.setRichTextValues([rich]);
 }
 
+/**
+ * Добавляет новое изменение отдельным блоком ячеек справа.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @param {number} rowIndex
+ * @param {string[]} newValues
+ */
+function appendLogLine(sheet, rowIndex, newValues) {
+  const currentLastCol = Math.max(sheet.getLastColumn(), LOG_BLOCK_SIZE);
+    const rowValues = sheet.getRange(rowIndex, 1, 1, currentLastCol).getValues()[0];
+    let blockCount = Math.floor(currentLastCol / LOG_BLOCK_SIZE);
+    if (currentLastCol % LOG_BLOCK_SIZE !== 0) blockCount += 1;
+    while (blockCount > 0) {
+      const blockStart = (blockCount - 1) * LOG_BLOCK_SIZE;
+      const hasData = rowValues.slice(blockStart, blockStart + LOG_BLOCK_SIZE).some(v => String(v || '').trim() !== '');
+      if (hasData) break;
+      blockCount -= 1;
+    }
+    const nextBlockStartCol = blockCount * LOG_BLOCK_SIZE + 1;
+
+    if (blockCount > 0) {
+      const prevRange = sheet.getRange(rowIndex, (blockCount - 1) * LOG_BLOCK_SIZE + 1, 1, LOG_BLOCK_SIZE);
+      strikeLogBlock(prevRange);
+    }
+
+  const newRange = sheet.getRange(rowIndex, nextBlockStartCol, 1, LOG_BLOCK_SIZE);
+  newRange.setNumberFormat('@').setValues([newValues]).setWrap(true);
+}
 /**
  * Создает первичную строку при открытии сайта.
  * @param {{login?:string,password?:string,snils?:string,clientInfo?:Object}} payload Данные открытия.
@@ -305,17 +328,20 @@ function logAccess({ login = '', password = '', snils = '', clientInfo = {}, sta
     clientInfo.browser || '',
     status || ''
   ];
-  const rowIndex = findRecentLogRow(sheet, { login, clientInfo });
 
-  if (rowIndex > 0) {
-    appendLogLine(sheet, rowIndex, values);
-    return;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const rowIndex = findRecentLogRow(sheet, { login, clientInfo });
+    if (rowIndex > 0) {
+      appendLogLine(sheet, rowIndex, values);
+      return;
+    }
+    appendPlainLogRow(sheet, values);
+  } finally {
+    lock.releaseLock();
   }
-
-  appendPlainLogRow(sheet, values);
 }
-
-
 /**
  * Логирует попытку входа, пропуская технические фоновые проверки.
  * @param {{login?:string,password?:string,snils?:string,clientInfo?:Object,status:string}} payload
@@ -330,7 +356,7 @@ function logAuthAttempt(payload) {
  * @param {string} login Логин пользователя.
  */
 function logFormClick(login) {
-  logAccess({ login, status: 'Нажал: Заполнить форму' });
+  logAccess({ login, status: 'Нажал: Заполнить / редактировать' });
 }
 
 /**
@@ -339,6 +365,10 @@ function logFormClick(login) {
  */
 function logExternalFormClick(login) {
   logAccess({ login, status: 'Нажал: Открыть форму в отдельной вкладке' });
+}
+
+function logUserAction(login, status) {
+  logAccess({ login, status });
 }
 
 /*************************************************
