@@ -737,7 +737,7 @@
         <button type="button" class="attendance-icon-btn" title="Вставить" aria-label="Вставить" onclick="pasteAttendanceToLastCell()">📋</button>
         <button type="button" class="attendance-icon-btn" title="Очистить" aria-label="Очистить" onclick="clearAttendanceTable()">🗑️</button>
       </div>
-      <button onclick="openAttendanceForm()">Заполнить форму</button>
+      <button onclick="openAttendanceForm()" title="Откроется гугл форма для заполнения тренировки">Заполнить тренировку</button>
       <div class="attendance-toolbar-group">
         <button type="button" class="attendance-icon-btn" title="Скопировать полное ФИО" aria-label="Скопировать полное ФИО" onclick="copyAttendanceFullFio()">📄</button>
       </div>
@@ -1279,7 +1279,7 @@
     const formUrl = buildFormUrl(header, row);
     let html = `
       <div class="block" id="formBlock">
-        <button id="openFormBtn" class="button-link form-action" onclick="openEmbeddedForm('${formUrl}')">Заполнить / редактировать</button>
+        <button id="openFormBtn" class="button-link form-action" title="Откроется Гугл форма для заполнения данных" onclick="openEmbeddedForm('${formUrl}')">Заполнить / редактировать</button>
         <div id="externalFormBtnWrapper" style="display:none;margin-top:0.75rem;">
           <button class="button-link" onclick="openFormInNewWindow('${formUrl}')">Открыть форму в отдельной вкладке</button>
         </div>
@@ -1332,6 +1332,8 @@
   function openEmbeddedForm(formUrl) {
     logFormClickClient();
 
+    const beforeY = window.scrollY;
+
     const btn = document.getElementById('openFormBtn');
     if (btn) {
       btn.classList.add('disabled');
@@ -1352,6 +1354,7 @@
     requestAnimationFrame(() => {
       container.style.maxHeight = '65rem';
       container.style.opacity = '1';
+      requestAnimationFrame(() => window.scrollTo(0, beforeY));
     });
   }
 
