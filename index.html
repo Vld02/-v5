@@ -870,6 +870,15 @@
       panel.classList.toggle('active', name === key);
     });
     localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, key);
+
+    const tabTitles = {
+      docs: 'ДБВv5 Документы',
+      attendance: 'ДБВv5 Посещаемость',
+      gear: 'ДБВv5 Снаряжение'
+    };
+    if (tabTitles[key]) {
+      logUiActionClient(`Перешёл в раздел ${tabTitles[key]}`);
+    }
   }
 
   const supportsHoverPointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
@@ -1019,6 +1028,7 @@
     const snilsFormatted = formatSnilsInput(dom.snils.value);
     dom.snils.value = snilsFormatted;
     saveAuthInputs(loginVal, dateInput.value, snilsFormatted);
+    logUiActionClient('Нажал: Войти');
 
     if (!loginVal || !passwordForServer) {
       dom.error.textContent = 'Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.';
@@ -1133,6 +1143,10 @@
 
   function getSavedLoginForLog() {
     return localStorage.getItem('savedLogin') || dom.login.value.trim() || 'неизвестно';
+  }
+
+  function logUiActionClient(status) {
+    google.script.run.logUiAction(getSavedLoginForLog(), status);
   }
 
   function logFormClickClient() {
@@ -1313,6 +1327,7 @@
 
   function openEmbeddedForm(formUrl) {
     logFormClickClient();
+    logUiActionClient('Нажал: Заполнить / редактировать');
 
     const btn = document.getElementById('openFormBtn');
     if (btn) {
@@ -2667,6 +2682,7 @@
 
     const prefillValue = encodeURIComponent(values.join('\n'));
     const url = 'https://docs.google.com/forms/d/e/1FAIpQLSdGwQQhPaY3wXjT90TX2daQx7U-mjnfkoL_7VZ9nJ8NUqbKtw/viewform?entry.286976530=' + prefillValue;
+    logUiActionClient('Нажал: Заполнить форму');
     window.open(url, '_blank');
   }
 </script>
