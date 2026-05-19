@@ -842,18 +842,24 @@
     'Фамилия Имя Отчество (С)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' },
     'Фамилия Имя Отчество (П)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' },
     'Фамилия Имя Отчество (М)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' },
-    'Фамилия Имя Отчество (Д)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' }
+    'Фамилия Имя Отчество (Д)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' },
+    'Дата рождения (С)': { editable: true, regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', special: 'date' },
+    'Паспорт или Свидетельство: Когда выдан (С)': { editable: true, regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', special: 'date' },
+    'Дата получения разряда': { editable: true, regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', special: 'date' },
+    'Срок действия страховки': { editable: true, regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', special: 'date' },
+    'Мед допуск до': { editable: true, regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', special: 'date' },
+    'Дата рождения (П)': { editable: true, regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', special: 'date' },
+    'Паспорт: Когда выдан (П)': { editable: true, regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', special: 'date' },
+    'Дата рождения (М)': { editable: true, regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', special: 'date' },
+    'Паспорт: Когда выдан (М)': { editable: true, regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', special: 'date' },
+    'Дата рождения (Д)': { editable: true, regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', special: 'date' },
+    'Паспорт: Когда выдан (Д)': { editable: true, regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', special: 'date' }
   };
 
   let currentDocsRow = { header: [], row: [], colors: [] };
 
   function getFieldEditRule(headerTitle) {
-    const specific = FIELD_EDIT_RULES[headerTitle] || FIELD_EDIT_RULES.default;
-    const isDateField = /дата|когда выдан|срок/i.test(headerTitle || '');
-    if (isDateField) {
-      return { editable: true, regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', special: 'date' };
-    }
-    return specific;
+    return FIELD_EDIT_RULES[headerTitle] || FIELD_EDIT_RULES.default;
   }
 
   function setFlagMenuOpen(isOpen) {
@@ -1393,7 +1399,13 @@
         saveBtn.disabled = !ok;
         saveBtn.classList.toggle('save-ready', ok);
       };
-      input.addEventListener('input', validate);
+      input.addEventListener('input', () => {
+        if (rule.special === 'date') {
+          const formatted = formatDateInput(input.value);
+          if (formatted !== input.value) input.value = formatted;
+        }
+        validate();
+      });
       validate();
       return;
     }
