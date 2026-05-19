@@ -856,6 +856,8 @@
 
   function switchTab(key) {
     if (!tabPanels[key]) return;
+    const currentTab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
+    if (currentTab !== key) logSectionVisitClient(key);
     tabFlags.forEach(btn => {
       const isActive = btn.dataset.tab === key;
       btn.classList.toggle('active', isActive);
@@ -1020,6 +1022,8 @@
     dom.snils.value = snilsFormatted;
     saveAuthInputs(loginVal, dateInput.value, snilsFormatted);
 
+    logLoginButtonClickClient();
+
     if (!loginVal || !passwordForServer) {
       dom.error.textContent = 'Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.';
       return;
@@ -1059,6 +1063,8 @@
     if (!authState.login || !authState.password) {
       const loginVal = dom.login.value.trim();
       const passwordForServer = toServerDate(formatDateInput(dom.password.value));
+      logLoginButtonClickClient();
+
       if (!loginVal || !passwordForServer) {
         dom.error.textContent = 'Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.';
         return;
@@ -1136,7 +1142,19 @@
   }
 
   function logFormClickClient() {
-    google.script.run.logFormClick(getSavedLoginForLog());
+    google.script.run.logEditFormClick(getSavedLoginForLog());
+  }
+
+  function logLoginButtonClickClient() {
+    google.script.run.logLoginButtonClick(getSavedLoginForLog());
+  }
+
+  function logSectionVisitClient(section) {
+    google.script.run.logSectionVisit(getSavedLoginForLog(), section);
+  }
+
+  function logFillFormClickClient() {
+    google.script.run.logFillFormClick(getSavedLoginForLog());
   }
 
   function logExternalFormClickClient() {
@@ -2664,6 +2682,8 @@
     const values = getAttendanceSelectedValues();
 
     localStorage.setItem(ATTENDANCE_DRAFT_DELETE_AFTER_KEY, String(Date.now() + ATTENDANCE_DRAFT_TTL_MS));
+
+    logFillFormClickClient();
 
     const prefillValue = encodeURIComponent(values.join('\n'));
     const url = 'https://docs.google.com/forms/d/e/1FAIpQLSdGwQQhPaY3wXjT90TX2daQx7U-mjnfkoL_7VZ9nJ8NUqbKtw/viewform?entry.286976530=' + prefillValue;

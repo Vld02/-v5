@@ -292,10 +292,13 @@ function logPageOpen({ login = '', password = '', snils = '', clientInfo = {} } 
  * @param {{login?:string,password?:string,snils?:string,clientInfo?:Object,status:string}} payload
  */
 function logAccess({ login = '', password = '', snils = '', clientInfo = {}, status }) {
-  const sheet = getLogSheet();
-  if (!sheet) return;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const sheet = getLogSheet();
+    if (!sheet) return;
 
-  const values = [
+    const values = [
     formatLogDateTime(new Date()),
     login,
     password,
@@ -308,11 +311,14 @@ function logAccess({ login = '', password = '', snils = '', clientInfo = {}, sta
   const rowIndex = findRecentLogRow(sheet, { login, clientInfo });
 
   if (rowIndex > 0) {
-    appendLogLine(sheet, rowIndex, values);
-    return;
-  }
+      appendLogLine(sheet, rowIndex, values);
+      return;
+    }
 
-  appendPlainLogRow(sheet, values);
+    appendPlainLogRow(sheet, values);
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 
@@ -329,7 +335,38 @@ function logAuthAttempt(payload) {
  * Логирует клик по кнопке открытия формы.
  * @param {string} login Логин пользователя.
  */
-function logFormClick(login) {
+function logEditFormClick(login) {
+  logAccess({ login, status: 'Нажал: Заполнить / редактировать' });
+}
+
+/**
+ * Логирует нажатие кнопки входа.
+ * @param {string} login Логин пользователя.
+ */
+function logLoginButtonClick(login) {
+  logAccess({ login, status: 'Нажал: Войти' });
+}
+
+/**
+ * Логирует переход в раздел.
+ * @param {string} login Логин пользователя.
+ * @param {string} section Ключ раздела.
+ */
+function logSectionVisit(login, section) {
+  const sectionMap = {
+    docs: 'ДБВv5 Документы',
+    attendance: 'ДБВv5 Посещаемость',
+    gear: 'ДБВv5 Снаряжение'
+  };
+  const sectionName = sectionMap[section] || section;
+  logAccess({ login, status: `Перешёл в раздел ${sectionName}` });
+}
+
+/**
+ * Логирует клик по кнопке заполнения формы.
+ * @param {string} login Логин пользователя.
+ */
+function logFillFormClick(login) {
   logAccess({ login, status: 'Нажал: Заполнить форму' });
 }
 
