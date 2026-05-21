@@ -68,6 +68,7 @@ function OfForm() {
         sheetRezultat.getRange(newRow, 2).setValue(
           Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy.MM.dd HH:mm:ss')
         );
+        addInitialRowNotes(sheetRezultat, newRow);
       }
       // --- ЕСТЬ СОВПАДЕНИЕ
       else {
@@ -103,6 +104,43 @@ function OfForm() {
   }
 }
 
+
+function addInitialRowNotes(sheet, rowIndex) {
+  const lastColumn = sheet.getLastColumn();
+  const range = sheet.getRange(rowIndex, 1, 1, lastColumn);
+
+  const rowValues = range.getValues()[0];
+  const rowNotes = range.getNotes()[0].map(n => n || '');
+
+  const now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd.MM.yyyy HH:mm:ss');
+  let changed = false;
+
+  for (let col = 0; col < lastColumn; col++) {
+    const value = (rowValues[col] ?? '').toString().trim();
+    if (!value) continue;
+
+    const historyLine = `F: ${now}, ${value}`;
+    rowNotes[col] = rowNotes[col]
+      ? historyLine + '\n' + rowNotes[col]
+      : historyLine;
+
+    changed = true;
+  }
+
+  if (!changed) return;
+
+  for (let i = 0; i < 3; i++) {
+    try {
+      range.setNotes([rowNotes]);
+      return;
+    } catch {
+      Utilities.sleep(150);
+    }
+  }
+
+  Logger.log('⚠ setNotes для новой строки не удалось после 3 попыток');
+}
+
 function createResultMap(values) {
   const map = {};
   values.forEach((v, i) => {
@@ -129,7 +167,12 @@ function updateRezultatRow(sheet, rowIndex, newRowData) {
     const nv = (newRowData[col] ?? '').toString().trim();
     const ov = (oldValues[col] ?? '').toString().trim();
 
-    if (nv && nv !== ov) {
+    if (!nv) continue;
+
+    const wasEmpty = !ov;
+    const valueChanged = nv !== ov;
+
+    if (valueChanged || wasEmpty) {
       newValues[col] = nv;
       const historyLine = `F: ${now}, ${nv}`;
       newNotes[col] = newNotes[col]
