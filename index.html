@@ -844,35 +844,37 @@
   ]);
 
   const FIELD_EDIT_RULES = {
-    default: { editable: false, regex: '^.*$', special: '' },
-    'Фамилия Имя Отчество (С)': { editable: false, regex: '^\s*[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s*$', special: '' },
+    default: { editable: false, regex: '^.*$', special: '', message: '' },
+    'Фамилия Имя Отчество (С)': { editable: false, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '', message: 'Введите полное ФИО в формате «Фамилия Имя Отчество». Например: Иванов Иван Иванович.' },
     'Месяц рождения (С)': { editable: true, regex: '^(Январь|Февраль|Март|Апрель|Май|Июнь|Июль|Август|Сентябрь|Октябрь|Ноябрь|Декабрь)$', special: 'month-list' },
-    'Год набора': { editable: true, regex: '^(200\d|20[1-9]\d|2100)$', special: '' },
-    'Пол (С)': { editable: true, regex: '^[МЖ]$', special: '' },
+    'Год набора': { editable: true, regex: '^(200\d|20[1-9]\d|2100)$', special: 'year-4', message: 'Введите 4 цифры: год от 2000 до 2100.' },
+    'Пол (С)': { editable: true, regex: '^[МЖ]$', special: '', message: 'Введите только одну букву: М или Ж.' },
     'Школа': { editable: true, regex: '^.*$', special: 'school-list' },
-    'Класс / курс': { editable: true, regex: '^(?:[0-9]|10|11|I|II|III|IV|V|VI)$', special: '' },
-    'Литера класса (буква)': { editable: true, regex: '^[А-ЯЁа-яё]$', special: '' },
-    'Директор школы: Фамилия Имя Отчество': { editable: true, regex: '^\s*[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s*$', special: '' },
+    'Класс / курс': { editable: true, regex: '^(?:[0-9]|10|11|I|II|III|IV|V|VI)$', special: '', message: 'Введите класс 0–11 (арабскими цифрами) или курс I–VI (римскими цифрами).' },
+    'Литера класса (буква)': { editable: true, regex: '^[А-ЯЁа-яё]$', special: '', message: 'Введите одну русскую букву.' },
+    'Директор школы: Фамилия Имя Отчество': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '', message: 'Введите полное ФИО в формате «Фамилия Имя Отчество». Например: Иванов Иван Иванович.' },
     'Адрес регистрации / Прописка (С)': { editable: true, regex: '^.*$', special: '' },
     'Телефон +7 (С)': { editable: true, regex: '^\+7\d{10}$', special: 'phone-ru' },
     'Электронная почта (С)': { editable: true, regex: '^[^\s@]+@[^\s@]+\.[^\s@]+$', special: '' },
-    'Свидетельство: Серия, номер (С)': { editable: true, regex: '^([VIX]{1,5}-?[А-Я]{2}\s*№?\s*\d{6})$', special: 'birth-cert' },
-    'Паспорт: Серия, номер (С)': { editable: true, regex: '^(\d{2}\s*\d{2}\s*\d{6})$', special: 'passport' },
+    'Свидетельство: Серия, номер (С)': { editable: true, regex: '^([VIX]{1,5}-?[А-Я]{2}\\s*№?\\s*\d{6})$', special: 'birth-cert', message: 'Проверьте формат свидетельства: римские буквы, две русские буквы и 6 цифр. Пример: V-МЮ № 840118.' },
+    'Паспорт: Серия, номер (С)': { editable: true, regex: '^(\d{2}\\s*\d{2}\\s*\d{6})$', special: 'passport', message: 'Введите 10 цифр паспорта. Формат после сохранения: 45 23 438894.' },
     'Паспорт или Свидетельство: Кем выдан (С)': { editable: true, regex: '^.*$', special: 'issuer-list' },
-    'Паспорт: Код подразделения (С)': { editable: true, regex: '^(\d{3}-\d{3}|\d{6}|\d{3}\s\d{3})$', special: '' },
-    'Снилс: номер': { editable: true, regex: '^\d{3}[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{2}$', special: 'snils' },
+    'Паспорт: Код подразделения (С)': { editable: true, regex: '^(\d{3}-\d{3}|\d{6}|\d{3}\\s\d{3})$', special: '', message: 'Введите код подразделения: 123-456, 123456 или 123 456.' },
+    'Снилс: номер': { editable: true, regex: '^\d{3}[-\\s]?\d{3}[-\\s]?\d{3}[-\\s]?\d{2}$', special: 'snils', message: 'Введите 11 цифр СНИЛС. Пример: 123-456-789-00.' },
     'Полис: Страховая компания': { editable: true, regex: '^.*$', special: 'insurance-list' },
-    'Мед полис: номер': { editable: true, regex: '^\d{4}\s*\d{4}\s*\d{4}\s*\d{4}\s*$', special: 'med-policy' },
+    'Мед полис: номер': { editable: true, regex: '^\d{4}\s*\d{4}\s*\d{4}\s*\d{4}\\s*$', special: 'med-policy' },
     'Номер и страховя компания': { editable: true, regex: '^.*$', special: '' },
-    'ID номер МГФСО': { editable: true, regex: '^\d{6}$', special: '' },
-    'Свидетельство или Паспорт актуальный:  Серия, номер (С)': { editable: false, regex: '^([VIX]{1,5}-?[А-Я]{2}\s*№?\s*\d{6})|(\d{2}\s*\d{2}\s*\d{6})$', special: '' }
+    'ID номер МГФСО': { editable: true, regex: '^\d{6}$', special: '', message: 'Введите ровно 6 цифр.' },
+    'Год рождения (С)': { editable: false, regex: '^(19\d{2}|20\d{2}|2100)$', special: '', message: 'Введите 4 цифры: год от 1900 до 2100.' },
+    'РУСАДА': { editable: false, regex: '^(19\d{2}|20\d{2}|2100)$', special: '', message: 'Введите 4 цифры: год от 1900 до 2100.' },
+    'Свидетельство или Паспорт актуальный:  Серия, номер (С)': { editable: false, regex: '^([VIX]{1,5}-?[А-Я]{2}\\s*№?\\s*\d{6})|(\d{2}\\s*\d{2}\\s*\d{6})$', special: '' }
   };
   let currentDocsRow = { header: [], row: [], colors: [] };
 
   function getFieldEditRule(headerTitle) {
     const specific = FIELD_EDIT_RULES[headerTitle] || FIELD_EDIT_RULES.default;
     if (DATE_EDITABLE_FIELDS.has(headerTitle || '')) {
-      return { editable: true, regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', special: 'date' };
+      return { editable: true, regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', special: 'date', message: 'Введите дату в формате ДД.ММ.ГГГГ.' };
     }
     return specific;
   }
@@ -886,6 +888,9 @@
       if (!d) return '';
       if (d[0] === '7' || d[0] === '8') return '+7' + d.slice(1);
       return '+7' + d.slice(0, 10);
+    }
+    if (special === 'year-4') {
+      return raw.replace(/\D/g, '').slice(0, 4);
     }
     if (special === 'snils') {
       const d = raw.replace(/\D/g, '').slice(0, 11);
@@ -1494,7 +1499,7 @@
     if (mode === 'edit') {
       const textNode = cell.querySelector('.cell-value-text');
       const value = textNode ? textNode.textContent : '';
-      cell.innerHTML = `<button type="button" class="cell-cancel-btn" data-col-index="${colIndex}" data-mode="cancel" title="Отменить">✕</button><button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="save">💾</button><input class="cell-value-input" data-col-index="${colIndex}" data-original-value="${escapeHtmlAttr(value)}" value="${escapeHtmlAttr(value)}" />`;
+      cell.innerHTML = `<button type="button" class="cell-cancel-btn" data-col-index="${colIndex}" data-mode="cancel" title="Отменить">✕</button><button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="save" title="">💾</button><input class="cell-value-input" data-col-index="${colIndex}" data-original-value="${escapeHtmlAttr(value)}" value="${escapeHtmlAttr(value)}" />`;
       const input = cell.querySelector('input');
       if (rule.special === 'date') input.placeholder = 'ДД.ММ.ГГГГ';
       if (rule.special === 'date') {
@@ -1519,6 +1524,7 @@
         const ok = normalized === "" || new RegExp(rule.regex).test(normalized);
         saveBtn.disabled = !ok;
         saveBtn.classList.toggle('save-ready', ok);
+        saveBtn.title = ok ? '' : (rule.message || 'Проверьте формат введённых данных.');
       };
       input.addEventListener('input', validate);
       validate();

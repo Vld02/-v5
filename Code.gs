@@ -1052,8 +1052,16 @@ function updateResultCell(login, password, snils, columnName, value) {
     const rowSnils = normalizeSnils(snilsValues[i][0]);
     if (rowSnils && normalizedSnils && rowSnils !== normalizedSnils) continue;
 
-    const cell = sheet.getRange(i + 2, targetCol + 1);
+    const targetRow = i + 2;
+    const cell = sheet.getRange(targetRow, targetCol + 1);
     cell.setValue(newValue);
+
+    if (String(columnName || '').trim() === 'Школа') {
+      const schoolUpdatedCol = header.indexOf('Дата обн. инф. о школе (С)');
+      if (schoolUpdatedCol !== -1) {
+        sheet.getRange(targetRow, schoolUpdatedCol + 1).setValue(now);
+      }
+    }
 
     const historyLine = `S: ${now}, ${newValue}`;
     const existingNote = String(cell.getNote() || '');
