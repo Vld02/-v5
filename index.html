@@ -837,6 +837,20 @@
   const LAST_SILENT_SYNC_KEY = 'lastSilentSyncAt';
   const SILENT_SYNC_INTERVAL_MS = 15 * 60 * 1000;
 
+  const DATE_EDITABLE_FIELDS = new Set([
+    'Дата рождения (С)',
+    'Паспорт или Свидетельство: Когда выдан (С)',
+    'Дата получения разряда',
+    'Срок действия страховки',
+    'Мед допуск до',
+    'Дата рождения (П)',
+    'Паспорт: Когда выдан (П)',
+    'Дата рождения (М)',
+    'Паспорт: Когда выдан (М)',
+    'Дата рождения (Д)',
+    'Паспорт: Когда выдан (Д)'
+  ]);
+
   const FIELD_EDIT_RULES = {
     default: { editable: true, regex: '^.*$', special: '' },
     'Фамилия Имя Отчество (С)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' },
@@ -849,8 +863,7 @@
 
   function getFieldEditRule(headerTitle) {
     const specific = FIELD_EDIT_RULES[headerTitle] || FIELD_EDIT_RULES.default;
-    const isDateField = /дата|когда выдан|срок/i.test(headerTitle || '');
-    if (isDateField) {
+    if (DATE_EDITABLE_FIELDS.has(headerTitle || '')) {
       return { editable: true, regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', special: 'date' };
     }
     return specific;
@@ -1448,6 +1461,17 @@
       cell.innerHTML = `<button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="save" disabled>💾</button><input class="cell-value-input" data-col-index="${colIndex}" value="${escapeHtmlAttr(value)}" />`;
       const input = cell.querySelector('input');
       if (rule.special === 'date') input.placeholder = 'ДД.ММ.ГГГГ';
+      if (rule.special === 'date') {
+        input.addEventListener('input', function() {
+          const formatted = formatDateInput(input.value);
+          if (formatted !== input.value) input.value = formatted;
+        });
+        input.addEventListener('blur', function() {
+          const formatted = formatDateInput(input.value, { finalizeYear: true });
+          if (formatted !== input.value) input.value = formatted;
+          validate();
+        });
+      }
       input.focus();
       const validate = () => {
         const saveBtn = cell.querySelector('.cell-edit-btn');
