@@ -255,6 +255,7 @@
   .item-title { font-weight: bold; width: 45%; padding: var(--space-sm); background:#f7f7f7; border-right:0.05rem solid #d8d8d8; }
   .item-value { width: 55%; padding: var(--space-sm); position: relative; }
   .cell-edit-btn { position:absolute; top:0.2rem; right:0.2rem; border:0.05rem solid #c5c5c5; background:#fff; border-radius:0.3rem; padding:0.1rem 0.35rem; margin:0; font-size:0.8rem; }
+  .cell-cancel-btn { position:absolute; top:0.2rem; left:0.2rem; border:0.05rem solid #c5c5c5; background:#fff; border-radius:0.3rem; padding:0.1rem 0.35rem; margin:0; font-size:0.8rem; }
   .cell-edit-btn.non-editable { opacity:0.45; cursor:not-allowed; }
   .cell-edit-btn.save-ready { background:#e9f3ff; border-color:#8ab4f8; }
   .cell-edit-btn:disabled { opacity:0.55; cursor:not-allowed; }
@@ -1448,7 +1449,7 @@
 
 
   document.addEventListener('click', function(e) {
-    const btn = e.target.closest('.cell-edit-btn');
+    const btn = e.target.closest('.cell-edit-btn, .cell-cancel-btn');
     if (!btn) return;
     const colIndex = Number(btn.dataset.colIndex);
     const rule = getFieldEditRule(currentDocsRow.header[colIndex]);
@@ -1458,7 +1459,7 @@
     if (mode === 'edit') {
       const textNode = cell.querySelector('.cell-value-text');
       const value = textNode ? textNode.textContent : '';
-      cell.innerHTML = `<button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="save" disabled>💾</button><input class="cell-value-input" data-col-index="${colIndex}" value="${escapeHtmlAttr(value)}" />`;
+      cell.innerHTML = `<button type="button" class="cell-cancel-btn" data-col-index="${colIndex}" data-mode="cancel" title="Отменить">✕</button><button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="save">💾</button><input class="cell-value-input" data-col-index="${colIndex}" data-original-value="${escapeHtmlAttr(value)}" value="${escapeHtmlAttr(value)}" />`;
       const input = cell.querySelector('input');
       if (rule.special === 'date') input.placeholder = 'ДД.ММ.ГГГГ';
       if (rule.special === 'date') {
@@ -1475,7 +1476,8 @@
       input.focus();
       const validate = () => {
         const saveBtn = cell.querySelector('.cell-edit-btn');
-        const ok = new RegExp(rule.regex).test(input.value.trim());
+        const normalized = input.value.trim();
+        const ok = normalized === "" || new RegExp(rule.regex).test(normalized);
         saveBtn.disabled = !ok;
         saveBtn.classList.toggle('save-ready', ok);
       };
@@ -1483,9 +1485,18 @@
       validate();
       return;
     }
+    if (mode === "cancel") {
+      const input = cell.querySelector('input');
+      const originalValue = input?.dataset.originalValue || "";
+      const bg = currentDocsRow.colors[colIndex] || "";
+      const style = bg ? `background:${bg};` : "";
+      cell.innerHTML = `<button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="edit">✎</button><div class="cell-value-text">${escapeHtml(originalValue)}</div>`;
+      cell.setAttribute("style", style);
+      return;
+    }
     const input = cell.querySelector('input');
     const saveValue = (input?.value || '').trim();
-    if (!new RegExp(rule.regex).test(saveValue)) return;
+    if (!(saveValue === "" || new RegExp(rule.regex).test(saveValue))) return;
     btn.disabled = true;
     btn.textContent = '⏳';
     google.script.run
