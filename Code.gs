@@ -1041,6 +1041,8 @@ function updateResultCell(login, password, snils, columnName, value) {
 
   const normalizedLogin = normalizeLogin(login);
   const normalizedSnils = normalizeSnils(snils);
+  const now = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'dd.MM.yyyy HH:mm:ss');
+  const newValue = String(value ?? '');
 
   for (let i = 0; i < rowCount; i++) {
     const rowLogin = normalizeLogin(logins[i][0]);
@@ -1050,7 +1052,23 @@ function updateResultCell(login, password, snils, columnName, value) {
     const rowSnils = normalizeSnils(snilsValues[i][0]);
     if (rowSnils && normalizedSnils && rowSnils !== normalizedSnils) continue;
 
-    sheet.getRange(i + 2, targetCol + 1).setValue(String(value ?? ''));
+    const cell = sheet.getRange(i + 2, targetCol + 1);
+    cell.setValue(newValue);
+
+    const historyLine = `S: ${now}, ${newValue}`;
+    const existingNote = String(cell.getNote() || '');
+    const nextNote = existingNote ? `${historyLine}\n${existingNote}` : historyLine;
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        cell.setNote(nextNote);
+        break;
+      } catch (e) {
+        if (attempt === 2) throw e;
+        Utilities.sleep(150);
+      }
+    }
+
     return { ok: true };
   }
 
