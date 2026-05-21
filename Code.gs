@@ -837,36 +837,40 @@
   const LAST_SILENT_SYNC_KEY = 'lastSilentSyncAt';
   const SILENT_SYNC_INTERVAL_MS = 15 * 60 * 1000;
 
-  const DATE_EDITABLE_FIELDS = new Set([
-    'Дата рождения (С)',
-    'Паспорт или Свидетельство: Когда выдан (С)',
-    'Дата получения разряда',
-    'Срок действия страховки',
-    'Мед допуск до',
-    'Дата рождения (П)',
-    'Паспорт: Когда выдан (П)',
-    'Дата рождения (М)',
-    'Паспорт: Когда выдан (М)',
-    'Дата рождения (Д)',
-    'Паспорт: Когда выдан (Д)'
-  ]);
-
   const FIELD_EDIT_RULES = {
-    default: { editable: true, regex: '^.*$', special: '' },
-    'Фамилия Имя Отчество (С)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' },
-    'Фамилия Имя Отчество (П)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' },
-    'Фамилия Имя Отчество (М)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' },
-    'Фамилия Имя Отчество (Д)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' }
+    default: { editable: false, regex: '^.*$', special: '' },
+    'Месяц рождения (С)': { editable: true, regex: '^.*$', special: '' },
+    'Год набора': { editable: true, regex: '^.*$', special: '' },
+    'Пол (С)': { editable: true, regex: '^.*$', special: '' },
+    'Школа': { editable: true, regex: '^.*$', special: '' },
+    'Класс / курс': { editable: true, regex: '^.*$', special: '' },
+    'Литера класса (буква)': { editable: true, regex: '^.*$', special: '' },
+    'Директор школы: Фамилия Имя Отчество': { editable: true, regex: '^.*$', special: '' },
+    'Адрес регистрации / Прописка (С)': { editable: true, regex: '^.*$', special: '' },
+    'Телефон +7 (С)': { editable: true, regex: '^.*$', special: '' },
+    'Электронная почта (С)': { editable: true, regex: '^.*$', special: '' },
+    'Свидетельство: Серия, номер (С)': { editable: true, regex: '^.*$', special: '' },
+    'Паспорт: Серия, номер (С)': { editable: true, regex: '^.*$', special: '' },
+    'Паспорт или Свидетельство: Кем выдан (С)': { editable: true, regex: '^.*$', special: '' },
+    'Паспорт или Свидетельство: Когда выдан (С)': { editable: true, regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', special: 'date' },
+    'Паспорт: Код подразделения (С)': { editable: true, regex: '^.*$', special: '' },
+    'Снилс: номер': { editable: true, regex: '^.*$', special: '' },
+    'Полис: Страховая компания': { editable: true, regex: '^.*$', special: '' },
+    'Мед полис: номер': { editable: true, regex: '^.*$', special: '' },
+    'Номер и страховя компания': { editable: true, regex: '^.*$', special: '' },
+    'ID номер МГФСО': { editable: true, regex: '^.*$', special: '' }
   };
 
   let currentDocsRow = { header: [], row: [], colors: [] };
 
   function getFieldEditRule(headerTitle) {
-    const specific = FIELD_EDIT_RULES[headerTitle] || FIELD_EDIT_RULES.default;
-    if (DATE_EDITABLE_FIELDS.has(headerTitle || '')) {
-      return { editable: true, regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', special: 'date' };
-    }
-    return specific;
+    return FIELD_EDIT_RULES[headerTitle] || FIELD_EDIT_RULES.default;
+  }
+
+  function isFieldValueAllowed(rule, value) {
+    const normalized = (value || '').trim();
+    if (normalized === '') return true;
+    return new RegExp(rule.regex).test(normalized);
   }
 
   function setFlagMenuOpen(isOpen) {
@@ -1475,7 +1479,7 @@
       input.focus();
       const validate = () => {
         const saveBtn = cell.querySelector('.cell-edit-btn');
-        const ok = new RegExp(rule.regex).test(input.value.trim());
+        const ok = isFieldValueAllowed(rule, input.value);
         saveBtn.disabled = !ok;
         saveBtn.classList.toggle('save-ready', ok);
       };
@@ -1485,7 +1489,7 @@
     }
     const input = cell.querySelector('input');
     const saveValue = (input?.value || '').trim();
-    if (!new RegExp(rule.regex).test(saveValue)) return;
+    if (!isFieldValueAllowed(rule, saveValue)) return;
     btn.disabled = true;
     btn.textContent = '⏳';
     google.script.run
