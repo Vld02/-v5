@@ -255,7 +255,6 @@
   .item-title { font-weight: bold; width: 45%; padding: var(--space-sm); background:#f7f7f7; border-right:0.05rem solid #d8d8d8; }
   .item-value { width: 55%; padding: var(--space-sm); position: relative; }
   .cell-edit-btn { position:absolute; top:0.2rem; right:0.2rem; border:0.05rem solid #c5c5c5; background:#fff; border-radius:0.3rem; padding:0.1rem 0.35rem; margin:0; font-size:0.8rem; }
-  .cell-cancel-btn { position:absolute; top:0.2rem; left:0.2rem; border:0.05rem solid #c5c5c5; background:#fff; border-radius:0.3rem; padding:0.1rem 0.35rem; margin:0; font-size:0.8rem; }
   .cell-edit-btn.non-editable { opacity:0.45; cursor:not-allowed; }
   .cell-edit-btn.save-ready { background:#e9f3ff; border-color:#8ab4f8; }
   .cell-edit-btn:disabled { opacity:0.55; cursor:not-allowed; }
@@ -839,55 +838,25 @@
   const SILENT_SYNC_INTERVAL_MS = 15 * 60 * 1000;
 
   const DATE_EDITABLE_FIELDS = new Set([
-    'Паспорт или Свидетельство: Когда выдан (С)'
+    'Дата рождения (С)',
+    'Паспорт или Свидетельство: Когда выдан (С)',
+    'Дата получения разряда',
+    'Срок действия страховки',
+    'Мед допуск до',
+    'Дата рождения (П)',
+    'Паспорт: Когда выдан (П)',
+    'Дата рождения (М)',
+    'Паспорт: Когда выдан (М)',
+    'Дата рождения (Д)',
+    'Паспорт: Когда выдан (Д)'
   ]);
 
   const FIELD_EDIT_RULES = {
-    default: { editable: false, regex: '^.*$', special: '' },
-    'Фамилия Имя Отчество (С)': { editable: false, regex: '^\s*[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s*$', special: '' },
-    'Месяц рождения (С)': { editable: true, regex: '^(Январь|Февраль|Март|Апрель|Май|Июнь|Июль|Август|Сентябрь|Октябрь|Ноябрь|Декабрь)$', special: 'month-list' },
-    'Год рождения (С)': { editable: false, regex: '^(19\d\d|20\d\d|2100)$', special: '' },
-    'Год набора': { editable: true, regex: '^(200\d|20[1-9]\d|2100)$', special: 'year4' },
-    'Пол (С)': { editable: true, regex: '^[МЖ]$', special: '' },
-    'Школа': { editable: true, regex: '^.*$', special: 'school-list' },
-    'Класс / курс': { editable: true, regex: '^(?:[0-9]|10|11|I|II|III|IV|V|VI)$', special: '' },
-    'Литера класса (буква)': { editable: true, regex: '^[А-ЯЁа-яё]$', special: '' },
-    'Директор школы: Фамилия Имя Отчество': { editable: true, regex: '^\s*[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s*$', special: '' },
-    'Адрес регистрации / Прописка (С)': { editable: true, regex: '^.*$', special: '' },
-    'Телефон (С)': { editable: false, regex: '^([78]\d{10}|[+]7\d{10})$', special: '' },
-    'Телефон +7 (С)': { editable: true, regex: '^\+7\d{10}$', special: 'phone-ru' },
-    'Электронная почта (С)': { editable: true, regex: '^[^\s@]+@[^\s@]+\.[^\s@]+$', special: '' },
-    'Свидетельство: Серия, номер (С)': { editable: true, regex: '^([VIX]{1,5}-?[А-Я]{2}\s*№?\s*\d{6})$', special: 'birth-cert' },
-    'Паспорт: Серия, номер (С)': { editable: true, regex: '^(\d{2}\s*\d{2}\s*\d{6})$', special: 'passport' },
-    'Паспорт или Свидетельство: Кем выдан (С)': { editable: true, regex: '^.*$', special: 'issuer-list' },
-    'Паспорт: Код подразделения (С)': { editable: true, regex: '^(\d{3}-\d{3}|\d{6}|\d{3}\s\d{3})$', special: '' },
-    'Снилс: номер': { editable: true, regex: '^\d{3}[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{2}$', special: 'snils' },
-    'Полис: Страховая компания': { editable: true, regex: '^.*$', special: 'insurance-list' },
-    'Мед полис: номер': { editable: true, regex: '^\d{4}\s*\d{4}\s*\d{4}\s*\d{4}\s*$', special: 'med-policy' },
-    'Номер и страховя компания': { editable: true, regex: '^.*$', special: '' },
-    'ID номер МГФСО': { editable: true, regex: '^\d{6}$', special: '' },
-    'РУСАДА': { editable: false, regex: '^(19\d\d|20\d\d|2100)$', special: '' },
-    'Свидетельство или Паспорт актуальный:  Серия, номер (С)': { editable: false, regex: '^([VIX]{1,5}-?[А-Я]{2}\s*№?\s*\d{6})|(\d{2}\s*\d{2}\s*\d{6})$', special: '' }
-  };
-
-
-  const FIELD_ERROR_MESSAGES = {
-    'Фамилия Имя Отчество (С)': 'Введите полное ФИО в формате «Фамилия Имя Отчество». Например: «Иванов Иван Иванович».',
-    'Год рождения (С)': 'Введите корректный год рождения от 1900 до 2100.',
-    'Год набора': 'Введите корректный год набора от 2000 до 2100.',
-    'Пол (С)': 'Допустимы только значения «М» или «Ж».',
-    'Класс / курс': 'Введите класс от 0 до 11 или курс римскими цифрами от I до VI.',
-    'Литера класса (буква)': 'Введите одну русскую букву.',
-    'Директор школы: Фамилия Имя Отчество': 'Введите полное ФИО в формате «Фамилия Имя Отчество».',
-    'Электронная почта (С)': 'Введите корректный адрес электронной почты.',
-    'Свидетельство: Серия, номер (С)': 'Введите свидетельство в формате «V-МЮ № 840118».',
-    'Паспорт: Серия, номер (С)': 'Введите паспорт в формате «45 23 438894».',
-    'Паспорт: Код подразделения (С)': 'Введите код подразделения в формате «123-456».',
-    'Снилс: номер': 'Введите СНИЛС в формате «123-456-789 00».',
-    'Мед полис: номер': 'Необходимо ввести 16 цифр.',
-    'ID номер МГФСО': 'ID номер должен содержать 6 цифр.',
-    'РУСАДА': 'Введите корректный год прохождения РУСАДА.',
-    'Телефон (С)': 'Введите корректный номер телефона РФ.'
+    default: { editable: true, regex: '^.*$', special: '' },
+    'Фамилия Имя Отчество (С)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' },
+    'Фамилия Имя Отчество (П)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' },
+    'Фамилия Имя Отчество (М)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' },
+    'Фамилия Имя Отчество (Д)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' }
   };
 
   let currentDocsRow = { header: [], row: [], colors: [] };
@@ -900,37 +869,6 @@
     return specific;
   }
 
-
-  function normalizeBySpecial(value, special) {
-    const raw = String(value || '').trim();
-    if (!raw) return '';
-    if (special === 'phone-ru') {
-      const d = raw.replace(/\D/g, '').slice(0, 11);
-      if (!d) return '';
-      if (d[0] === '7' || d[0] === '8') return '+7' + d.slice(1);
-      return '+7' + d.slice(0, 10);
-    }
-    if (special === 'year4') {
-      return raw.replace(/\D/g, '').slice(0, 4);
-    }
-    if (special === 'snils') {
-      const d = raw.replace(/\D/g, '').slice(0, 11);
-      return d.length === 11 ? `${d.slice(0,3)}-${d.slice(3,6)}-${d.slice(6,9)}-${d.slice(9,11)}` : d;
-    }
-    if (special === 'passport') {
-      const d = raw.replace(/\D/g, '').slice(0, 10);
-      return d.length === 10 ? `${d.slice(0,2)} ${d.slice(2,4)} ${d.slice(4,10)}` : d;
-    }
-    if (special === 'birth-cert') {
-      const m = raw.toUpperCase().replace(/\s+/g, ' ').replace(/№/g, '').match(/^([VIX]{1,5})-?([А-Я]{2})\s*(\d{6})$/);
-      return m ? `${m[1]}-${m[2]} № ${m[3]}` : raw;
-    }
-    if (special === 'med-policy') {
-      const d = raw.replace(/\D/g, '').slice(0, 16);
-      return d.replace(/(\d{4})(?=\d)/g, '$1 ').trim();
-    }
-    return raw;
-  }
   function setFlagMenuOpen(isOpen) {
     dom.flagMenuZone.classList.toggle('open', isOpen);
     dom.menuToggle.setAttribute('aria-expanded', String(isOpen));
@@ -1510,7 +1448,7 @@
 
 
   document.addEventListener('click', function(e) {
-    const btn = e.target.closest('.cell-edit-btn, .cell-cancel-btn');
+    const btn = e.target.closest('.cell-edit-btn');
     if (!btn) return;
     const colIndex = Number(btn.dataset.colIndex);
     const rule = getFieldEditRule(currentDocsRow.header[colIndex]);
@@ -1520,7 +1458,7 @@
     if (mode === 'edit') {
       const textNode = cell.querySelector('.cell-value-text');
       const value = textNode ? textNode.textContent : '';
-      cell.innerHTML = `<button type="button" class="cell-cancel-btn" data-col-index="${colIndex}" data-mode="cancel" title="Отменить">✕</button><button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="save">💾</button><input class="cell-value-input" data-col-index="${colIndex}" data-original-value="${escapeHtmlAttr(value)}" value="${escapeHtmlAttr(value)}" />`;
+      cell.innerHTML = `<button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="save" disabled>💾</button><input class="cell-value-input" data-col-index="${colIndex}" value="${escapeHtmlAttr(value)}" />`;
       const input = cell.querySelector('input');
       if (rule.special === 'date') input.placeholder = 'ДД.ММ.ГГГГ';
       if (rule.special === 'date') {
@@ -1534,17 +1472,10 @@
           validate();
         });
       }
-      input.addEventListener('blur', function() {
-        if (rule.special !== 'date') input.value = normalizeBySpecial(input.value, rule.special);
-        validate();
-      });
       input.focus();
       const validate = () => {
         const saveBtn = cell.querySelector('.cell-edit-btn');
-        const normalized = input.value.trim();
-        const ok = normalized === "" || new RegExp(rule.regex).test(normalized);
-        const fieldTitle = currentDocsRow.header[colIndex] || '';
-        input.setCustomValidity(ok ? '' : (FIELD_ERROR_MESSAGES[fieldTitle] || 'Некорректное значение поля.'));
+        const ok = new RegExp(rule.regex).test(input.value.trim());
         saveBtn.disabled = !ok;
         saveBtn.classList.toggle('save-ready', ok);
       };
@@ -1552,23 +1483,9 @@
       validate();
       return;
     }
-    if (mode === "cancel") {
-      const input = cell.querySelector('input');
-      const originalValue = input?.dataset.originalValue || "";
-      const bg = currentDocsRow.colors[colIndex] || "";
-      const style = bg ? `background:${bg};` : "";
-      cell.innerHTML = `<button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="edit">✎</button><div class="cell-value-text">${escapeHtml(originalValue)}</div>`;
-      cell.setAttribute("style", style);
-      return;
-    }
     const input = cell.querySelector('input');
-    const saveValue = normalizeBySpecial(input?.value || '', rule.special);
-    if (!(saveValue === "" || new RegExp(rule.regex).test(saveValue))) {
-      const fieldTitle = currentDocsRow.header[colIndex] || '';
-      const msg = FIELD_ERROR_MESSAGES[fieldTitle] || 'Некорректное значение поля.';
-      alert(msg);
-      return;
-    }
+    const saveValue = (input?.value || '').trim();
+    if (!new RegExp(rule.regex).test(saveValue)) return;
     btn.disabled = true;
     btn.textContent = '⏳';
     google.script.run
