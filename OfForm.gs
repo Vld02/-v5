@@ -1,0 +1,396 @@
+function OfForm() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetObrabotka = ss.getSheetByName('Обработка');
+  const sheetRezultat = ss.getSheetByName('Результат');
+  const sheetOtveti = ss.getSheetByName('Ответы');
+  const sheetArhiv = ss.getSheetByName('Архив ответов');
+
+  Logger.log("Начало выполнения скрипта...");
+
+  try {
+    checkManualChanges();
+    saveCurrentResultState();
+
+    // ============================================================
+    // 1. СОРТИРОВКА ЛИСТА "ОТВЕТЫ"
+    // ============================================================
+    const lastRowOtveti = sheetOtveti.getLastRow();
+    if (lastRowOtveti > 1) {
+      const valuesOtveti = sheetOtveti
+        .getRange(2, 1, lastRowOtveti - 1, sheetOtveti.getLastColumn())
+        .getValues();
+
+      const hasDataOtveti = valuesOtveti.some(r => r.some(c => c !== ""));
+      if (hasDataOtveti) {
+        Logger.log("Сортировка листа 'Ответы'...");
+        sheetOtveti
+          .getRange(2, 1, lastRowOtveti - 1, sheetOtveti.getLastColumn())
+          .sort([
+            { column: 3, ascending: true },
+            { column: 1, ascending: true }
+          ]);
+      }
+    }
+
+    // ============================================================
+    // 2. ДОБАВЛЕНИЕ ПУСТОЙ СТРОКИ
+    // ============================================================
+    const lastValueOtveti = sheetOtveti
+      .getRange(lastRowOtveti, 1)
+      .getValue()
+      .toString()
+      .trim();
+
+    if (lastValueOtveti) {
+      sheetOtveti.appendRow(['']);
+    }
+
+    // ============================================================
+    // 3. ОСНОВНОЙ ЦИКЛ
+    // ============================================================
+    while (true) {
+      const obrabotkaData = sheetObrabotka.getRange('A2').getValue().toString().trim();
+      if (!obrabotkaData) break;
+
+      const obrabotkaRowData = sheetObrabotka.getRange('2:2').getValues()[0];
+      const rezultatData = sheetRezultat
+        .getRange('A2:A')
+        .getValues()
+        .map(r => r[0].toString().trim());
+
+      const resultMap = createResultMap(rezultatData);
+      const matchRowIndex = resultMap[normalizeFio(obrabotkaData)];
+
+      // --- НЕТ СОВПАДЕНИЯ
+      if (matchRowIndex === undefined) {
+        sheetRezultat.appendRow(obrabotkaRowData);
+        const newRow = sheetRezultat.getLastRow();
+        sheetRezultat.getRange(newRow, 2).setValue(
+          Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy.MM.dd HH:mm:ss')
+        );
+      }
+      // --- ЕСТЬ СОВПАДЕНИЕ
+      else {
+        updateRezultatRow(sheetRezultat, matchRowIndex + 2, obrabotkaRowData);
+        sheetRezultat.getRange(matchRowIndex + 2, 2).setValue(
+          Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy.MM.dd HH:mm:ss')
+        );
+      }
+
+      // --- АРХИВ
+      transferData(sheetOtveti, sheetArhiv);
+      sheetOtveti.deleteRow(2);
+
+      if (!sheetObrabotka.getRange('A2').getValue().toString().trim()) break;
+    }
+
+    // ============================================================
+    // 4. ФИНАЛЬНАЯ СОРТИРОВКА
+    // ============================================================
+    const last = sheetRezultat.getLastRow();
+    if (last > 2) {
+      sheetRezultat
+        .getRange(2, 1, last - 1, sheetRezultat.getLastColumn())
+        .sort([{ column: 1, ascending: true }]);
+    }
+
+    saveCurrentResultState();
+    Logger.log('Скрипт завершён.');
+
+  } catch (error) {
+    Logger.log('Ошибка: ' + error.message);
+    throw error;
+  }
+}
+
+function createResultMap(values) {
+  const map = {};
+  values.forEach((v, i) => {
+    const key = normalizeFio(v);
+    if (key) map[key] = i;
+  });
+  return map;
+}
+
+function updateRezultatRow(sheet, rowIndex, newRowData) {
+  const lastColumn = sheet.getLastColumn();
+  const range = sheet.getRange(rowIndex, 1, 1, lastColumn);
+
+  const oldValues = range.getValues()[0];
+  const oldNotes = range.getNotes()[0];
+
+  const newValues = oldValues.slice();
+  const newNotes = oldNotes.map(n => n || '');
+
+  let changed = false;
+  const now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd.MM.yyyy HH:mm:ss');
+
+  for (let col = 1; col < lastColumn; col++) {
+    const nv = (newRowData[col] ?? '').toString().trim();
+    const ov = (oldValues[col] ?? '').toString().trim();
+
+    if (nv && nv !== ov) {
+      newValues[col] = nv;
+      const historyLine = `F: ${now}, ${nv}`;
+      newNotes[col] = newNotes[col]
+        ? historyLine + '\n' + newNotes[col]
+        : historyLine;
+      changed = true;
+    }
+  }
+
+  if (!changed) return;
+
+  range.setValues([newValues]);
+
+  for (let i = 0; i < 3; i++) {
+    try {
+      range.setNotes([newNotes]);
+      return;
+    } catch {
+      Utilities.sleep(150);
+    }
+  }
+
+  Logger.log('⚠ setNotes не удалось после 3 попыток');
+}
+
+function transferData(srcSheet, dstSheet) {
+  const rowData = srcSheet.getRange(2, 1, 1, srcSheet.getLastColumn()).getValues()[0];
+  dstSheet.insertRows(2, 1);
+  dstSheet.getRange(2, 1, 1, rowData.length).setValues([rowData]);
+}
+
+function loadSavedResultState() {
+  const raw = PropertiesService.getDocumentProperties().getProperty('RESULT_SAVE');
+  return raw ? JSON.parse(raw) : {};
+}
+
+function saveCurrentResultState() {
+  const ss = SpreadsheetApp.getActive();
+  const sheet = ss.getSheetByName('Результат');
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+
+  if (lastRow < 2) {
+    PropertiesService.getDocumentProperties().deleteProperty('RESULT_SAVE');
+    return;
+  }
+
+  const values = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+  const snapshot = {};
+
+  values.forEach(row => {
+    const key = normalizeValue(row[0]);
+    if (!key) return;
+    snapshot[key] = row.map(cell => normalizeValue(cell));
+  });
+
+  const json = JSON.stringify(snapshot);
+  if (json.length > 450000) {
+    throw new Error('RESULT_SAVE превысил безопасный размер');
+  }
+
+  PropertiesService.getDocumentProperties().setProperty('RESULT_SAVE', json);
+}
+
+function checkManualChanges() {
+  const ss = SpreadsheetApp.getActive();
+  const sheet = ss.getSheetByName('Результат');
+
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2) return;
+
+  const range = sheet.getRange(2, 1, lastRow - 1, lastCol);
+  const currentValues = range.getValues();
+  const currentNotes = range.getNotes();
+  const savedSnapshot = loadSavedResultState();
+
+  if (!Object.keys(savedSnapshot).length) return;
+
+  const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd.MM.yyyy');
+  let notesChanged = false;
+
+  for (let r = 0; r < currentValues.length; r++) {
+    const row = currentValues[r];
+    const key = normalizeValue(row[0]);
+
+    if (!key || !savedSnapshot[key]) continue;
+
+    const savedRow = savedSnapshot[key];
+
+    for (let c = 0; c < lastCol; c++) {
+      const currentValue = normalizeValue(row[c]);
+      const savedValue = savedRow[c] ?? '';
+
+      if (currentValue === savedValue) continue;
+
+      const historyLine = `Р: ${today}, ${currentValue}`;
+      const existingNote = currentNotes[r][c] || '';
+
+      currentNotes[r][c] = existingNote
+        ? historyLine + '\n' + existingNote
+        : historyLine;
+
+      notesChanged = true;
+    }
+  }
+
+  if (notesChanged) {
+    range.setNotes(currentNotes);
+  }
+
+  saveCurrentResultState();
+}
+
+function normalizeValue(value) {
+  if (value instanceof Date) {
+    return Utilities.formatDate(value, Session.getScriptTimeZone(), 'yyyy.MM.dd HH:mm:ss');
+  }
+  return String(value ?? '').trim();
+}
+
+function updateTrainingGroups() {
+  const ss = SpreadsheetApp.getActive();
+  const sheetGroups = ss.getSheetByName('Список групп');
+  const sheetResult = ss.getSheetByName('Результат');
+
+  if (!sheetGroups || !sheetResult) {
+    throw new Error('Не найден лист "Список групп" или "Результат"');
+  }
+
+  const headerRow = sheetResult
+    .getRange(1, 1, 1, sheetResult.getLastColumn())
+    .getValues()[0];
+
+  const groupColIndex = headerRow.indexOf('Тренировочная группа');
+  if (groupColIndex === -1) {
+    throw new Error('В листе "Результат" нет столбца "Тренировочная группа"');
+  }
+
+  const lastRowResult = sheetResult.getLastRow();
+  if (lastRowResult < 2) return;
+
+  const fioValues = sheetResult
+    .getRange(2, 1, lastRowResult - 1, 1)
+    .getValues()
+    .flat();
+
+  const resultMap = {};
+  fioValues.forEach((fio, i) => {
+    const key = normalizeFio(fio);
+    if (key) resultMap[key] = i + 2;
+  });
+
+  const resultRange = sheetResult.getRange(2, groupColIndex + 1, lastRowResult - 1, 1);
+
+  const currentValues = resultRange.getValues();
+  const currentNotes = resultRange.getNotes();
+
+  const now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd.MM.yyyy HH:mm:ss');
+
+  const groupBlocks = [
+    { fio: 'A6:A100', group: 'A5' },
+    { fio: 'C6:C100', group: 'C5' },
+    { fio: 'E6:E100', group: 'E5' },
+    { fio: 'G6:G100', group: 'G5' },
+    { fio: 'I6:I100', group: 'I5' },
+    { fio: 'A104:A200', group: 'A103' },
+    { fio: 'C104:C200', group: 'C103' },
+    { fio: 'E104:E200', group: 'E103' },
+    { fio: 'G104:G200', group: 'G103' },
+    { fio: 'I104:I200', group: 'I103' }
+  ];
+
+  const fioGroupsMap = {};
+
+  groupBlocks.forEach(block => {
+    const groupName = String(sheetGroups.getRange(block.group).getValue() || '').trim();
+
+    if (!groupName) return;
+
+    const fioList = sheetGroups.getRange(block.fio).getValues().flat();
+
+    fioList.forEach(fio => {
+      const key = normalizeFio(fio);
+      if (!key) return;
+
+      if (!fioGroupsMap[key]) {
+        fioGroupsMap[key] = [];
+      }
+
+      fioGroupsMap[key].push(groupName);
+    });
+  });
+
+  let changed = false;
+  const usedRowIndexes = new Set();
+
+  Object.keys(fioGroupsMap).forEach(fioKey => {
+    const rowIndex = resultMap[fioKey];
+    if (!rowIndex) return;
+
+    usedRowIndexes.add(rowIndex);
+
+    const localIndex = rowIndex - 2;
+    const oldValue = String(currentValues[localIndex][0] || '').trim();
+
+    const newValue = [...new Set(fioGroupsMap[fioKey])]
+      .sort()
+      .join(', ');
+
+    if (oldValue === newValue) return;
+
+    currentValues[localIndex][0] = newValue;
+
+    const historyLine = `Г: ${now}, ${newValue}`;
+    const existingNote = currentNotes[localIndex][0] || '';
+
+    currentNotes[localIndex][0] = existingNote
+      ? historyLine + '\n' + existingNote
+      : historyLine;
+
+    changed = true;
+  });
+
+  for (let i = 0; i < currentValues.length; i++) {
+    const rowIndex = i + 2;
+
+    if (usedRowIndexes.has(rowIndex)) continue;
+
+    const oldValue = String(currentValues[i][0] || '').trim();
+    if (!oldValue) continue;
+
+    currentValues[i][0] = '';
+
+    const historyLine = `Г: ${now}, `;
+    const existingNote = currentNotes[i][0] || '';
+
+    currentNotes[i][0] = existingNote
+      ? historyLine + '\n' + existingNote
+      : historyLine;
+
+    changed = true;
+  }
+
+  if (!changed) return;
+
+  resultRange.setValues(currentValues);
+
+  for (let i = 0; i < 3; i++) {
+    try {
+      resultRange.setNotes(currentNotes);
+      break;
+    } catch (e) {
+      Utilities.sleep(150);
+    }
+  }
+}
+
+function normalizeFio(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/ё/g, 'е');
+}
