@@ -261,6 +261,7 @@
   .cell-edit-btn:disabled { opacity:0.55; cursor:not-allowed; }
   .cell-value-text { padding-right:2rem; white-space:pre-wrap; }
   .cell-value-input { width:100%; box-sizing:border-box; margin-top:0; padding-right:2rem; }
+  .cell-validation-msg { margin-top:0.25rem; font-size:0.72rem; color:#b3261e; }
 
   .auth-actions {
     display: flex;
@@ -858,10 +859,10 @@
     default: { editable: false, regex: '^.*$', special: '' },
     'Месяц рождения (С)': { editable: true, regex: MONTH_REGEX, special: '' },
     'Год набора': { editable: true, regex: '^(200\\d|20[1-9]\\d|2100)$', special: '' },
-    'Пол (С)': { editable: true, regex: '^[МЖ]$', special: '' },
+    'Пол (С)': { editable: true, regex: '^[МЖ]$', special: '', message: 'Допустимо только: М или Ж.' },
     'Школа': { editable: true, regex: '^.*$', special: '' },
-    'Класс / курс': { editable: true, regex: '^(?:[0-9]|10|11|I|II|III|IV|V|VI)$', special: '' },
-    'Литера класса (буква)': { editable: true, regex: '^[А-ЯЁа-яё]$', special: '' },
+    'Класс / курс': { editable: true, regex: '^(?:[0-9]|10|11|I|II|III|IV|V|VI)$', special: '', message: 'Введите класс 0-11 или курс I-VI.' },
+    'Литера класса (буква)': { editable: true, regex: '^[А-ЯЁа-яё]$', special: '', message: 'Введите одну русскую букву.' },
     'Директор школы: Фамилия Имя Отчество': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' },
     'Адрес регистрации / Прописка (С)': { editable: true, regex: '^.*$', special: '' },
     'Телефон +7 (С)': { editable: true, regex: '^\\+7\\d{10}$', special: 'phone_ru' },
@@ -1479,7 +1480,7 @@ let currentDocsRow = { header: [], row: [], colors: [] };
     if (mode === 'edit') {
       const textNode = cell.querySelector('.cell-value-text');
       const value = textNode ? textNode.textContent : '';
-      cell.innerHTML = `<button type="button" class="cell-cancel-btn" data-col-index="${colIndex}" data-mode="cancel" title="Отменить">✕</button><button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="save">💾</button><input class="cell-value-input" data-col-index="${colIndex}" data-original-value="${escapeHtmlAttr(value)}" value="${escapeHtmlAttr(value)}" />`;
+      cell.innerHTML = `<button type="button" class="cell-cancel-btn" data-col-index="${colIndex}" data-mode="cancel" title="Отменить">✕</button><button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="save">💾</button><input class="cell-value-input" data-col-index="${colIndex}" data-original-value="${escapeHtmlAttr(value)}" value="${escapeHtmlAttr(value)}" /><div class="cell-validation-msg" aria-live="polite"></div>`;
       const input = cell.querySelector('input');
       if (rule.special === 'date') input.placeholder = 'ДД.ММ.ГГГГ';
       if (rule.special === 'phone_ru') input.placeholder = '+79264754488';
@@ -1525,10 +1526,12 @@ let currentDocsRow = { header: [], row: [], colors: [] };
       input.focus();
       const validate = () => {
         const saveBtn = cell.querySelector('.cell-edit-btn');
+        const msgNode = cell.querySelector('.cell-validation-msg');
         const normalized = input.value.trim();
         const ok = normalized === "" || new RegExp(rule.regex).test(normalized);
         saveBtn.disabled = !ok;
         saveBtn.classList.toggle('save-ready', ok);
+        if (msgNode) msgNode.textContent = ok ? '' : (rule.message || 'Проверьте формат значения.');
       };
       input.addEventListener('input', validate);
       validate();
