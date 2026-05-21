@@ -255,6 +255,7 @@
   .item-title { font-weight: bold; width: 45%; padding: var(--space-sm); background:#f7f7f7; border-right:0.05rem solid #d8d8d8; }
   .item-value { width: 55%; padding: var(--space-sm); position: relative; }
   .cell-edit-btn { position:absolute; top:0.2rem; right:0.2rem; border:0.05rem solid #c5c5c5; background:#fff; border-radius:0.3rem; padding:0.1rem 0.35rem; margin:0; font-size:0.8rem; }
+  .cell-cancel-btn { position:absolute; top:0.2rem; left:0.2rem; border:0.05rem solid #c5c5c5; background:#fff; border-radius:0.3rem; padding:0.1rem 0.35rem; margin:0; font-size:0.8rem; }
   .cell-edit-btn.non-editable { opacity:0.45; cursor:not-allowed; }
   .cell-edit-btn.save-ready { background:#e9f3ff; border-color:#8ab4f8; }
   .cell-edit-btn:disabled { opacity:0.55; cursor:not-allowed; }
@@ -852,19 +853,74 @@
   ]);
 
   const FIELD_EDIT_RULES = {
-    default: { editable: true, regex: '^.*$', special: '' },
-    'Фамилия Имя Отчество (С)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' },
-    'Фамилия Имя Отчество (П)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' },
-    'Фамилия Имя Отчество (М)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' },
-    'Фамилия Имя Отчество (Д)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' }
+    default: { editable: false, regex: '^.*$', special: '' },
+    'Фамилия Имя Отчество (С)': { editable: false, regex: '^\s*[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s*$', special: '' },
+    'Дата ввода': { editable: false, regex: '^.*$', special: '' },
+    'Отметка времени': { editable: false, regex: '^.*$', special: '' },
+    'Фамилия (С)': { editable: false, regex: '^.*$', special: '' },
+    'Имя (С)': { editable: false, regex: '^.*$', special: '' },
+    'Отчество (С)': { editable: false, regex: '^.*$', special: '' },
+    'Фамилия Имя (С)': { editable: false, regex: '^.*$', special: '' },
+    'Фамилия И. (С)': { editable: false, regex: '^.*$', special: '' },
+    'Фамилия И.О. (С)': { editable: false, regex: '^.*$', special: '' },
+    'Фамилия Имя Дата рождения (С)': { editable: false, regex: '^.*$', special: '' },
+    'Фамилия Имя Год рождения (С)': { editable: false, regex: '^.*$', special: '' },
+    'Дата рождения (С)': { editable: false, regex: '^\d{2}\.\d{2}\.\d{4}$', special: 'date' },
+    'Год рождения (С)': { editable: false, regex: '^(19\d{2}|20\d{2}|2100)$', special: '' },
+    'Месяц рождения (С)': { editable: true, regex: '^(Январь|Февраль|Март|Апрель|Май|Июнь|Июль|Август|Сентябрь|Октябрь|Ноябрь|Декабрь)$', special: '' },
+    'Год набора': { editable: true, regex: '^(20\d{2}|2100)$', special: '' },
+    'Пол (С)': { editable: true, regex: '^[МЖ]$', special: '' },
+    'Дата обн. инф. о школе (С)': { editable: false, regex: '^.*$', special: '' },
+    'Школа ответ': { editable: false, regex: '^.*$', special: '' },
+    'Школа': { editable: true, regex: '^.*$', special: '' },
+    'Класс / курс': { editable: true, regex: '^(?:[0-9]|10|11|I|II|III|IV|V|VI)$', special: '' },
+    'Литера класса (буква)': { editable: true, regex: '^[А-ЯЁа-яё]$', special: '' },
+    'Директор школы: Фамилия Имя Отчество': { editable: true, regex: '^\s*[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s*$', special: '' },
+    'Адрес регистрации / Прописка (С)': { editable: true, regex: '^.*$', special: '' },
+    'Телефон (С)': { editable: false, regex: '^([78]\d{10}|[+]7\d{10})$', special: '' },
+    'Телефон +7 (С)': { editable: true, regex: '^\+7\d{10}$', special: '' },
+    'Телефон 7 (С)': { editable: false, regex: '^([78]\d{10}|[+]7\d{10})$', special: '' },
+    'Телефон 8 (С)': { editable: false, regex: '^([78]\d{10}|[+]7\d{10})$', special: '' },
+    'В Telegram?': { editable: false, regex: '^.*$', special: '' },
+    'Электронная почта (С)': { editable: true, regex: '^[^\s@]+@[^\s@]+\.[^\s@]+$', special: '' },
+    'Свидетельство или Паспорт актуальный:  Серия, номер (С)': { editable: false, regex: '^([VIX]{1,5}-?[А-Я]{2}\s*№?\s*\d{6})|(\d{2}\s*\d{2}\s*\d{6})$', special: '' },
+    'Свидетельство: Серия, номер (С)': { editable: true, regex: '^([VIX]{1,5}-?[А-Я]{2}\s*№?\s*\d{6})$', special: '' },
+    'Паспорт: Серия, номер (С)': { editable: true, regex: '^(\d{2}\s*\d{2}\s*\d{6})$', special: '' },
+    'Паспорт или Свидетельство: Кем выдан (С)': { editable: true, regex: '^.*$', special: '' },
+    'Паспорт или Свидетельство: Когда выдан (С)': { editable: true, regex: '^\d{2}\.\d{2}\.\d{4}$', special: 'date' },
+    'Паспорт: Код подразделения (С)': { editable: true, regex: '^(\d{3}-\d{3}|\d{6}|\d{3}\s\d{3})$', special: '' },
+    'Паспорт или Свидетельство: Скан или фото': { editable: false, regex: '^.*$', special: '' },
+    'Снилс: номер': { editable: true, regex: '^\d{3}[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{2}$', special: '' },
+    'Снилс: Скан или фото': { editable: false, regex: '^.*$', special: '' },
+    'Полис: Страховая компания': { editable: true, regex: '^.*$', special: '' },
+    'Мед полис: номер': { editable: true, regex: '^\d{4}\s*\d{4}\s*\d{4}\s*\d{4}\s*$', special: '' },
+    'Полис: Скан или фото': { editable: false, regex: '^.*$', special: '' },
+    'Дата зачисления в МГФСО': { editable: false, regex: '^\d{2}\.\d{2}\.\d{4}$', special: 'date' },
+    'Тренировочная группа': { editable: false, regex: '^.*$', special: '' },
+    'МГФСО группа': { editable: false, regex: '^.*$', special: '' },
+    'Тренер МГФСО': { editable: false, regex: '^.*$', special: '' },
+    'Разряд': { editable: false, regex: '^.*$', special: '' },
+    'План разряд': { editable: false, regex: '^.*$', special: '' },
+    'Дата получения разряда': { editable: false, regex: '^\d{2}\.\d{2}\.\d{4}$', special: 'date' },
+    'Срок действия страховки': { editable: false, regex: '^\d{2}\.\d{2}\.\d{4}$', special: 'date' },
+    'Номер и страховя компания': { editable: true, regex: '^.*$', special: '' },
+    'ID номер МГФСО': { editable: true, regex: '^\d{6}$', special: '' },
+    'Мед допуск до': { editable: false, regex: '^\d{2}\.\d{2}\.\d{4}$', special: 'date' },
+    'Диспансер': { editable: false, regex: '^.*$', special: '' },
+    'Тип допуска': { editable: false, regex: '^.*$', special: '' },
+    'Ссылка на ЯДиск': { editable: false, regex: '^.*$', special: '' },
+    'Разрядная книжка': { editable: false, regex: '^.*$', special: '' },
+    'РУСАДА': { editable: false, regex: '^(19\d{2}|20\d{2}|2100)$', special: '' },
+    'Фамилия Имя Отчество (П)': { editable: true, regex: '^\s*[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s*$', special: '' },
+    'Фамилия Имя Отчество (М)': { editable: true, regex: '^\s*[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s*$', special: '' },
+    'Фамилия Имя Отчество (Д)': { editable: true, regex: '^\s*[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s*$', special: '' }
   };
-
   let currentDocsRow = { header: [], row: [], colors: [] };
 
   function getFieldEditRule(headerTitle) {
     const specific = FIELD_EDIT_RULES[headerTitle] || FIELD_EDIT_RULES.default;
     if (DATE_EDITABLE_FIELDS.has(headerTitle || '')) {
-      return { editable: true, regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', special: 'date' };
+      return { ...specific, regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', special: 'date' };
     }
     return specific;
   }
@@ -1448,7 +1504,7 @@
 
 
   document.addEventListener('click', function(e) {
-    const btn = e.target.closest('.cell-edit-btn');
+    const btn = e.target.closest('.cell-edit-btn, .cell-cancel-btn');
     if (!btn) return;
     const colIndex = Number(btn.dataset.colIndex);
     const rule = getFieldEditRule(currentDocsRow.header[colIndex]);
@@ -1458,7 +1514,7 @@
     if (mode === 'edit') {
       const textNode = cell.querySelector('.cell-value-text');
       const value = textNode ? textNode.textContent : '';
-      cell.innerHTML = `<button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="save" disabled>💾</button><input class="cell-value-input" data-col-index="${colIndex}" value="${escapeHtmlAttr(value)}" />`;
+      cell.innerHTML = `<button type="button" class="cell-cancel-btn" data-col-index="${colIndex}" data-mode="cancel" title="Отменить">✕</button><button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="save">💾</button><input class="cell-value-input" data-col-index="${colIndex}" data-original-value="${escapeHtmlAttr(value)}" value="${escapeHtmlAttr(value)}" />`;
       const input = cell.querySelector('input');
       if (rule.special === 'date') input.placeholder = 'ДД.ММ.ГГГГ';
       if (rule.special === 'date') {
@@ -1475,7 +1531,8 @@
       input.focus();
       const validate = () => {
         const saveBtn = cell.querySelector('.cell-edit-btn');
-        const ok = new RegExp(rule.regex).test(input.value.trim());
+        const normalized = input.value.trim();
+        const ok = normalized === "" || new RegExp(rule.regex).test(normalized);
         saveBtn.disabled = !ok;
         saveBtn.classList.toggle('save-ready', ok);
       };
@@ -1483,9 +1540,18 @@
       validate();
       return;
     }
+    if (mode === "cancel") {
+      const input = cell.querySelector('input');
+      const originalValue = input?.dataset.originalValue || "";
+      const bg = currentDocsRow.colors[colIndex] || "";
+      const style = bg ? `background:${bg};` : "";
+      cell.innerHTML = `<button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="edit">✎</button><div class="cell-value-text">${escapeHtml(originalValue)}</div>`;
+      cell.setAttribute("style", style);
+      return;
+    }
     const input = cell.querySelector('input');
     const saveValue = (input?.value || '').trim();
-    if (!new RegExp(rule.regex).test(saveValue)) return;
+    if (!(saveValue === "" || new RegExp(rule.regex).test(saveValue))) return;
     btn.disabled = true;
     btn.textContent = '⏳';
     google.script.run
