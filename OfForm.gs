@@ -129,7 +129,12 @@ function updateRezultatRow(sheet, rowIndex, newRowData) {
     const nv = (newRowData[col] ?? '').toString().trim();
     const ov = (oldValues[col] ?? '').toString().trim();
 
-    if (nv && nv !== ov) {
+    if (!nv) continue;
+
+    const wasEmpty = !ov;
+    const valueChanged = nv !== ov;
+
+    if (valueChanged || wasEmpty) {
       newValues[col] = nv;
       const historyLine = `F: ${now}, ${nv}`;
       newNotes[col] = newNotes[col]
