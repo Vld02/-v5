@@ -847,6 +847,7 @@
     default: { editable: false, regex: '^.*$', special: '' },
     'Фамилия Имя Отчество (С)': { editable: false, regex: '^\s*[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s*$', special: '' },
     'Месяц рождения (С)': { editable: true, regex: '^(Январь|Февраль|Март|Апрель|Май|Июнь|Июль|Август|Сентябрь|Октябрь|Ноябрь|Декабрь)$', special: 'month-list' },
+    'Год рождения (С)': { editable: false, regex: '^(19\\d{2}|20\\d{2}|2100)$', special: '' },
     'Год набора': { editable: true, regex: '^(200\d|20[1-9]\d|2100)$', special: '' },
     'Пол (С)': { editable: true, regex: '^[МЖ]$', special: '' },
     'Школа': { editable: true, regex: '^.*$', special: 'school-list' },
@@ -865,7 +866,28 @@
     'Мед полис: номер': { editable: true, regex: '^\d{4}\s*\d{4}\s*\d{4}\s*\d{4}\s*$', special: 'med-policy' },
     'Номер и страховя компания': { editable: true, regex: '^.*$', special: '' },
     'ID номер МГФСО': { editable: true, regex: '^\d{6}$', special: '' },
+    'РУСАДА': { editable: false, regex: '^(19\\d{2}|20\\d{2}|2100)$', special: '' },
     'Свидетельство или Паспорт актуальный:  Серия, номер (С)': { editable: false, regex: '^([VIX]{1,5}-?[А-Я]{2}\s*№?\s*\d{6})|(\d{2}\s*\d{2}\s*\d{6})$', special: '' }
+  };
+  const FIELD_ERROR_MESSAGES = {
+    'Фамилия Имя Отчество (С)': 'Введите полное ФИО в формате «Фамилия Имя Отчество». Например: «Иванов Иван Иванович».',
+    'Год рождения (С)': 'Введите корректный год рождения от 1900 до 2100.',
+    'Год набора': 'Введите корректный год набора от 2000 до 2100.',
+    'Пол (С)': 'Допустимы только значения «М» или «Ж».',
+    'Класс / курс': 'Введите класс от 0 до 11 или курс римскими цифрами от I до VI.',
+    'Литера класса (буква)': 'Введите одну русскую букву.',
+    'Директор школы: Фамилия Имя Отчество': 'Введите полное ФИО в формате «Фамилия Имя Отчество».',
+    'Электронная почта (С)': 'Введите корректный адрес электронной почты.',
+    'Свидетельство: Серия, номер (С)': 'Введите свидетельство в формате «V-МЮ № 840118».',
+    'Паспорт: Серия, номер (С)': 'Введите паспорт в формате «45 23 438894».',
+    'Паспорт: Код подразделения (С)': 'Введите код подразделения в формате «123-456».',
+    'Снилс: номер': 'Введите СНИЛС в формате «123-456-789 00».',
+    'Мед полис: номер': 'Необходимо ввести 16 цифр.',
+    'ID номер МГФСО': 'ID номер должен содержать 6 цифр.',
+    'Телефон (С)': 'Введите корректный номер телефона РФ.',
+    'Телефон 7 (С)': 'Введите корректный номер телефона РФ.',
+    'Телефон 8 (С)': 'Введите корректный номер телефона РФ.',
+    'РУСАДА': 'Введите корректный год прохождения РУСАДА.'
   };
   let currentDocsRow = { header: [], row: [], colors: [] };
 
@@ -1517,8 +1539,12 @@
         const saveBtn = cell.querySelector('.cell-edit-btn');
         const normalized = input.value.trim();
         const ok = normalized === "" || new RegExp(rule.regex).test(normalized);
+        const fieldTitle = currentDocsRow.header[colIndex] || '';
+        const errorText = FIELD_ERROR_MESSAGES[fieldTitle] || 'Проверьте формат значения.';
         saveBtn.disabled = !ok;
         saveBtn.classList.toggle('save-ready', ok);
+        input.title = ok ? '' : errorText;
+        input.setAttribute('aria-invalid', String(!ok));
       };
       input.addEventListener('input', validate);
       validate();
@@ -1535,7 +1561,11 @@
     }
     const input = cell.querySelector('input');
     const saveValue = normalizeBySpecial(input?.value || '', rule.special);
-    if (!(saveValue === "" || new RegExp(rule.regex).test(saveValue))) return;
+    if (!(saveValue === "" || new RegExp(rule.regex).test(saveValue))) {
+      const fieldTitle = currentDocsRow.header[colIndex] || '';
+      alert(FIELD_ERROR_MESSAGES[fieldTitle] || 'Проверьте формат значения.');
+      return;
+    }
     btn.disabled = true;
     btn.textContent = '⏳';
     google.script.run

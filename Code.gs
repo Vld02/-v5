@@ -1055,6 +1055,13 @@ function updateResultCell(login, password, snils, columnName, value) {
     const cell = sheet.getRange(i + 2, targetCol + 1);
     cell.setValue(newValue);
 
+    if (String(columnName || '') === 'Школа') {
+      const schoolInfoDateCol = header.indexOf('Дата обн. инф. о школе (С)');
+      if (schoolInfoDateCol !== -1) {
+        sheet.getRange(i + 2, schoolInfoDateCol + 1).setValue(now);
+      }
+    }
+
     const historyLine = `S: ${now}, ${newValue}`;
     const existingNote = String(cell.getNote() || '');
     const nextNote = existingNote ? `${historyLine}\n${existingNote}` : historyLine;
