@@ -852,15 +852,35 @@
     'Паспорт: Когда выдан (Д)'
   ]);
 
+  const MONTH_REGEX = '^(Январь|Февраль|Март|Апрель|Май|Июнь|Июль|Август|Сентябрь|Октябрь|Ноябрь|Декабрь)$';
+
   const FIELD_EDIT_RULES = {
-    default: { editable: true, regex: '^.*$', special: '' },
-    'Фамилия Имя Отчество (С)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' },
-    'Фамилия Имя Отчество (П)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' },
-    'Фамилия Имя Отчество (М)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' },
-    'Фамилия Имя Отчество (Д)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' }
+    default: { editable: false, regex: '^.*$', special: '' },
+    'Месяц рождения (С)': { editable: true, regex: MONTH_REGEX, special: '' },
+    'Год набора': { editable: true, regex: '^(200\\d|20[1-9]\\d|2100)$', special: '' },
+    'Пол (С)': { editable: true, regex: '^[МЖ]$', special: '' },
+    'Школа': { editable: true, regex: '^.*$', special: '' },
+    'Класс / курс': { editable: true, regex: '^(?:[0-9]|10|11|I|II|III|IV|V|VI)$', special: '' },
+    'Литера класса (буква)': { editable: true, regex: '^[А-ЯЁа-яё]$', special: '' },
+    'Директор школы: Фамилия Имя Отчество': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' },
+    'Адрес регистрации / Прописка (С)': { editable: true, regex: '^.*$', special: '' },
+    'Телефон +7 (С)': { editable: true, regex: '^\\+7\\d{10}$', special: 'phone_ru' },
+    'Электронная почта (С)': { editable: true, regex: '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$', special: '' },
+    'Свидетельство: Серия, номер (С)': { editable: true, regex: '^([VIX]{1,5}-?[А-Я]{2}\\s*№?\\s*\\d{6})$', special: 'birth_cert' },
+    'Паспорт: Серия, номер (С)': { editable: true, regex: '^(\\d{2}\\s*\\d{2}\\s*\\d{6})$', special: 'passport' },
+    'Паспорт или Свидетельство: Кем выдан (С)': { editable: true, regex: '^.*$', special: '' },
+    'Паспорт: Код подразделения (С)': { editable: true, regex: '^(\\d{3}-\\d{3}|\\d{6}|\\d{3}\\s\\d{3})$', special: '' },
+    'Снилс: номер': { editable: true, regex: '^\\d{3}[-\\s]?\\d{3}[-\\s]?\\d{3}[-\\s]?\\d{2}$', special: 'snils' },
+    'Полис: Страховая компания': { editable: true, regex: '^.*$', special: '' },
+    'Мед полис: номер': { editable: true, regex: '^\\d{4}\\s*\\d{4}\\s*\\d{4}\\s*\\d{4}\\s*$', special: 'med_policy' },
+    'Номер и страховя компания': { editable: true, regex: '^.*$', special: '' },
+    'ID номер МГФСО': { editable: true, regex: '^\\d{6}$', special: '' },
+    'Год рождения (С)': { editable: false, regex: '^(19\\d{2}|20\\d{2}|2100)$', special: '' },
+    'РУСАДА': { editable: false, regex: '^(19\\d{2}|20\\d{2}|2100)$', special: '' },
+    'Фамилия Имя Отчество (С)': { editable: false, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' }
   };
 
-  let currentDocsRow = { header: [], row: [], colors: [] };
+let currentDocsRow = { header: [], row: [], colors: [] };
 
   function getFieldEditRule(headerTitle) {
     const specific = FIELD_EDIT_RULES[headerTitle] || FIELD_EDIT_RULES.default;
@@ -1462,6 +1482,9 @@
       cell.innerHTML = `<button type="button" class="cell-cancel-btn" data-col-index="${colIndex}" data-mode="cancel" title="Отменить">✕</button><button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="save">💾</button><input class="cell-value-input" data-col-index="${colIndex}" data-original-value="${escapeHtmlAttr(value)}" value="${escapeHtmlAttr(value)}" />`;
       const input = cell.querySelector('input');
       if (rule.special === 'date') input.placeholder = 'ДД.ММ.ГГГГ';
+      if (rule.special === 'phone_ru') input.placeholder = '+79264754488';
+      if (rule.special === 'snils') input.placeholder = '000-000-000-00';
+      if (rule.special === 'med_policy') input.placeholder = '0000 0000 0000 0000';
       if (rule.special === 'date') {
         input.addEventListener('input', function() {
           const formatted = formatDateInput(input.value);
@@ -1473,6 +1496,32 @@
           validate();
         });
       }
+      
+      if (rule.special === 'phone_ru') {
+        input.addEventListener('input', function() {
+          const digits = input.value.replace(/\D/g, '');
+          let normalized = digits;
+          if (normalized.startsWith('8')) normalized = '7' + normalized.slice(1);
+          if (!normalized.startsWith('7')) normalized = '7' + normalized;
+          normalized = normalized.slice(0, 11);
+          input.value = '+' + normalized;
+          validate();
+        });
+      }
+      if (rule.special === 'snils') {
+        input.addEventListener('input', function() {
+          input.value = formatSnilsInput(input.value);
+          validate();
+        });
+      }
+      if (rule.special === 'med_policy') {
+        input.addEventListener('input', function() {
+          const digits = input.value.replace(/\D/g, '').slice(0, 16);
+          input.value = digits.replace(/(\d{4})(?=\d)/g, '$1 ').trim();
+          validate();
+        });
+      }
+
       input.focus();
       const validate = () => {
         const saveBtn = cell.querySelector('.cell-edit-btn');
@@ -1495,7 +1544,9 @@
       return;
     }
     const input = cell.querySelector('input');
-    const saveValue = (input?.value || '').trim();
+    let saveValue = (input?.value || '').trim();
+    if (rule.special === 'birth_cert') saveValue = saveValue.replace(/^([VIX]{1,5})-?([А-Я]{2})\s*№?\s*(\d{6})$/, '$1-$2 № $3');
+    if (rule.special === 'passport') saveValue = saveValue.replace(/^(\d{2})\s*(\d{2})\s*(\d{6})$/, '$1 $2 $3');
     if (!(saveValue === "" || new RegExp(rule.regex).test(saveValue))) return;
     btn.disabled = true;
     btn.textContent = '⏳';
