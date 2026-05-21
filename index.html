@@ -255,11 +255,13 @@
   .item-title { font-weight: bold; width: 45%; padding: var(--space-sm); background:#f7f7f7; border-right:0.05rem solid #d8d8d8; }
   .item-value { width: 55%; padding: var(--space-sm); position: relative; }
   .cell-edit-btn { position:absolute; top:0.2rem; right:0.2rem; border:0.05rem solid #c5c5c5; background:#fff; border-radius:0.3rem; padding:0.1rem 0.35rem; margin:0; font-size:0.8rem; }
+  .cell-cancel-btn { position:absolute; top:0.2rem; left:0.2rem; border:0.05rem solid #c5c5c5; background:#fff; border-radius:0.3rem; padding:0.1rem 0.35rem; margin:0; font-size:0.8rem; }
   .cell-edit-btn.non-editable { opacity:0.45; cursor:not-allowed; }
   .cell-edit-btn.save-ready { background:#e9f3ff; border-color:#8ab4f8; }
   .cell-edit-btn:disabled { opacity:0.55; cursor:not-allowed; }
   .cell-value-text { padding-right:2rem; white-space:pre-wrap; }
   .cell-value-input { width:100%; box-sizing:border-box; margin-top:0; padding-right:2rem; }
+  .cell-validation-msg { margin-top:0.25rem; font-size:0.72rem; color:#b3261e; }
 
   .auth-actions {
     display: flex;
@@ -851,15 +853,35 @@
     'Паспорт: Когда выдан (Д)'
   ]);
 
+  const MONTH_REGEX = '^(Январь|Февраль|Март|Апрель|Май|Июнь|Июль|Август|Сентябрь|Октябрь|Ноябрь|Декабрь)$';
+
   const FIELD_EDIT_RULES = {
-    default: { editable: true, regex: '^.*$', special: '' },
-    'Фамилия Имя Отчество (С)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' },
-    'Фамилия Имя Отчество (П)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' },
-    'Фамилия Имя Отчество (М)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' },
-    'Фамилия Имя Отчество (Д)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' }
+    default: { editable: false, regex: '^.*$', special: '' },
+    'Месяц рождения (С)': { editable: true, regex: MONTH_REGEX, special: '' },
+    'Год набора': { editable: true, regex: '^(200\\d|20[1-9]\\d|2100)$', special: '' },
+    'Пол (С)': { editable: true, regex: '^[МЖ]$', special: '', message: 'Допустимо только: М или Ж.' },
+    'Школа': { editable: true, regex: '^.*$', special: '' },
+    'Класс / курс': { editable: true, regex: '^(?:[0-9]|10|11|I|II|III|IV|V|VI)$', special: '', message: 'Введите класс 0-11 или курс I-VI.' },
+    'Литера класса (буква)': { editable: true, regex: '^[А-ЯЁа-яё]$', special: '', message: 'Введите одну русскую букву.' },
+    'Директор школы: Фамилия Имя Отчество': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' },
+    'Адрес регистрации / Прописка (С)': { editable: true, regex: '^.*$', special: '' },
+    'Телефон +7 (С)': { editable: true, regex: '^\\+7\\d{10}$', special: 'phone_ru' },
+    'Электронная почта (С)': { editable: true, regex: '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$', special: '' },
+    'Свидетельство: Серия, номер (С)': { editable: true, regex: '^([VIX]{1,5}-?[А-Я]{2}\\s*№?\\s*\\d{6})$', special: 'birth_cert' },
+    'Паспорт: Серия, номер (С)': { editable: true, regex: '^(\\d{2}\\s*\\d{2}\\s*\\d{6})$', special: 'passport' },
+    'Паспорт или Свидетельство: Кем выдан (С)': { editable: true, regex: '^.*$', special: '' },
+    'Паспорт: Код подразделения (С)': { editable: true, regex: '^(\\d{3}-\\d{3}|\\d{6}|\\d{3}\\s\\d{3})$', special: '' },
+    'Снилс: номер': { editable: true, regex: '^\\d{3}[-\\s]?\\d{3}[-\\s]?\\d{3}[-\\s]?\\d{2}$', special: 'snils' },
+    'Полис: Страховая компания': { editable: true, regex: '^.*$', special: '' },
+    'Мед полис: номер': { editable: true, regex: '^\\d{4}\\s*\\d{4}\\s*\\d{4}\\s*\\d{4}\\s*$', special: 'med_policy' },
+    'Номер и страховя компания': { editable: true, regex: '^.*$', special: '' },
+    'ID номер МГФСО': { editable: true, regex: '^\\d{6}$', special: '' },
+    'Год рождения (С)': { editable: false, regex: '^(19\\d{2}|20\\d{2}|2100)$', special: '' },
+    'РУСАДА': { editable: false, regex: '^(19\\d{2}|20\\d{2}|2100)$', special: '' },
+    'Фамилия Имя Отчество (С)': { editable: false, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' }
   };
 
-  let currentDocsRow = { header: [], row: [], colors: [] };
+let currentDocsRow = { header: [], row: [], colors: [] };
 
   function getFieldEditRule(headerTitle) {
     const specific = FIELD_EDIT_RULES[headerTitle] || FIELD_EDIT_RULES.default;
@@ -1448,7 +1470,7 @@
 
 
   document.addEventListener('click', function(e) {
-    const btn = e.target.closest('.cell-edit-btn');
+    const btn = e.target.closest('.cell-edit-btn, .cell-cancel-btn');
     if (!btn) return;
     const colIndex = Number(btn.dataset.colIndex);
     const rule = getFieldEditRule(currentDocsRow.header[colIndex]);
@@ -1458,9 +1480,12 @@
     if (mode === 'edit') {
       const textNode = cell.querySelector('.cell-value-text');
       const value = textNode ? textNode.textContent : '';
-      cell.innerHTML = `<button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="save" disabled>💾</button><input class="cell-value-input" data-col-index="${colIndex}" value="${escapeHtmlAttr(value)}" />`;
+      cell.innerHTML = `<button type="button" class="cell-cancel-btn" data-col-index="${colIndex}" data-mode="cancel" title="Отменить">✕</button><button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="save">💾</button><input class="cell-value-input" data-col-index="${colIndex}" data-original-value="${escapeHtmlAttr(value)}" value="${escapeHtmlAttr(value)}" /><div class="cell-validation-msg" aria-live="polite"></div>`;
       const input = cell.querySelector('input');
       if (rule.special === 'date') input.placeholder = 'ДД.ММ.ГГГГ';
+      if (rule.special === 'phone_ru') input.placeholder = '+79264754488';
+      if (rule.special === 'snils') input.placeholder = '000-000-000-00';
+      if (rule.special === 'med_policy') input.placeholder = '0000 0000 0000 0000';
       if (rule.special === 'date') {
         input.addEventListener('input', function() {
           const formatted = formatDateInput(input.value);
@@ -1472,20 +1497,60 @@
           validate();
         });
       }
+      
+      if (rule.special === 'phone_ru') {
+        input.addEventListener('input', function() {
+          const digits = input.value.replace(/\D/g, '');
+          let normalized = digits;
+          if (normalized.startsWith('8')) normalized = '7' + normalized.slice(1);
+          if (!normalized.startsWith('7')) normalized = '7' + normalized;
+          normalized = normalized.slice(0, 11);
+          input.value = '+' + normalized;
+          validate();
+        });
+      }
+      if (rule.special === 'snils') {
+        input.addEventListener('input', function() {
+          input.value = formatSnilsInput(input.value);
+          validate();
+        });
+      }
+      if (rule.special === 'med_policy') {
+        input.addEventListener('input', function() {
+          const digits = input.value.replace(/\D/g, '').slice(0, 16);
+          input.value = digits.replace(/(\d{4})(?=\d)/g, '$1 ').trim();
+          validate();
+        });
+      }
+
       input.focus();
       const validate = () => {
         const saveBtn = cell.querySelector('.cell-edit-btn');
-        const ok = new RegExp(rule.regex).test(input.value.trim());
+        const msgNode = cell.querySelector('.cell-validation-msg');
+        const normalized = input.value.trim();
+        const ok = normalized === "" || new RegExp(rule.regex).test(normalized);
         saveBtn.disabled = !ok;
         saveBtn.classList.toggle('save-ready', ok);
+        if (msgNode) msgNode.textContent = ok ? '' : (rule.message || 'Проверьте формат значения.');
       };
       input.addEventListener('input', validate);
       validate();
       return;
     }
+    if (mode === "cancel") {
+      const input = cell.querySelector('input');
+      const originalValue = input?.dataset.originalValue || "";
+      const bg = currentDocsRow.colors[colIndex] || "";
+      const style = bg ? `background:${bg};` : "";
+      cell.innerHTML = `<button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="edit">✎</button><div class="cell-value-text">${escapeHtml(originalValue)}</div>`;
+      cell.setAttribute("style", style);
+      return;
+    }
     const input = cell.querySelector('input');
-    const saveValue = (input?.value || '').trim();
-    if (!new RegExp(rule.regex).test(saveValue)) return;
+    let saveValue = (input?.value || '').trim();
+    if (rule.special === 'birth_cert') saveValue = saveValue.replace(/^([VIX]{1,5})-?([А-Я]{2})\s*№?\s*(\d{6})$/, '$1-$2 № $3');
+    if (rule.special === 'passport') saveValue = saveValue.replace(/^(\d{2})\s*(\d{2})\s*(\d{6})$/, '$1 $2 $3');
+    if (!(saveValue === "" || new RegExp(rule.regex).test(saveValue))) return;
     btn.disabled = true;
     btn.textContent = '⏳';
     google.script.run
