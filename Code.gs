@@ -1012,3 +1012,47 @@ function calculateMatch(short, full, maxErrors) {
     totalCost: lastCost + tailCost
   };
 }
+
+/**
+ * Обновляет одну ячейку на листе "Результат" по названию колонки для авторизованной строки.
+ * @param {string} login
+ * @param {string} password
+ * @param {string} snils
+ * @param {string} columnName
+ * @param {string} value
+ * @returns {{ok:boolean}}
+ */
+function updateResultCell(login, password, snils, columnName, value) {
+  const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
+  if (!sheet) throw new Error('Лист с результатами не найден.');
+
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) throw new Error('Таблица пуста.');
+
+  const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+  const targetCol = header.indexOf(String(columnName || ''));
+  if (targetCol === -1) throw new Error('Колонка не найдена.');
+
+  const authCols = getAuthColumnIndexes(header);
+  const snilsCol = getSnilsColumnIndex(header);
+  const rowCount = lastRow - 1;
+  const { logins, passwords, snilsValues } = loadAuthColumns(sheet, rowCount, authCols, snilsCol);
+
+  const normalizedLogin = normalizeLogin(login);
+  const normalizedSnils = normalizeSnils(snils);
+
+  for (let i = 0; i < rowCount; i++) {
+    const rowLogin = normalizeLogin(logins[i][0]);
+    const rowPassword = formatCellValue(passwords[i][0]).trim();
+    if (rowLogin !== normalizedLogin || rowPassword !== String(password || '').trim()) continue;
+
+    const rowSnils = normalizeSnils(snilsValues[i][0]);
+    if (rowSnils && normalizedSnils && rowSnils !== normalizedSnils) continue;
+
+    sheet.getRange(i + 2, targetCol + 1).setValue(String(value ?? ''));
+    return { ok: true };
+  }
+
+  throw new Error('Строка для обновления не найдена.');
+}
