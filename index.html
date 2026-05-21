@@ -839,16 +839,23 @@
 
   const FIELD_EDIT_RULES = {
     default: { editable: false, regex: '^.*$', special: '' },
+    'Фамилия Имя Отчество (С)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: 'fullname' },
     'Месяц рождения (С)': { editable: true, regex: '^.*$', special: '' },
-    'Год набора': { editable: true, regex: '^.*$', special: '' },
+    'Год набора': { editable: true, regex: '^(19[5-9]\\d|20[0-4]\\d|2050)$', special: 'year' },
     'Пол (С)': { editable: true, regex: '^.*$', special: '' },
     'Школа': { editable: true, regex: '^.*$', special: '' },
-    'Класс / курс': { editable: true, regex: '^.*$', special: '' },
-    'Литера класса (буква)': { editable: true, regex: '^.*$', special: '' },
-    'Директор школы: Фамилия Имя Отчество': { editable: true, regex: '^.*$', special: '' },
+    'Класс / курс': { editable: true, regex: '^(?:[0-9]|1[01]|I|II|III|IV|V|VI)$', special: 'classCourse' },
+    'Литера класса (буква)': { editable: true, regex: '^[А-ЯЁ]$', special: 'singleRuUpper' },
+    'Директор школы: Фамилия Имя Отчество': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: 'fullname' },
     'Адрес регистрации / Прописка (С)': { editable: true, regex: '^.*$', special: '' },
     'Телефон +7 (С)': { editable: true, regex: '^.*$', special: '' },
-    'Электронная почта (С)': { editable: true, regex: '^.*$', special: '' },
+    'Электронная почта (С)': { editable: true, regex: '^[A-Za-z0-9.!#$%&\'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$', special: 'email' },
+    'Фамилия Имя Отчество (П)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: 'fullname' },
+    'Электронная почта (П)': { editable: true, regex: '^[A-Za-z0-9.!#$%&\'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$', special: 'email' },
+    'Фамилия Имя Отчество (М)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: 'fullname' },
+    'Электронная почта (М)': { editable: true, regex: '^[A-Za-z0-9.!#$%&\'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$', special: 'email' },
+    'Фамилия Имя Отчество (Д)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: 'fullname' },
+    'Электронная почта (Д)': { editable: true, regex: '^[A-Za-z0-9.!#$%&\'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$', special: 'email' },
     'Свидетельство: Серия, номер (С)': { editable: true, regex: '^.*$', special: '' },
     'Паспорт: Серия, номер (С)': { editable: true, regex: '^.*$', special: '' },
     'Паспорт или Свидетельство: Кем выдан (С)': { editable: true, regex: '^.*$', special: '' },
@@ -865,6 +872,24 @@
 
   function getFieldEditRule(headerTitle) {
     return FIELD_EDIT_RULES[headerTitle] || FIELD_EDIT_RULES.default;
+  }
+
+  function applyInputSpecial(rawValue, rule) {
+    const value = String(rawValue || '');
+    if (!rule || !rule.special) return value;
+    if (rule.special === 'date') return formatDateInput(value);
+    if (rule.special === 'year') return value.replace(/\D/g, '').slice(0, 4);
+    if (rule.special === 'classCourse') return value.toUpperCase().replace(/[^0-9IV]/g, '').slice(0, 2);
+    if (rule.special === 'singleRuUpper') {
+      const onlyRu = value.toUpperCase().replace(/[^А-ЯЁ]/g, '');
+      return onlyRu.slice(0, 1);
+    }
+    if (rule.special === 'email') return value.replace(/[А-Яа-яЁё]/g, '');
+    return value;
+  }
+
+  function isValidFieldValue(trimmedValue, rule) {
+    return trimmedValue === '' || new RegExp(rule.regex).test(trimmedValue);
   }
 
   function setFlagMenuOpen(isOpen) {
@@ -1459,32 +1484,37 @@
       cell.innerHTML = `<button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="save" disabled>💾</button><input class="cell-value-input" data-col-index="${colIndex}" value="${escapeHtmlAttr(value)}" />`;
       const input = cell.querySelector('input');
       if (rule.special === 'date') input.placeholder = 'ДД.ММ.ГГГГ';
-      if (rule.special === 'date') {
-        input.addEventListener('input', function() {
-          const formatted = formatDateInput(input.value);
-          if (formatted !== input.value) input.value = formatted;
-        });
-        input.addEventListener('blur', function() {
-          const formatted = formatDateInput(input.value, { finalizeYear: true });
-          if (formatted !== input.value) input.value = formatted;
-          validate();
-        });
-      }
+      if (rule.special === 'date') input.addEventListener('blur', function() {
+        const formatted = formatDateInput(input.value, { finalizeYear: true });
+        if (formatted !== input.value) input.value = formatted;
+        validate();
+      });
       input.focus();
       const validate = () => {
         const saveBtn = cell.querySelector('.cell-edit-btn');
         const trimmed = input.value.trim();
-        const ok = trimmed === '' || new RegExp(rule.regex).test(trimmed);
+        const ok = isValidFieldValue(trimmed, rule);
         saveBtn.disabled = !ok;
         saveBtn.classList.toggle('save-ready', ok);
       };
-      input.addEventListener('input', validate);
+      input.addEventListener('input', () => {
+        const prepared = applyInputSpecial(input.value, rule);
+        if (prepared !== input.value) input.value = prepared;
+        validate();
+      });
+      input.addEventListener('keydown', event => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        const saveBtn = cell.querySelector('.cell-edit-btn');
+        if (!saveBtn || saveBtn.disabled) return;
+        saveBtn.click();
+      });
       validate();
       return;
     }
     const input = cell.querySelector('input');
     const saveValue = (input?.value || '').trim();
-    if (saveValue !== '' && !new RegExp(rule.regex).test(saveValue)) return;
+    if (!isValidFieldValue(saveValue, rule)) return;
     btn.disabled = true;
     btn.textContent = '⏳';
     google.script.run
