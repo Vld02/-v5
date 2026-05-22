@@ -253,14 +253,16 @@
   .item { display: flex; border: 0.05rem solid #d8d8d8; border-top: none; min-height: 2.2rem; }
   .item:first-of-type { border-top: 0.05rem solid #d8d8d8; }
   .item-title { font-weight: bold; width: 45%; padding: var(--space-sm); background:#f7f7f7; border-right:0.05rem solid #d8d8d8; }
-  .item-value { width: 55%; padding: var(--space-sm); position: relative; }
-  .cell-edit-btn { position:absolute; top:0.2rem; right:0.2rem; border:0.05rem solid #c5c5c5; background:#fff; border-radius:0.3rem; padding:0.1rem 0.35rem; margin:0; font-size:0.8rem; }
+  .item-value { width: 55%; padding: var(--space-sm); position: relative; overflow: visible; }
+  .cell-edit-btn { position:absolute; top:50%; right:0.35rem; transform:translateY(-50%); border:0.05rem solid #c5c5c5; background:#fff; border-radius:0.35rem; padding:0.1rem 0.35rem; margin:0; font-size:0.8rem; z-index:2; }
   .cell-edit-btn.non-editable { opacity:0.45; cursor:not-allowed; }
   .cell-edit-btn.save-ready { background:#e9f3ff; border-color:#8ab4f8; }
   .cell-edit-btn:disabled { opacity:0.55; cursor:not-allowed; }
-  .cell-value-text { padding-right:2rem; white-space:pre-wrap; }
-  .cell-value-input { width:100%; box-sizing:border-box; margin-top:0; padding-right:2rem; }
-  .cell-suggest-list { position:absolute; left:0; right:0; top:calc(100% + 0.2rem); z-index:15; background:#fff; border:0.05rem solid #d5d5d5; border-radius:0.4rem; box-shadow:0 0.3rem 0.8rem rgba(0,0,0,0.12); max-height:12rem; overflow:auto; }
+  .cell-value-text { padding:0.35rem 2.2rem 0.35rem 0.45rem; min-height:2rem; display:flex; align-items:center; white-space:pre-wrap; }
+  .cell-editor { padding-right:2.2rem; }
+  .cell-value-input { width:100%; box-sizing:border-box; margin:0; padding:0.35rem 0.45rem; border:0.05rem solid #cdd6e1; border-radius:0.4rem; min-height:2rem; line-height:1.3; font:inherit; background:#fff; }
+  .cell-value-input:focus { outline:none; border-color:#8ab4f8; box-shadow:0 0 0 0.12rem rgba(138,180,248,0.25); }
+  .cell-suggest-list { position:absolute; left:var(--space-sm); right:2.2rem; top:calc(var(--space-sm) + 2rem); z-index:15; background:#fff; border:0.05rem solid #cdd6e1; border-top:none; border-radius:0 0 0.4rem 0.4rem; box-shadow:0 0.35rem 0.7rem rgba(0,0,0,0.10); max-height:11rem; overflow:auto; }
   .cell-suggest-item { padding:0.35rem 0.5rem; cursor:pointer; border-bottom:0.05rem solid #f0f0f0; }
   .cell-suggest-item:last-child { border-bottom:none; }
   .cell-suggest-item:hover, .cell-suggest-item.active { background:#eef5ff; }
@@ -1511,7 +1513,7 @@
     if (mode === 'edit') {
       const textNode = cell.querySelector('.cell-value-text');
       const value = textNode ? textNode.textContent : '';
-      cell.innerHTML = `<button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="save" disabled>💾</button><input class="cell-value-input" data-col-index="${colIndex}" value="${escapeHtmlAttr(value)}" />`;
+      cell.innerHTML = `<button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="save" disabled>💾</button><div class="cell-editor"><input class="cell-value-input" data-col-index="${colIndex}" value="${escapeHtmlAttr(value)}" /></div>`;
       const input = cell.querySelector('input');
       const suggestConfig = FIELD_SUGGEST_CONFIG[currentDocsRow.header[colIndex]];
       let suggestionOptions = [];
