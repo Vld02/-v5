@@ -1056,3 +1056,41 @@ function updateResultCell(login, password, snils, columnName, value) {
 
   throw new Error('Строка для обновления не найдена.');
 }
+
+/**
+ * Возвращает уникальные варианты значений из заданного столбца по заголовку.
+ * @param {string} sheetName Имя листа-источника.
+ * @param {string} columnHeader Заголовок столбца.
+ * @param {number} startRow С какой строки читать значения (1-indexed).
+ * @returns {string[]}
+ */
+function getFieldSuggestions(sheetName, columnHeader, startRow) {
+  const sheet = getSheet(String(sheetName || ''));
+  if (!sheet) return [];
+
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) return [];
+
+  const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+  const colIndex = header.indexOf(String(columnHeader || ''));
+  if (colIndex === -1) return [];
+
+  const fromRow = Math.max(2, Number(startRow) || 2);
+  if (fromRow > lastRow) return [];
+
+  const values = sheet.getRange(fromRow, colIndex + 1, lastRow - fromRow + 1, 1).getValues()
+    .flat()
+    .map(value => String(value || '').trim())
+    .filter(Boolean);
+
+  const uniq = [];
+  const seen = new Set();
+  values.forEach(value => {
+    if (seen.has(value)) return;
+    seen.add(value);
+    uniq.push(value);
+  });
+
+  return uniq;
+}
