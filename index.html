@@ -862,7 +862,7 @@
     'Электронная почта (М)': { editable: true, regex: '^[A-Za-z0-9.!#$%&\'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$', special: 'email' },
     'Фамилия Имя Отчество (Д)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: 'fullname' },
     'Электронная почта (Д)': { editable: true, regex: '^[A-Za-z0-9.!#$%&\'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$', special: 'email' },
-    'Свидетельство: Серия, номер (С)': { editable: true, regex: '^([VIX]{1,5}-?[А-Я]{2}\\s*№?\\s*\\d{6})$', special: 'certificate' },
+    'Свидетельство: Серия, номер (С)': { editable: true, regex: '^([VIX]{1,4}-[А-ЯЁ]{1,3}\\s*№\\s*\\d{6})$', special: 'certificate' },
     'Паспорт: Серия, номер (С)': { editable: true, regex: '^.*$', special: '' },
     'Паспорт или Свидетельство: Кем выдан (С)': { editable: true, regex: '^.*$', special: '' },
     'Паспорт или Свидетельство: Когда выдан (С)': { editable: true, regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', special: 'date' },
@@ -930,17 +930,13 @@
     if (rule.special === 'certificate') {
       let raw = value.toUpperCase().replace(/[^VIXА-ЯЁ0-9№#\\-\\s]/g, '');
       raw = raw.replace(/#/g, '№');
-      const roman = (raw.match(/[VIX]/g) || []).join('').slice(0, 5);
-      const hasRoman = roman.length > 0;
-      const hasDash = hasRoman && raw.includes('-');
-      const letters = raw.replace(/[^А-ЯЁ]/g, '').slice(0, 2);
+      const roman = (raw.match(/[VIX]/g) || []).join('').slice(0, 4);
+      const letters = raw.replace(/[^А-ЯЁ]/g, '').slice(0, 3);
       const digits = raw.replace(/\D/g, '').slice(0, 6);
-      let formatted = '';
-      if (roman) formatted += roman;
-      if (hasDash) formatted += '-';
-      if (letters) formatted += letters;
-      if (digits) formatted += `${letters ? ' № ' : '№ '}${digits}`;
-      return formatted.trim();
+      let formatted = roman;
+      if (roman && letters) formatted += `-${letters}`;
+      if (roman && letters && digits) formatted += ` № ${digits}`;
+      return formatted;
     }
     return value;
   }
