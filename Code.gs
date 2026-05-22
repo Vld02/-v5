@@ -1050,7 +1050,15 @@ function updateResultCell(login, password, snils, columnName, value) {
     const rowSnils = normalizeSnils(snilsValues[i][0]);
     if (rowSnils && normalizedSnils && rowSnils !== normalizedSnils) continue;
 
-    sheet.getRange(i + 2, targetCol + 1).setValue(String(value ?? ''));
+    const rowIndex = i + 2;
+    sheet.getRange(rowIndex, targetCol + 1).setValue(String(value ?? ''));
+    if (String(columnName || '') === 'Школа') {
+      const schoolUpdatedCol = header.indexOf('Дата обн. инф. о школе (С)');
+      if (schoolUpdatedCol !== -1) {
+        const timestamp = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, `${CONFIG.DATE_FORMAT} HH:mm:ss`);
+        sheet.getRange(rowIndex, schoolUpdatedCol + 1).setValue(timestamp);
+      }
+    }
     return { ok: true };
   }
 
