@@ -252,17 +252,17 @@
 
   .item { display: flex; border: 0.05rem solid #d8d8d8; border-top: none; min-height: 2.2rem; }
   .item:first-of-type { border-top: 0.05rem solid #d8d8d8; }
-  .item-title { font-weight: bold; width: 45%; padding: var(--space-sm); background:#f7f7f7; border-right:0.05rem solid #d8d8d8; }
+  .item-title { font-weight: bold; width: 45%; padding: var(--space-sm); background:#f7f7f7; border-right:0.05rem solid #d8d8d8; display:flex; align-items:center; }
   .item-value { width: 55%; padding: var(--space-sm); position: relative; min-height: 2.2rem; }
-  .cell-edit-btn { position:absolute; top:0.2rem; right:0.2rem; border:0.05rem solid #c5c5c5; background:#fff; border-radius:0.3rem; padding:0.1rem 0.35rem; margin:0; font-size:0.8rem; }
+  .cell-edit-btn { position:absolute; top:0.2rem; right:0.2rem; border:0.05rem solid #c5c5c5; background:#fff; border-radius:0.3rem; margin:0; width:1.55rem; height:1.55rem; padding:0; display:flex; align-items:center; justify-content:center; font-size:0.95rem; line-height:1; }
   .cell-edit-btn.non-editable { opacity:0.45; cursor:not-allowed; }
   .cell-edit-btn.save-ready { background:#e9f3ff; border-color:#8ab4f8; }
   .cell-edit-btn:disabled { opacity:0.55; cursor:not-allowed; }
   .cell-value-text { padding:0.2rem 2rem 0.2rem 0; white-space:pre-wrap; min-height:1.6rem; display:flex; align-items:center; }
-  .cell-editor { padding-right:2rem; }
+  .cell-editor { padding-right:2rem; position:relative; }
   .cell-value-input { width:100%; box-sizing:border-box; margin:0; padding:0.35rem 0.5rem; border:0.05rem solid #c5c5c5; border-radius:0.4rem; outline:none; font:inherit; background:#fff; min-height:2rem; }
   .cell-value-input:focus { border-color:#8ab4f8; box-shadow:0 0 0 0.1rem rgba(138,180,248,0.2); }
-  .cell-suggest-list { position:static; margin-top:-0.05rem; z-index:15; background:#fff; border:0.05rem solid #c5c5c5; border-top:none; border-radius:0 0 0.4rem 0.4rem; box-shadow:none; max-height:12rem; overflow:auto; }
+  .cell-suggest-list { position:absolute; left:0; right:2rem; top:calc(100% - 0.05rem); z-index:25; margin-top:0; background:#fff; border:0.05rem solid #c5c5c5; border-top:none; border-radius:0 0 0.4rem 0.4rem; box-shadow:0 0.35rem 0.8rem rgba(0,0,0,0.12); max-height:12rem; overflow:auto; }
   .cell-suggest-item { padding:0.35rem 0.5rem; cursor:pointer; border-bottom:0.05rem solid #f0f0f0; }
   .cell-suggest-item:last-child { border-bottom:none; }
   .cell-suggest-item:hover, .cell-suggest-item.active { background:#eef5ff; }
