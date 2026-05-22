@@ -260,6 +260,10 @@
   .cell-edit-btn:disabled { opacity:0.55; cursor:not-allowed; }
   .cell-value-text { padding-right:2rem; white-space:pre-wrap; }
   .cell-value-input { width:100%; box-sizing:border-box; margin-top:0; padding-right:2rem; }
+  .cell-suggest-list { margin-top:0.35rem; border:0.05rem solid #d8d8d8; border-radius:0.3rem; background:#fff; max-height:9rem; overflow:auto; }
+  .cell-suggest-item { padding:0.3rem 0.45rem; cursor:pointer; border-top:0.05rem solid #ececec; }
+  .cell-suggest-item:first-child { border-top:none; }
+  .cell-suggest-item:hover { background:#f1f6ff; }
 
   .auth-actions {
     display: flex;
@@ -837,36 +841,107 @@
   const LAST_SILENT_SYNC_KEY = 'lastSilentSyncAt';
   const SILENT_SYNC_INTERVAL_MS = 15 * 60 * 1000;
 
-  const DATE_EDITABLE_FIELDS = new Set([
-    'Дата рождения (С)',
-    'Паспорт или Свидетельство: Когда выдан (С)',
-    'Дата получения разряда',
-    'Срок действия страховки',
-    'Мед допуск до',
-    'Дата рождения (П)',
-    'Паспорт: Когда выдан (П)',
-    'Дата рождения (М)',
-    'Паспорт: Когда выдан (М)',
-    'Дата рождения (Д)',
-    'Паспорт: Когда выдан (Д)'
-  ]);
-
   const FIELD_EDIT_RULES = {
-    default: { editable: true, regex: '^.*$', special: '' },
-    'Фамилия Имя Отчество (С)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' },
-    'Фамилия Имя Отчество (П)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' },
-    'Фамилия Имя Отчество (М)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' },
-    'Фамилия Имя Отчество (Д)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: '' }
+    default: { editable: false, regex: '^.*$', special: '' },
+    'Фамилия Имя Отчество (С)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: 'fullname' },
+    'Месяц рождения (С)': { editable: true, regex: '^.*$', special: '' },
+    'Год набора': { editable: true, regex: '^(19[5-9]\\d|20[0-4]\\d|2050)$', special: 'year' },
+    'Пол (С)': { editable: true, regex: '^.*$', special: '' },
+    'Школа': { editable: true, regex: '^.*$', special: '' },
+    'Класс / курс': { editable: true, regex: '^(?:[0-9]|1[01]|I|II|III|IV|V|VI)$', special: 'classCourse' },
+    'Литера класса (буква)': { editable: true, regex: '^[А-ЯЁ]$', special: 'singleRuUpper' },
+    'Директор школы: Фамилия Имя Отчество': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: 'fullname' },
+    'Адрес регистрации / Прописка (С)': { editable: true, regex: '^.*$', special: '' },
+    'Телефон +7 (С)': { editable: true, regex: '^.*$', special: '' },
+    'Электронная почта (С)': { editable: true, regex: '^[A-Za-z0-9.!#$%&\'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$', special: 'email' },
+    'Фамилия Имя Отчество (П)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: 'fullname' },
+    'Электронная почта (П)': { editable: true, regex: '^[A-Za-z0-9.!#$%&\'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$', special: 'email' },
+    'Фамилия Имя Отчество (М)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: 'fullname' },
+    'Электронная почта (М)': { editable: true, regex: '^[A-Za-z0-9.!#$%&\'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$', special: 'email' },
+    'Фамилия Имя Отчество (Д)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: 'fullname' },
+    'Электронная почта (Д)': { editable: true, regex: '^[A-Za-z0-9.!#$%&\'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$', special: 'email' },
+    'Свидетельство: Серия, номер (С)': { editable: true, regex: '^.*$', special: '' },
+    'Паспорт: Серия, номер (С)': { editable: true, regex: '^.*$', special: '' },
+    'Паспорт или Свидетельство: Кем выдан (С)': { editable: true, regex: '^.*$', special: '' },
+    'Паспорт или Свидетельство: Когда выдан (С)': { editable: true, regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', special: 'date' },
+    'Паспорт: Код подразделения (С)': { editable: true, regex: '^.*$', special: '' },
+    'Снилс: номер': { editable: true, regex: '^.*$', special: '' },
+    'Полис: Страховая компания': { editable: true, regex: '^.*$', special: '' },
+    'Тренировочная группа': { editable: true, regex: '^.*$', special: '' },
+    'МГФСО группа': { editable: true, regex: '^.*$', special: '' },
+    'Тренер МГФСО': { editable: true, regex: '^.*$', special: '' },
+    'Разряд': { editable: true, regex: '^.*$', special: '' },
+    'Мед полис: номер': { editable: true, regex: '^.*$', special: '' },
+    'Номер и страховя компания': { editable: true, regex: '^.*$', special: '' },
+    'ID номер МГФСО': { editable: true, regex: '^.*$', special: '' }
   };
 
   let currentDocsRow = { header: [], row: [], colors: [] };
 
   function getFieldEditRule(headerTitle) {
-    const specific = FIELD_EDIT_RULES[headerTitle] || FIELD_EDIT_RULES.default;
-    if (DATE_EDITABLE_FIELDS.has(headerTitle || '')) {
-      return { editable: true, regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', special: 'date' };
+    return FIELD_EDIT_RULES[headerTitle] || FIELD_EDIT_RULES.default;
+  }
+
+  function applyInputSpecial(rawValue, rule) {
+    const value = String(rawValue || '');
+    if (!rule || !rule.special) return value;
+    if (rule.special === 'date') return formatDateInput(value);
+    if (rule.special === 'year') return value.replace(/\D/g, '').slice(0, 4);
+    if (rule.special === 'classCourse') return value.toUpperCase().replace(/[^0-9IV]/g, '').slice(0, 2);
+    if (rule.special === 'singleRuUpper') {
+      const onlyRu = value.toUpperCase().replace(/[^А-ЯЁ]/g, '');
+      return onlyRu.slice(0, 1);
     }
-    return specific;
+    if (rule.special === 'email') return value.replace(/[А-Яа-яЁё]/g, '');
+    return value;
+  }
+
+  function isValidFieldValue(trimmedValue, rule) {
+    return trimmedValue === '' || new RegExp(rule.regex).test(trimmedValue);
+  }
+
+  function getSuggestionItems(query, options) {
+    const q = String(query || '').trim().toLowerCase();
+    if (!q) return options.slice(0, 8);
+    return options
+      .map(text => ({ text, score: text.toLowerCase().indexOf(q) }))
+      .filter(item => item.score !== -1)
+      .sort((a, b) => a.score - b.score || a.text.length - b.text.length)
+      .slice(0, 8)
+      .map(item => item.text);
+  }
+
+  function updateSuggestionList(cell, input, options) {
+    let list = cell.querySelector('.cell-suggest-list');
+    if (!options.length) {
+      if (list) list.remove();
+      return;
+    }
+
+    const items = getSuggestionItems(input.value, options);
+    if (!items.length) {
+      if (list) list.remove();
+      return;
+    }
+
+    if (!list) {
+      list = document.createElement('div');
+      list.className = 'cell-suggest-list';
+      cell.appendChild(list);
+    }
+
+    list.innerHTML = '';
+    items.forEach(item => {
+      const row = document.createElement('div');
+      row.className = 'cell-suggest-item';
+      row.textContent = item;
+      row.addEventListener('mousedown', event => {
+        event.preventDefault();
+        input.value = applyInputSpecial(item, getFieldEditRule(currentDocsRow.header[Number(input.dataset.colIndex)]));
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      list.appendChild(row);
+    });
   }
 
   function setFlagMenuOpen(isOpen) {
@@ -1460,32 +1535,52 @@
       const value = textNode ? textNode.textContent : '';
       cell.innerHTML = `<button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="save" disabled>💾</button><input class="cell-value-input" data-col-index="${colIndex}" value="${escapeHtmlAttr(value)}" />`;
       const input = cell.querySelector('input');
+      const suggestionHeader = currentDocsRow.header[colIndex];
+      let suggestionOptions = [];
+      google.script.run
+        .withSuccessHandler(items => {
+          suggestionOptions = Array.isArray(items) ? items.map(v => String(v || '').trim()).filter(Boolean) : [];
+          updateSuggestionList(cell, input, suggestionOptions);
+        })
+        .withFailureHandler(() => {})
+        .getEditFieldSuggestions(suggestionHeader);
       if (rule.special === 'date') input.placeholder = 'ДД.ММ.ГГГГ';
-      if (rule.special === 'date') {
-        input.addEventListener('input', function() {
-          const formatted = formatDateInput(input.value);
-          if (formatted !== input.value) input.value = formatted;
-        });
-        input.addEventListener('blur', function() {
-          const formatted = formatDateInput(input.value, { finalizeYear: true });
-          if (formatted !== input.value) input.value = formatted;
-          validate();
-        });
-      }
+      if (rule.special === 'date') input.addEventListener('blur', function() {
+        const formatted = formatDateInput(input.value, { finalizeYear: true });
+        if (formatted !== input.value) input.value = formatted;
+        validate();
+      });
       input.focus();
       const validate = () => {
         const saveBtn = cell.querySelector('.cell-edit-btn');
-        const ok = new RegExp(rule.regex).test(input.value.trim());
+        const trimmed = input.value.trim();
+        const ok = isValidFieldValue(trimmed, rule);
         saveBtn.disabled = !ok;
         saveBtn.classList.toggle('save-ready', ok);
       };
-      input.addEventListener('input', validate);
+      input.addEventListener('input', () => {
+        const prepared = applyInputSpecial(input.value, rule);
+        if (prepared !== input.value) input.value = prepared;
+        validate();
+        updateSuggestionList(cell, input, suggestionOptions);
+      });
+      input.addEventListener('blur', () => setTimeout(() => {
+        const list = cell.querySelector('.cell-suggest-list');
+        if (list) list.remove();
+      }, 100));
+      input.addEventListener('keydown', event => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        const saveBtn = cell.querySelector('.cell-edit-btn');
+        if (!saveBtn || saveBtn.disabled) return;
+        saveBtn.click();
+      });
       validate();
       return;
     }
     const input = cell.querySelector('input');
     const saveValue = (input?.value || '').trim();
-    if (!new RegExp(rule.regex).test(saveValue)) return;
+    if (!isValidFieldValue(saveValue, rule)) return;
     btn.disabled = true;
     btn.textContent = '⏳';
     google.script.run

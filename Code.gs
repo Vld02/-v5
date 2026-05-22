@@ -1051,8 +1051,58 @@ function updateResultCell(login, password, snils, columnName, value) {
     if (rowSnils && normalizedSnils && rowSnils !== normalizedSnils) continue;
 
     sheet.getRange(i + 2, targetCol + 1).setValue(String(value ?? ''));
-    return { ok: true };
-  }
+  return { ok: true };
+}
+
+/**
+ * Возвращает варианты для выпадающего списка при редактировании полей.
+ * @param {string} columnName Название колонки в "Результат".
+ * @returns {string[]}
+ */
+function getEditFieldSuggestions(columnName) {
+  const config = getEditSuggestionConfig(columnName);
+  if (!config) return [];
+
+  const sheet = getSheet(config.sheetName);
+  if (!sheet) return [];
+
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 1 || lastCol < 1) return [];
+
+  const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+  const colIndex = header.indexOf(config.headerTitle);
+  if (colIndex === -1) return [];
+
+  const startRow = Math.max(2, config.startRow || 2);
+  if (lastRow < startRow) return [];
+
+  return [...new Set(
+    sheet
+      .getRange(startRow, colIndex + 1, lastRow - startRow + 1, 1)
+      .getValues()
+      .flat()
+      .map(v => String(v || '').trim())
+      .filter(Boolean)
+  )];
+}
+
+/**
+ * Конфигурация источников подсказок по колонкам.
+ * @param {string} columnName
+ * @returns {{sheetName:string,headerTitle:string,startRow:number}|null}
+ */
+function getEditSuggestionConfig(columnName) {
+  const map = {
+    'Школа': { sheetName: 'Списки данных', headerTitle: 'Школы', startRow: 2 },
+    'Полис: Страховая компания': { sheetName: 'Результат', headerTitle: 'Полис: Страховая компания', startRow: 2 },
+    'Тренировочная группа': { sheetName: 'Списки данных', headerTitle: 'Группы тренировки', startRow: 5 },
+    'МГФСО группа': { sheetName: 'Списки данных', headerTitle: 'Группы МГФСО', startRow: 2 },
+    'Тренер МГФСО': { sheetName: 'Списки данных', headerTitle: 'Тренер МГФСО', startRow: 2 },
+    'Разряд': { sheetName: 'Списки данных', headerTitle: 'Список разрядов', startRow: 2 }
+  };
+  return map[String(columnName || '')] || null;
+}
 
   throw new Error('Строка для обновления не найдена.');
 }
