@@ -1051,8 +1051,56 @@ function updateResultCell(login, password, snils, columnName, value) {
     if (rowSnils && normalizedSnils && rowSnils !== normalizedSnils) continue;
 
     sheet.getRange(i + 2, targetCol + 1).setValue(String(value ?? ''));
-    return { ok: true };
-  }
+  return { ok: true };
+}
+
+/**
+ * Возвращает варианты автоподсказок для редактируемых полей раздела Документы.
+ * @returns {Object<string,string[]>}
+ */
+function getDocsEditSuggestions() {
+  const result = {};
+  result['Школа'] = loadColumnValuesByHeader('Списки данных', 'Школы');
+  result['Полис: Страховая компания'] = loadColumnValuesByHeader('Результат', 'Полис: Страховая компания');
+  result['Тренировочная группа'] = loadColumnValuesByHeader('Списки данных', 'Группы тренировки', 5);
+  result['МГФСО группа'] = loadColumnValuesByHeader('Списки данных', 'Группы МГФСО');
+  result['Тренер МГФСО'] = loadColumnValuesByHeader('Списки данных', 'Тренер МГФСО');
+  result['Разряд'] = loadColumnValuesByHeader('Списки данных', 'Список разрядов');
+  return result;
+}
+
+/**
+ * Загружает уникальные непустые значения из колонки по заголовку.
+ * @param {string} sheetName
+ * @param {string} headerName
+ * @param {number} [startRow=2]
+ * @returns {string[]}
+ */
+function loadColumnValuesByHeader(sheetName, headerName, startRow = 2) {
+  const sheet = getSheet(sheetName);
+  if (!sheet) return [];
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 1 || lastCol < 1) return [];
+
+  const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+  const colIndex = header.indexOf(String(headerName || ''));
+  if (colIndex === -1) return [];
+  if (lastRow < startRow) return [];
+
+  const values = sheet.getRange(startRow, colIndex + 1, lastRow - startRow + 1, 1).getValues().flat();
+  const unique = [];
+  const seen = new Set();
+  values.forEach(value => {
+    const text = String(value ?? '').trim();
+    if (!text) return;
+    const key = text.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    unique.push(text);
+  });
+  return unique;
+}
 
   throw new Error('Строка для обновления не найдена.');
 }
