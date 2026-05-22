@@ -738,6 +738,79 @@ function processInput(input, fullNames) {
   };
 }
 
+/*************************************************
+ * ДОКУМЕНТЫ: СПИСКИ ПОДСКАЗОК ДЛЯ РЕДАКТИРОВАНИЯ
+ *************************************************/
+const DOCS_SUGGESTION_SOURCES = Object.freeze({
+  'Школа': { sheetName: 'Списки данных', headerName: 'Школы', startRow: 2 },
+  'Полис: Страховая компания': { sheetName: 'Результат', headerName: 'Полис: Страховая компания', startRow: 2 },
+  'Тренировочная группа': { sheetName: 'Списки данных', headerName: 'Группы тренировки', startRow: 5 },
+  'МГФСО группа': { sheetName: 'Списки данных', headerName: 'Группы МГФСО', startRow: 2 },
+  'Тренер МГФСО': { sheetName: 'Списки данных', headerName: 'Тренер МГФСО', startRow: 2 },
+  'Разряд': { sheetName: 'Списки данных', headerName: 'Список разрядов', startRow: 2 }
+});
+
+/**
+ * Возвращает похожие варианты для редактируемого поля документа.
+ * @param {string} fieldName
+ * @param {string} query
+ * @returns {string[]}
+ */
+function getDocsFieldSuggestions(fieldName, query) {
+  const source = DOCS_SUGGESTION_SOURCES[String(fieldName || '').trim()];
+  if (!source) return [];
+
+  const values = loadDocsSuggestionValues(source);
+  const normalizedQuery = normalizeSuggestionText(query);
+  if (!normalizedQuery) return values.slice(0, 10);
+
+  const ranked = values
+    .map(value => {
+      const norm = normalizeSuggestionText(value);
+      const index = norm.indexOf(normalizedQuery);
+      if (index === -1) return null;
+      return { value, index, length: value.length };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.index - b.index || a.length - b.length || a.value.localeCompare(b.value, 'ru'))
+    .slice(0, 10)
+    .map(item => item.value);
+
+  return ranked;
+}
+
+function loadDocsSuggestionValues(source) {
+  const sheet = getSheet(source.sheetName);
+  if (!sheet) return [];
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < source.startRow || lastCol < 1) return [];
+
+  const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(v => String(v || '').trim());
+  const colIndex = header.indexOf(source.headerName);
+  if (colIndex === -1) return [];
+
+  const rowCount = lastRow - source.startRow + 1;
+  const raw = sheet.getRange(source.startRow, colIndex + 1, rowCount, 1).getValues().flat();
+  const seen = new Set();
+  const result = [];
+  raw.forEach(value => {
+    const text = String(value || '').trim();
+    if (!text || seen.has(text)) return;
+    seen.add(text);
+    result.push(text);
+  });
+  return result;
+}
+
+function normalizeSuggestionText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 
 /**
  * Возвращает список последних тренировок из внешней таблицы ответов.
