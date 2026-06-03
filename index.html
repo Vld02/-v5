@@ -374,16 +374,84 @@
     padding: 0.35em 0.5em;
     margin: 0;
   }
-  .training-loading {
-    width: 0.9rem;
-    height: 0.9rem;
-    border: 0.12rem solid #cfd8dc;
-    border-top-color: #1a73e8;
+  .training-sync-button {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.15rem;
+    height: 2.15rem;
+    flex: 0 0 2.15rem;
+    margin: 0;
+    padding: 0;
+    border: 0.08rem solid #b8d2ff;
     border-radius: 50%;
-    display: none;
+    background: linear-gradient(135deg, #eef5ff, #ffffff);
+    color: var(--primary);
+    box-shadow: 0 0.15rem 0.45rem rgba(26, 115, 232, 0.16);
+    cursor: pointer;
+    overflow: hidden;
+    transition: background .25s ease, border-color .25s ease, box-shadow .25s ease, transform .2s ease;
+  }
+  .training-sync-button:hover:not(:disabled) {
+    transform: translateY(-0.04rem);
+    border-color: var(--primary);
+    box-shadow: 0 0.22rem 0.55rem rgba(26, 115, 232, 0.22);
+  }
+  .training-sync-button:disabled {
+    cursor: default;
+  }
+  .training-sync-button > span {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transform: scale(0.65) rotate(-90deg);
+    transition: opacity .28s ease, transform .34s cubic-bezier(.2, .9, .25, 1.25);
+  }
+  .training-sync-spinner::before {
+    content: '';
+    width: 1.05rem;
+    height: 1.05rem;
+    border: 0.15rem solid #cfd8dc;
+    border-top-color: var(--primary);
+    border-radius: 50%;
+  }
+  .training-sync-check {
+    color: #18a058;
+    font-size: 1.25rem;
+    font-weight: 800;
+  }
+  .training-sync-arrow {
+    color: var(--primary);
+    font-size: 1.35rem;
+    font-weight: 800;
+  }
+  .training-sync-button.is-loading {
+    background: #fff;
+    border-color: #cfd8dc;
+  }
+  .training-sync-button.is-loading .training-sync-spinner {
+    opacity: 1;
+    transform: scale(1) rotate(0);
+  }
+  .training-sync-button.is-loading .training-sync-spinner::before {
     animation: training-spin .8s linear infinite;
   }
-  .training-loading.show { display: inline-block; }
+  .training-sync-button.is-success {
+    border-color: #99d5ad;
+    background: linear-gradient(135deg, #e8fff0, #ffffff);
+  }
+  .training-sync-button.is-success .training-sync-check {
+    opacity: 1;
+    transform: scale(1) rotate(0);
+  }
+  .training-sync-button.is-idle .training-sync-arrow {
+    opacity: 1;
+    transform: scale(1) rotate(0);
+  }
   @keyframes training-spin {
     to { transform: rotate(360deg); }
   }
@@ -775,7 +843,11 @@
     <div class="training-topbar">
       <h3 class="training-title">Отмеченные тренировки</h3>
       <div class="training-controls">
-        <span id="trainingLoading" class="training-loading" aria-hidden="true"></span>
+        <button id="trainingSyncButton" type="button" class="training-sync-button is-loading" aria-label="Загружается список тренировок" title="Загружается список тренировок" disabled>
+          <span class="training-sync-spinner" aria-hidden="true"></span>
+          <span class="training-sync-check" aria-hidden="true">✓</span>
+          <span class="training-sync-arrow" aria-hidden="true">↻</span>
+        </button>
         <button id="trainingViewListBtn" type="button" class="training-view-btn active" data-view="list"><span aria-hidden="true">☰</span><span>Список</span></button>
         <button id="trainingViewTableBtn" type="button" class="training-view-btn" data-view="table"><span aria-hidden="true">▦</span><span>Таблица</span></button>
       </div>
@@ -842,6 +914,7 @@
   const ATTENDANCE_DRAFT_TTL_MS = 30 * 60 * 1000;
   const LAST_SILENT_SYNC_KEY = 'lastSilentSyncAt';
   const SILENT_SYNC_INTERVAL_MS = 15 * 60 * 1000;
+  const TRAINING_HISTORY_STORAGE_KEY = 'trainingHistoryItemsV1';
 
   const FIELD_EDIT_RULES = {
     default: { editable: false, regex: '^.*$', special: '' },
@@ -1735,7 +1808,7 @@
    *************************************************/
   const tbody = document.querySelector('#fioTable tbody');
   const trainingList = document.getElementById('trainingList');
-  const trainingLoading = document.getElementById('trainingLoading');
+  const trainingSyncButton = document.getElementById('trainingSyncButton');
   const trainingVisibleCountInput = document.getElementById('trainingVisibleCountInput');
   const trainingVisibleCountWrap = document.getElementById('trainingVisibleCountWrap');
   const trainingListView = document.getElementById('trainingListView');
@@ -2080,6 +2153,8 @@
     items: [],
     isLoaded: false,
     requestId: 0,
+    syncState: 'loading',
+    syncStateTimer: null,
     sortKey: '',
     sortDir: 0,
     opened: new Set(),
@@ -2091,8 +2166,54 @@
   let collectActiveFilterDraft = null;
 
 
-  function setTrainingLoading(isLoading) {
-    trainingLoading.classList.toggle('show', isLoading);
+  function setTrainingSyncState(state) {
+    if (trainingState.syncStateTimer) {
+      clearTimeout(trainingState.syncStateTimer);
+      trainingState.syncStateTimer = null;
+    }
+
+    trainingState.syncState = state;
+    trainingSyncButton.classList.toggle('is-loading', state === 'loading');
+    trainingSyncButton.classList.toggle('is-success', state === 'success');
+    trainingSyncButton.classList.toggle('is-idle', state === 'idle');
+    trainingSyncButton.disabled = state === 'loading';
+
+    if (state === 'loading') {
+      trainingSyncButton.setAttribute('aria-label', 'Загружается список тренировок');
+      trainingSyncButton.title = 'Загружается список тренировок';
+      return;
+    }
+
+    if (state === 'success') {
+      trainingSyncButton.setAttribute('aria-label', 'Список тренировок загружен');
+      trainingSyncButton.title = 'Список тренировок загружен';
+      trainingState.syncStateTimer = setTimeout(() => setTrainingSyncState('idle'), 950);
+      return;
+    }
+
+    trainingSyncButton.setAttribute('aria-label', 'Синхронизировать список тренировок');
+    trainingSyncButton.title = 'Синхронизировать';
+  }
+
+  function saveTrainingHistoryCache(items) {
+    try {
+      localStorage.setItem(TRAINING_HISTORY_STORAGE_KEY, JSON.stringify(items || []));
+    } catch (_) {}
+  }
+
+  function restoreTrainingHistoryCache() {
+    let items = [];
+    try {
+      items = JSON.parse(localStorage.getItem(TRAINING_HISTORY_STORAGE_KEY) || '[]');
+    } catch (_) {
+      items = [];
+    }
+
+    if (!Array.isArray(items) || !items.length) return false;
+    trainingState.items = items;
+    trainingState.isLoaded = true;
+    renderTrainingHistory(trainingState.items);
+    return true;
   }
 
   function getTrainingItemKey(item) {
@@ -2808,22 +2929,26 @@
   }
 
   function loadTrainingHistory(force = false) {
-    if (!force && trainingState.isLoaded) return;
+    if (!force && trainingState.isLoaded) {
+      setTrainingSyncState('idle');
+      return;
+    }
 
     const requestId = ++trainingState.requestId;
-    setTrainingLoading(true);
+    setTrainingSyncState('loading');
 
     google.script.run
       .withSuccessHandler(items => {
         if (requestId !== trainingState.requestId) return;
-        trainingState.items = items || [];
+        trainingState.items = Array.isArray(items) ? items : [];
         trainingState.isLoaded = true;
-        setTrainingLoading(false);
+        saveTrainingHistoryCache(trainingState.items);
         renderTrainingHistory(trainingState.items);
+        setTrainingSyncState('success');
       })
       .withFailureHandler(() => {
         if (requestId !== trainingState.requestId) return;
-        setTrainingLoading(false);
+        setTrainingSyncState('idle');
       })
       .getTrainingHistory();
   }
@@ -2885,6 +3010,7 @@
 
   trainingViewListBtn.addEventListener('click', () => setTrainingView('list'));
   trainingViewTableBtn.addEventListener('click', () => setTrainingView('table'));
+  trainingSyncButton.addEventListener('click', () => loadTrainingHistory(true));
 
   function renderResult(row, data) {
     const rowId = getRowId(row);
@@ -2969,7 +3095,8 @@
   }
 
   hydrateExistingRows();
-  loadTrainingHistory();
+  const hasCachedTrainingHistory = restoreTrainingHistoryCache();
+  loadTrainingHistory(hasCachedTrainingHistory);
   async function openAttendanceForm() {
     if (debounceTimer) {
       clearTimeout(debounceTimer);
