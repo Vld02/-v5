@@ -424,10 +424,14 @@
     font-size: 1.25rem;
     font-weight: 800;
   }
-  .training-sync-arrow {
+  .training-sync-arrow,
+  .training-sync-table {
     color: var(--primary);
     font-size: 1.35rem;
     font-weight: 800;
+  }
+  .training-sync-table {
+    font-size: 1.15rem;
   }
   .training-sync-button.is-loading {
     background: #fff;
@@ -448,9 +452,14 @@
     opacity: 1;
     transform: scale(1) rotate(0);
   }
-  .training-sync-button.is-idle .training-sync-arrow {
+  .training-sync-button.is-idle .training-sync-arrow,
+  .training-sync-button.is-table .training-sync-table {
     opacity: 1;
     transform: scale(1) rotate(0);
+  }
+  .training-sync-button.is-table {
+    border-color: #b8d2ff;
+    background: linear-gradient(135deg, #eef5ff, #ffffff);
   }
   @keyframes training-spin {
     to { transform: rotate(360deg); }
@@ -847,6 +856,7 @@
           <span class="training-sync-spinner" aria-hidden="true"></span>
           <span class="training-sync-check" aria-hidden="true">✓</span>
           <span class="training-sync-arrow" aria-hidden="true">↻</span>
+          <span class="training-sync-table" aria-hidden="true">▦</span>
         </button>
         <button id="trainingViewListBtn" type="button" class="training-view-btn active" data-view="list"><span aria-hidden="true">☰</span><span>Список</span></button>
         <button id="trainingViewTableBtn" type="button" class="training-view-btn" data-view="table"><span aria-hidden="true">▦</span><span>Таблица</span></button>
@@ -915,6 +925,7 @@
   const LAST_SILENT_SYNC_KEY = 'lastSilentSyncAt';
   const SILENT_SYNC_INTERVAL_MS = 15 * 60 * 1000;
   const TRAINING_HISTORY_STORAGE_KEY = 'trainingHistoryItemsV1';
+  const TRAINING_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1K1TtjIL2retzFoXBlQaePKbeKIEkMZZedZX-Ans4VjY/edit?usp=sharing';
 
   const FIELD_EDIT_RULES = {
     default: { editable: false, regex: '^.*$', special: '' },
@@ -2155,6 +2166,7 @@
     requestId: 0,
     syncState: 'loading',
     syncStateTimer: null,
+    view: 'list',
     sortKey: '',
     sortDir: 0,
     opened: new Set(),
@@ -2166,17 +2178,21 @@
   let collectActiveFilterDraft = null;
 
 
-  function setTrainingSyncState(state) {
-    if (trainingState.syncStateTimer) {
-      clearTimeout(trainingState.syncStateTimer);
-      trainingState.syncStateTimer = null;
-    }
+  function renderTrainingActionButton() {
+    const isTableView = trainingState.view === 'table';
+    const state = isTableView ? 'table' : trainingState.syncState;
 
-    trainingState.syncState = state;
     trainingSyncButton.classList.toggle('is-loading', state === 'loading');
     trainingSyncButton.classList.toggle('is-success', state === 'success');
     trainingSyncButton.classList.toggle('is-idle', state === 'idle');
-    trainingSyncButton.disabled = state === 'loading';
+    trainingSyncButton.classList.toggle('is-table', state === 'table');
+    trainingSyncButton.disabled = !isTableView && state === 'loading';
+
+    if (isTableView) {
+      trainingSyncButton.setAttribute('aria-label', 'Открыть таблицу тренировок');
+      trainingSyncButton.title = 'Открыть таблицу';
+      return;
+    }
 
     if (state === 'loading') {
       trainingSyncButton.setAttribute('aria-label', 'Загружается список тренировок');
@@ -2187,12 +2203,25 @@
     if (state === 'success') {
       trainingSyncButton.setAttribute('aria-label', 'Список тренировок загружен');
       trainingSyncButton.title = 'Список тренировок загружен';
-      trainingState.syncStateTimer = setTimeout(() => setTrainingSyncState('idle'), 950);
       return;
     }
 
     trainingSyncButton.setAttribute('aria-label', 'Синхронизировать список тренировок');
     trainingSyncButton.title = 'Синхронизировать';
+  }
+
+  function setTrainingSyncState(state) {
+    if (trainingState.syncStateTimer) {
+      clearTimeout(trainingState.syncStateTimer);
+      trainingState.syncStateTimer = null;
+    }
+
+    trainingState.syncState = state;
+    renderTrainingActionButton();
+
+    if (state === 'success') {
+      trainingState.syncStateTimer = setTimeout(() => setTrainingSyncState('idle'), 950);
+    }
   }
 
   function saveTrainingHistoryCache(items) {
@@ -3001,16 +3030,25 @@
 
   function setTrainingView(view) {
     const isTable = view === 'table';
+    trainingState.view = isTable ? 'table' : 'list';
     trainingListView.classList.toggle('hidden', isTable);
     trainingTableView.classList.toggle('hidden', !isTable);
     trainingViewListBtn.classList.toggle('active', !isTable);
     trainingViewTableBtn.classList.toggle('active', isTable);
     trainingVisibleCountWrap.classList.toggle('hidden', isTable);
+    renderTrainingActionButton();
   }
 
   trainingViewListBtn.addEventListener('click', () => setTrainingView('list'));
   trainingViewTableBtn.addEventListener('click', () => setTrainingView('table'));
-  trainingSyncButton.addEventListener('click', () => loadTrainingHistory(true));
+  trainingSyncButton.addEventListener('click', () => {
+    if (trainingState.view === 'table') {
+      window.open(TRAINING_SHEET_URL, '_blank', 'noopener');
+      return;
+    }
+
+    loadTrainingHistory(true);
+  });
 
   function renderResult(row, data) {
     const rowId = getRowId(row);
