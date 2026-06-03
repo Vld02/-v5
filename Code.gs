@@ -1050,9 +1050,55 @@ function updateResultCell(login, password, snils, columnName, value) {
     const rowSnils = normalizeSnils(snilsValues[i][0]);
     if (rowSnils && normalizedSnils && rowSnils !== normalizedSnils) continue;
 
-    sheet.getRange(i + 2, targetCol + 1).setValue(String(value ?? ''));
+    const rowIndex = i + 2;
+    sheet.getRange(rowIndex, targetCol + 1).setValue(String(value ?? ''));
+    if (String(columnName || '') === 'Школа') {
+      const schoolUpdatedCol = header.indexOf('Дата обн. инф. о школе (С)');
+      if (schoolUpdatedCol !== -1) {
+        const timestamp = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, `${CONFIG.DATE_FORMAT} HH:mm:ss`);
+        sheet.getRange(rowIndex, schoolUpdatedCol + 1).setValue(timestamp);
+      }
+    }
     return { ok: true };
   }
 
   throw new Error('Строка для обновления не найдена.');
+}
+
+/**
+ * Возвращает уникальные варианты значений из заданного столбца по заголовку.
+ * @param {string} sheetName Имя листа-источника.
+ * @param {string} columnHeader Заголовок столбца.
+ * @param {number} startRow С какой строки читать значения (1-indexed).
+ * @returns {string[]}
+ */
+function getFieldSuggestions(sheetName, columnHeader, startRow) {
+  const sheet = getSheet(String(sheetName || ''));
+  if (!sheet) return [];
+
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) return [];
+
+  const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+  const colIndex = header.indexOf(String(columnHeader || ''));
+  if (colIndex === -1) return [];
+
+  const fromRow = Math.max(2, Number(startRow) || 2);
+  if (fromRow > lastRow) return [];
+
+  const values = sheet.getRange(fromRow, colIndex + 1, lastRow - fromRow + 1, 1).getValues()
+    .flat()
+    .map(value => String(value || '').trim())
+    .filter(Boolean);
+
+  const uniq = [];
+  const seen = new Set();
+  values.forEach(value => {
+    if (seen.has(value)) return;
+    seen.add(value);
+    uniq.push(value);
+  });
+
+  return uniq;
 }
