@@ -1907,6 +1907,8 @@
         });
       }
       chars[position] = e.key;
+      if (position >= 3) chars[2] = '.';
+      if (position >= 6) chars[5] = '.';
       input.value = normalizeMaskedDateValue(chars.join(''));
       setMaskedDateSelection(input, getNextMaskedDateCursorPosition(position));
       hideSnilsStep();
@@ -2007,6 +2009,7 @@
       attendanceState.rows.set(rowId, {
         lastMatchedInput: '',
         selectedFio: '',
+        selectionMode: 'auto',
         options: []
       });
     }
@@ -3217,17 +3220,21 @@
     if (!data || !data.options || data.options.length === 0 || data.options.length > 3) {
       rowState.options = [];
       rowState.selectedFio = '';
+      rowState.selectionMode = 'auto';
       cell.innerText = '—';
       return;
     }
 
     rowState.options = [...data.options];
 
-    const selectedValue = rowState.options.includes(rowState.selectedFio)
+    const hasManualSelection = rowState.selectionMode === 'manual'
+      && rowState.options.includes(rowState.selectedFio);
+    const selectedValue = hasManualSelection
       ? rowState.selectedFio
       : (rowState.options.includes(data.selected) ? data.selected : '');
 
     rowState.selectedFio = selectedValue;
+    rowState.selectionMode = hasManualSelection ? 'manual' : 'auto';
 
     const wrap = document.createElement('div');
     wrap.className = 'fio-list';
@@ -3242,6 +3249,7 @@
         [...wrap.children].forEach(b => b.classList.remove('selected'));
         btn.classList.add('selected');
         rowState.selectedFio = fio;
+        rowState.selectionMode = 'manual';
       });
 
       wrap.appendChild(btn);
