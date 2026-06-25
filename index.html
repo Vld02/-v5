@@ -1299,12 +1299,19 @@
 
     const hasFirstSeparator = raw.includes('.');
     const hasSecondSeparator = (raw.match(/\./g) || []).length > 1;
-    const day = renderMaskedDateSection(chars, dayPositions, hasFirstSeparator ? Math.min(String(parts[0] || '').length, 2) : 0);
-    const month = renderMaskedDateSection(chars, monthPositions, hasSecondSeparator ? Math.min(String(parts[1] || '').length, 2) : 0);
-    const year = renderMaskedDateSection(chars, yearPositions, Math.min(String(parts[2] || '').length, 4));
+    const getSectionMinLength = (part, positions, keepSeparator) => {
+      if (!keepSeparator) return 0;
+      const sectionText = String(part || '').slice(0, positions.length);
+      return sectionText.replace(/\s/g, '') ? Math.min(sectionText.length, positions.length) : 0;
+    };
+    const day = renderMaskedDateSection(chars, dayPositions, getSectionMinLength(parts[0], dayPositions, hasFirstSeparator));
+    const month = renderMaskedDateSection(chars, monthPositions, getSectionMinLength(parts[1], monthPositions, hasSecondSeparator));
+    const year = renderMaskedDateSection(chars, yearPositions, getSectionMinLength(parts[2], yearPositions, true));
 
-    if (hasSecondSeparator || year) return `${day}.${month}.${year}`;
-    if (hasFirstSeparator || month) return `${day}.${month}`;
+    if (year) return `${day}.${month}.${year}`;
+    if (hasSecondSeparator && month) return `${day}.${month}.`;
+    if (month) return `${day}.${month}`;
+    if (hasFirstSeparator && day) return `${day}.`;
     return day;
   }
 
@@ -1900,6 +1907,8 @@
         });
       }
       chars[position] = e.key;
+      if (position >= 3) chars[2] = '.';
+      if (position >= 6) chars[5] = '.';
       input.value = normalizeMaskedDateValue(chars.join(''));
       setMaskedDateSelection(input, getNextMaskedDateCursorPosition(position));
       hideSnilsStep();
@@ -2000,6 +2009,7 @@
       attendanceState.rows.set(rowId, {
         lastMatchedInput: '',
         selectedFio: '',
+        selectionMode: 'auto',
         options: []
       });
     }
@@ -3210,17 +3220,21 @@
     if (!data || !data.options || data.options.length === 0 || data.options.length > 3) {
       rowState.options = [];
       rowState.selectedFio = '';
+      rowState.selectionMode = 'auto';
       cell.innerText = '—';
       return;
     }
 
     rowState.options = [...data.options];
 
-    const selectedValue = rowState.options.includes(rowState.selectedFio)
+    const hasManualSelection = rowState.selectionMode === 'manual'
+      && rowState.options.includes(rowState.selectedFio);
+    const selectedValue = hasManualSelection
       ? rowState.selectedFio
       : (rowState.options.includes(data.selected) ? data.selected : '');
 
     rowState.selectedFio = selectedValue;
+    rowState.selectionMode = hasManualSelection ? 'manual' : 'auto';
 
     const wrap = document.createElement('div');
     wrap.className = 'fio-list';
@@ -3235,6 +3249,7 @@
         [...wrap.children].forEach(b => b.classList.remove('selected'));
         btn.classList.add('selected');
         rowState.selectedFio = fio;
+        rowState.selectionMode = 'manual';
       });
 
       wrap.appendChild(btn);
