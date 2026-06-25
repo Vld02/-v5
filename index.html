@@ -1255,7 +1255,62 @@
     return [day, month, year].filter(Boolean).join('.');
   }
 
+  const DATE_MASK_DIGIT_POSITIONS = Object.freeze([0, 1, 3, 4, 6, 7, 8, 9]);
+
+  function normalizeMaskedDateValue(value) {
+    const raw = String(value || '');
+    const chars = Array.from('  .  .    ');
+
+    if (!raw.includes('.') && raw.replace(/\D/g, '').length > 2) {
+      raw.replace(/\D/g, '').slice(0, DATE_MASK_DIGIT_POSITIONS.length).split('').forEach((digit, index) => {
+        chars[DATE_MASK_DIGIT_POSITIONS[index]] = digit;
+      });
+    } else {
+      raw.slice(0, 10).split('').forEach((char, index) => {
+        if (DATE_MASK_DIGIT_POSITIONS.includes(index)) {
+          chars[index] = /\d/.test(char) ? char : ' ';
+        }
+      });
+    }
+
+    return chars.some((char, index) => DATE_MASK_DIGIT_POSITIONS.includes(index) && char !== ' ')
+      ? chars.join('')
+      : '';
+  }
+
+  function getMaskedDateDigitIndex(cursorPosition, { backward = false } = {}) {
+    if (backward) {
+      for (let i = DATE_MASK_DIGIT_POSITIONS.length - 1; i >= 0; i--) {
+        if (DATE_MASK_DIGIT_POSITIONS[i] < cursorPosition) return DATE_MASK_DIGIT_POSITIONS[i];
+      }
+      return -1;
+    }
+
+    return DATE_MASK_DIGIT_POSITIONS.find(position => position >= cursorPosition) ?? -1;
+  }
+
+  function getNextMaskedDateCursorPosition(digitPosition) {
+    const index = DATE_MASK_DIGIT_POSITIONS.indexOf(digitPosition);
+    if (index < 0) return digitPosition;
+    return DATE_MASK_DIGIT_POSITIONS[index + 1] ?? 10;
+  }
+
+  function setMaskedDateSelection(inputEl, position) {
+    requestAnimationFrame(() => inputEl.setSelectionRange(position, position));
+  }
+
+  function toMaskedDateDigits(value) {
+    const normalized = normalizeMaskedDateValue(value);
+    if (!normalized) return '';
+    return DATE_MASK_DIGIT_POSITIONS.map(position => normalized[position]).join('');
+  }
+
   function toServerDate(value) {
+    const maskedDigits = toMaskedDateDigits(value);
+    if (/^\d{8}$/.test(maskedDigits)) {
+      return `${maskedDigits.slice(0, 2)}.${maskedDigits.slice(2, 4)}.${maskedDigits.slice(4)}`;
+    }
+
     const parsed = parseDateString(value);
     if (!parsed) return '';
     const day = String(parsed.day).padStart(2, '0');
@@ -1773,16 +1828,64 @@
     }
   });
 
+  dom.password.addEventListener('keydown', function(e) {
+    if (!/^\d$/.test(e.key) && e.key !== 'Backspace' && e.key !== 'Delete') return;
+
+    const input = e.target;
+    const start = input.selectionStart || 0;
+    const end = input.selectionEnd || start;
+    let value = normalizeMaskedDateValue(input.value);
+
+    if (/^\d$/.test(e.key)) {
+      const position = getMaskedDateDigitIndex(start);
+      if (position < 0) return;
+      e.preventDefault();
+      const chars = (value || normalizeMaskedDateValue(e.key)).padEnd(10, ' ').split('');
+      chars[2] = '.';
+      chars[5] = '.';
+      DATE_MASK_DIGIT_POSITIONS.forEach(pos => {
+        if (!/\d/.test(chars[pos])) chars[pos] = ' ';
+      });
+      if (end > start) {
+        DATE_MASK_DIGIT_POSITIONS.forEach(pos => {
+          if (pos >= start && pos < end) chars[pos] = ' ';
+        });
+      }
+      chars[position] = e.key;
+      input.value = normalizeMaskedDateValue(chars.join(''));
+      setMaskedDateSelection(input, getNextMaskedDateCursorPosition(position));
+      hideSnilsStep();
+      return;
+    }
+
+    const position = e.key === 'Backspace'
+      ? getMaskedDateDigitIndex(start, { backward: start === end })
+      : getMaskedDateDigitIndex(start);
+    if (position < 0 && start === end) return;
+    e.preventDefault();
+    const chars = (value || '  .  .    ').split('');
+    if (end > start) {
+      DATE_MASK_DIGIT_POSITIONS.forEach(pos => {
+        if (pos >= start && pos < end) chars[pos] = ' ';
+      });
+    } else {
+      chars[position] = ' ';
+    }
+    input.value = normalizeMaskedDateValue(chars.join(''));
+    setMaskedDateSelection(input, end > start ? start : (e.key === 'Backspace' ? position : start));
+    hideSnilsStep();
+  });
+
   dom.password.addEventListener('input', function(e) {
     hideSnilsStep();
-    const formatted = formatDateInput(e.target.value);
-    if (formatted !== e.target.value) e.target.value = formatted;
+    const normalized = normalizeMaskedDateValue(e.target.value);
+    if (normalized !== e.target.value) e.target.value = normalized;
   });
 
 
   dom.password.addEventListener('blur', function(e) {
-    const formatted = formatDateInput(e.target.value, { finalizeYear: true });
-    if (formatted !== e.target.value) e.target.value = formatted;
+    const serverDate = toServerDate(e.target.value);
+    e.target.value = serverDate || normalizeMaskedDateValue(e.target.value);
   });
 
   dom.password.addEventListener('keydown', function(e) {
