@@ -1255,7 +1255,112 @@
     return [day, month, year].filter(Boolean).join('.');
   }
 
+  const DATE_MASK_DIGIT_POSITIONS = Object.freeze([0, 1, 3, 4, 6, 7, 8, 9]);
+
+  function renderMaskedDateSection(chars, positions, minLength = 0) {
+    let lastVisibleOffset = minLength - 1;
+    positions.forEach((position, offset) => {
+      if (chars[position] !== ' ') lastVisibleOffset = Math.max(lastVisibleOffset, offset);
+    });
+    return lastVisibleOffset < 0
+      ? ''
+      : positions.slice(0, lastVisibleOffset + 1).map(position => chars[position]).join('');
+  }
+
+  function normalizeMaskedDateValue(value) {
+    const raw = String(value || '');
+    const chars = Array(10).fill(' ');
+    const dayPositions = DATE_MASK_DIGIT_POSITIONS.slice(0, 2);
+    const monthPositions = DATE_MASK_DIGIT_POSITIONS.slice(2, 4);
+    const yearPositions = DATE_MASK_DIGIT_POSITIONS.slice(4);
+
+    if (!raw.includes('.')) {
+      const digits = raw.replace(/\D/g, '').slice(0, DATE_MASK_DIGIT_POSITIONS.length);
+      digits.split('').forEach((digit, index) => {
+        chars[DATE_MASK_DIGIT_POSITIONS[index]] = digit;
+      });
+      const day = renderMaskedDateSection(chars, dayPositions);
+      const month = renderMaskedDateSection(chars, monthPositions);
+      const year = renderMaskedDateSection(chars, yearPositions);
+      if (year) return `${day}.${month}.${year}`;
+      if (month) return `${day}.${month}`;
+      return day;
+    }
+
+    const parts = raw.split('.').slice(0, 3);
+    const fillSection = (part, positions) => {
+      String(part || '').slice(0, positions.length).split('').forEach((char, index) => {
+        chars[positions[index]] = /\d/.test(char) ? char : ' ';
+      });
+    };
+    fillSection(parts[0], dayPositions);
+    fillSection(parts[1], monthPositions);
+    fillSection(parts[2], yearPositions);
+
+    const hasFirstSeparator = raw.includes('.');
+    const hasSecondSeparator = (raw.match(/\./g) || []).length > 1;
+    const day = renderMaskedDateSection(chars, dayPositions, hasFirstSeparator ? Math.min(String(parts[0] || '').length, 2) : 0);
+    const month = renderMaskedDateSection(chars, monthPositions, hasSecondSeparator ? Math.min(String(parts[1] || '').length, 2) : 0);
+    const year = renderMaskedDateSection(chars, yearPositions, Math.min(String(parts[2] || '').length, 4));
+
+    if (hasSecondSeparator || year) return `${day}.${month}.${year}`;
+    if (hasFirstSeparator || month) return `${day}.${month}`;
+    return day;
+  }
+
+  function getMaskedDateChars(value) {
+    const normalized = normalizeMaskedDateValue(value);
+    const chars = Array(10).fill(' ');
+    const parts = normalized.split('.').slice(0, 3);
+    const sections = [
+      DATE_MASK_DIGIT_POSITIONS.slice(0, 2),
+      DATE_MASK_DIGIT_POSITIONS.slice(2, 4),
+      DATE_MASK_DIGIT_POSITIONS.slice(4)
+    ];
+    parts.forEach((part, sectionIndex) => {
+      String(part || '').slice(0, sections[sectionIndex].length).split('').forEach((char, index) => {
+        chars[sections[sectionIndex][index]] = /\d/.test(char) ? char : ' ';
+      });
+    });
+    if (parts.length > 1) chars[2] = '.';
+    if (parts.length > 2) chars[5] = '.';
+    return chars;
+  }
+
+
+  function getMaskedDateDigitIndex(cursorPosition, { backward = false } = {}) {
+    if (backward) {
+      for (let i = DATE_MASK_DIGIT_POSITIONS.length - 1; i >= 0; i--) {
+        if (DATE_MASK_DIGIT_POSITIONS[i] < cursorPosition) return DATE_MASK_DIGIT_POSITIONS[i];
+      }
+      return -1;
+    }
+
+    return DATE_MASK_DIGIT_POSITIONS.find(position => position >= cursorPosition) ?? -1;
+  }
+
+  function getNextMaskedDateCursorPosition(digitPosition) {
+    const index = DATE_MASK_DIGIT_POSITIONS.indexOf(digitPosition);
+    if (index < 0) return digitPosition;
+    return DATE_MASK_DIGIT_POSITIONS[index + 1] ?? 10;
+  }
+
+  function setMaskedDateSelection(inputEl, position) {
+    requestAnimationFrame(() => inputEl.setSelectionRange(position, position));
+  }
+
+  function toMaskedDateDigits(value) {
+    const normalized = normalizeMaskedDateValue(value).padEnd(10, ' ');
+    if (!normalized.trim()) return '';
+    return DATE_MASK_DIGIT_POSITIONS.map(position => normalized[position]).join('');
+  }
+
   function toServerDate(value) {
+    const maskedDigits = toMaskedDateDigits(value);
+    if (/^\d{8}$/.test(maskedDigits)) {
+      return `${maskedDigits.slice(0, 2)}.${maskedDigits.slice(2, 4)}.${maskedDigits.slice(4)}`;
+    }
+
     const parsed = parseDateString(value);
     if (!parsed) return '';
     const day = String(parsed.day).padStart(2, '0');
@@ -1773,16 +1878,62 @@
     }
   });
 
+  dom.password.addEventListener('keydown', function(e) {
+    if (!/^\d$/.test(e.key) && e.key !== 'Backspace' && e.key !== 'Delete') return;
+
+    const input = e.target;
+    const start = input.selectionStart || 0;
+    const end = input.selectionEnd || start;
+    let value = normalizeMaskedDateValue(input.value);
+
+    if (/^\d$/.test(e.key)) {
+      const position = getMaskedDateDigitIndex(start);
+      if (position < 0) return;
+      e.preventDefault();
+      const chars = getMaskedDateChars(value || e.key);
+      DATE_MASK_DIGIT_POSITIONS.forEach(pos => {
+        if (!/\d/.test(chars[pos])) chars[pos] = ' ';
+      });
+      if (end > start) {
+        DATE_MASK_DIGIT_POSITIONS.forEach(pos => {
+          if (pos >= start && pos < end) chars[pos] = ' ';
+        });
+      }
+      chars[position] = e.key;
+      input.value = normalizeMaskedDateValue(chars.join(''));
+      setMaskedDateSelection(input, getNextMaskedDateCursorPosition(position));
+      hideSnilsStep();
+      return;
+    }
+
+    const position = e.key === 'Backspace'
+      ? getMaskedDateDigitIndex(start, { backward: start === end })
+      : getMaskedDateDigitIndex(start);
+    if (position < 0 && start === end) return;
+    e.preventDefault();
+    const chars = getMaskedDateChars(value);
+    if (end > start) {
+      DATE_MASK_DIGIT_POSITIONS.forEach(pos => {
+        if (pos >= start && pos < end) chars[pos] = ' ';
+      });
+    } else {
+      chars[position] = ' ';
+    }
+    input.value = normalizeMaskedDateValue(chars.join(''));
+    setMaskedDateSelection(input, end > start ? start : (e.key === 'Backspace' ? position : start));
+    hideSnilsStep();
+  });
+
   dom.password.addEventListener('input', function(e) {
     hideSnilsStep();
-    const formatted = formatDateInput(e.target.value);
-    if (formatted !== e.target.value) e.target.value = formatted;
+    const normalized = normalizeMaskedDateValue(e.target.value);
+    if (normalized !== e.target.value) e.target.value = normalized;
   });
 
 
   dom.password.addEventListener('blur', function(e) {
-    const formatted = formatDateInput(e.target.value, { finalizeYear: true });
-    if (formatted !== e.target.value) e.target.value = formatted;
+    const serverDate = toServerDate(e.target.value);
+    e.target.value = serverDate || normalizeMaskedDateValue(e.target.value);
   });
 
   dom.password.addEventListener('keydown', function(e) {
