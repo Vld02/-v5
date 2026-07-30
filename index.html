@@ -736,6 +736,25 @@
     .auth-feedback {
       width: 100%;
     }
+
+    .page * {
+      max-width: 100%;
+    }
+
+    .item {
+      flex-direction: column;
+      gap: 4px;
+    }
+    .item-title,
+    .item-value {
+      width: 100%;
+    }
+
+    .training-list-head,
+    .training-toggle {
+      grid-template-columns: 1fr;
+      gap: 6px;
+    }
   }
   .training-content-view {
     margin-top: var(--space-sm);
