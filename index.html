@@ -185,18 +185,19 @@
   .parent-section-toggle { margin-left:auto; font-weight:normal; opacity:0.75; }
   .parent-section-title { flex:1; }
   .parent-section-content[hidden] { display:none; }
-  .cell-edit-shell { position:relative; display:flex; align-items:flex-start; gap:var(--space-sm); }
-  .cell-edit-actions { min-height:2rem; display:flex; flex:0 0 auto; gap:var(--space-sm); }
-  .cell-edit-actions .is-placeholder { visibility:hidden; pointer-events:none; }
-  .cell-edit-btn { width:2rem; height:2rem; padding:0; display:inline-flex; align-items:center; justify-content:center; color:inherit; line-height:1; }
-  .cell-edit-btn svg { width:1rem; height:1rem; display:block; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; fill:none; flex:0 0 auto; }
+  .cell-edit-shell { position:relative; display:flex; align-items:flex-start; gap:var(--space-xs); }
+  .cell-edit-actions { display:flex; flex:0 0 auto; flex-direction:column; gap:var(--space-xs); }
+  .cell-edit-btn { width:1.7rem; height:1.7rem; padding:0; display:inline-flex; align-items:center; justify-content:center; color:inherit; line-height:1; }
+  .cell-edit-btn svg { width:0.9rem; height:0.9rem; display:block; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; fill:none; flex:0 0 auto; }
   .cell-edit-btn.non-editable { opacity:0.45; cursor:not-allowed; }
   .cell-edit-btn.save-ready { background:#e9f3ff; border-color:#8ab4f8; }
   .cell-edit-btn.is-saving { cursor:progress; }
+  .cell-edit-btn:disabled { opacity:0.55; cursor:not-allowed; }
   .cell-value-text { white-space:pre-wrap; }
   .cell-editor { position:relative; flex:1 1 auto; min-width:0; }
-  .cell-value-input, .cell-value-display { width:100%; box-sizing:border-box; margin:0; padding:0.35rem 0.5rem; border:0.05rem solid #c5c5c5; border-radius:0.4rem; outline:none; font:inherit; background:#fff; min-height:2rem; }
-  .cell-value-display { display:flex; align-items:center; overflow-wrap:anywhere; }
+  .cell-value-input, .cell-value-display { width:100%; box-sizing:border-box; margin:0; padding:0.35rem 0.5rem; border:0.05rem solid #c5c5c5; border-radius:0.4rem; outline:none; font:inherit; min-height:2rem; }
+  .cell-value-input { background:#fff; }
+  .cell-value-display { display:flex; align-items:center; overflow-wrap:anywhere; border-color:transparent; background:transparent; }
   .cell-value-input:focus { border-color:#8ab4f8; box-shadow:0 0 0 0.1rem rgba(138,180,248,0.2); }
   .cell-suggest-list { position:absolute; left:0; right:0; top:calc(100% - 0.05rem); z-index:40; margin-top:0; background:#fff; border:0.05rem solid #c5c5c5; border-top:none; border-radius:0 0 0.4rem 0.4rem; box-shadow:0 0.3rem 0.8rem rgba(0,0,0,0.12); max-height:12rem; overflow:auto; }
   .cell-suggest-item { padding:0.35rem 0.5rem; cursor:pointer; border-bottom:0.05rem solid #f0f0f0; }
@@ -1738,7 +1739,7 @@
   }
 
   function renderCellViewActions(colIndex, editable = true, extraClass = '') {
-    return `<div class="cell-edit-actions">${renderCellEditButton(colIndex, editable, extraClass)}<button type="button" class="attendance-icon-btn cell-edit-btn is-placeholder" data-col-index="${colIndex}" data-mode="cancel" tabindex="-1" aria-hidden="true" disabled>${iconSvg('cancel')}</button></div>`;
+    return `<div class="cell-edit-actions">${renderCellEditButton(colIndex, editable, extraClass)}</div>`;
   }
 
   function renderCellEditActions(colIndex) {
