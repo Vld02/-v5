@@ -1031,7 +1031,7 @@ const EDIT_CONFIG = Object.freeze({
     TEXT: { title: 'Текст', description: 'Произвольное текстовое значение.', example: 'Текст', placeholder: '', regex: '^.*$', special: '' },
     SUGGEST_TEXT: { title: 'Текст из подсказок', description: 'Произвольный текст с подсказками.', example: 'Значение из списка', placeholder: '', regex: '^.*$', special: 'suggest' },
     FULL_NAME_RU: { title: 'ФИО', description: 'Фамилия, имя и отчество.', example: 'Иванов Иван Иванович', placeholder: 'Иванов Иван Иванович', regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: 'fullname' },
-    YEAR: { title: 'Год', description: 'Год в диапазоне 1950-2050.', example: '2024', placeholder: '2024', regex: '^(19[5-9]\\d|20[0-4]\\d|2050)$', special: 'year' },
+    YEAR: { title: 'Год', description: 'Год в динамическом диапазоне 1950 — текущий год + 1.', example: '2024', placeholder: '2024', regex: '^\\d{4}$', special: 'year' },
     CLASS_COURSE: { title: 'Класс / курс', description: '0-11 или I-VI.', example: '7', placeholder: '7', regex: '^(?:[0-9]|1[01]|I|II|III|IV|V|VI)$', special: 'classCourse' },
     RU_UPPER_LETTER: { title: 'Русская заглавная буква', description: 'Одна заглавная русская буква.', example: 'А', placeholder: 'А', regex: '^[А-ЯЁ]$', special: 'singleRuUpper' },
     PHONE_RU: { title: 'Номер телефона', description: 'Российский номер +7 999 123-45-67.', example: '+7 999 123-45-67', placeholder: '+7 999 123-45-67', regex: '^\\+7\\s\\d{3}\\s\\d{3}-\\d{2}-\\d{2}$', special: 'phoneRu' },
@@ -1094,6 +1094,15 @@ function getEditConfig() {
   return EDIT_CONFIG;
 }
 
+function getMaxEnrollmentYear_() {
+  return new Date().getFullYear() + 1;
+}
+
+function isEnrollmentYearInRange_(value) {
+  const year = Number(value);
+  return Number.isInteger(year) && year >= 1950 && year <= getMaxEnrollmentYear_();
+}
+
 function validateEditableFieldValue_(columnName, value) {
   const fieldConfig = EDIT_CONFIG.fields[String(columnName || '')];
   if (!fieldConfig) throw new Error('Поле не настроено для редактирования.');
@@ -1110,6 +1119,10 @@ function validateEditableFieldValue_(columnName, value) {
 
   if (!new RegExp(rule.regex).test(normalizedValue)) {
     throw new Error(`Значение поля "${columnName}" не соответствует правилу: ${rule.title}.`);
+  }
+
+  if (rule.special === 'year' && !isEnrollmentYearInRange_(normalizedValue)) {
+    throw new Error(`Год должен быть в диапазоне 1950-${getMaxEnrollmentYear_()}.`);
   }
 
   return { fieldConfig, rule, value: normalizedValue };
@@ -1162,6 +1175,7 @@ function updateResultCell(login, password, snils, columnName, value) {
     if (rowSnils && normalizedSnils && rowSnils !== normalizedSnils) continue;
 
     const rowIndex = i + 2;
+
     const oldValue = String(sheet.getRange(rowIndex, targetCol + 1).getValue() ?? '').trim();
     const identityChanged = Boolean(validation.fieldConfig.isIdentityField && oldValue !== validation.value);
     sheet.getRange(rowIndex, targetCol + 1).setValue(validation.value);
