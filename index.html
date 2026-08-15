@@ -847,7 +847,10 @@
     'Тренер МГФСО': { sourceSheet: 'Списки данных', sourceHeader: 'Тренер МГФСО', startRow: 2 },
     'Разряд': { sourceSheet: 'Списки данных', sourceHeader: 'Список разрядов', startRow: 2 },
     'Свидетельство: Кем выдан (С)': { sourceSheet: 'Результат', sourceHeader: 'Свидетельство: Кем выдан (С)', startRow: 2 },
-    'Паспорт: Кем выдан': { sourceSheet: 'Результат', sourceHeader: 'Паспорт: Кем выдан', startRow: 2 }
+    'Паспорт: Кем выдан': { sourceSheet: 'Результат', sourceHeader: 'Паспорт: Кем выдан', startRow: 2 },
+    'Паспорт: Кем выдан (П)': { sourceSheet: 'Результат', sourceHeader: 'Паспорт: Кем выдан (П)', startRow: 2 },
+    'Паспорт: Кем выдан (М)': { sourceSheet: 'Результат', sourceHeader: 'Паспорт: Кем выдан (М)', startRow: 2 },
+    'Паспорт: Кем выдан (Д)': { sourceSheet: 'Результат', sourceHeader: 'Паспорт: Кем выдан (Д)', startRow: 2 }
   });
 
   let currentDocsRow = { header: [], row: [], colors: [] };
@@ -950,11 +953,27 @@
     return Number.isInteger(year) && year >= 1950 && year <= getMaxEnrollmentYear();
   }
 
+  function isValidRuDate(value) {
+    const match = String(value || '').match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+    if (!match) return false;
+
+    const day = Number(match[1]);
+    const month = Number(match[2]);
+    const year = Number(match[3]);
+
+    if (month < 1 || month > 12) return false;
+    if (day < 1) return false;
+
+    const daysInMonth = new Date(year, month, 0).getDate();
+    return day <= daysInMonth;
+  }
+
   function isValidFieldValue(trimmedValue, rule) {
     const value = String(trimmedValue || '');
     if (value === '') return !rule.required;
     if (!new RegExp(rule.regex).test(value)) return false;
     if (rule.special === 'year') return isEnrollmentYearInRange(value);
+    if (rule.special === 'date') return isValidRuDate(value);
     return true;
   }
 

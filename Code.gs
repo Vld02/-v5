@@ -1066,11 +1066,38 @@ const EDIT_CONFIG = Object.freeze({
     'Телефон +7 (С)': { editable: true, rule: 'PHONE_RU', required: false, isIdentityField: false },
     'Электронная почта (С)': { editable: true, rule: 'EMAIL', required: false, isIdentityField: false },
     'Фамилия Имя Отчество (П)': { editable: true, rule: 'FULL_NAME_RU', required: false, isIdentityField: false },
+    'Телефон +7 (П)': { editable: true, rule: 'PHONE_RU', required: false, isIdentityField: false },
     'Электронная почта (П)': { editable: true, rule: 'EMAIL', required: false, isIdentityField: false },
+    'Дата рождения (П)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false },
+    'Паспорт: Серия, номер (П)': { editable: true, rule: 'PASSPORT_RU', required: false, isIdentityField: false },
+    'Паспорт: Кем выдан (П)': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false },
+    'Паспорт: Когда выдан (П)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false },
+    'Паспорт: Прописка (П)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
+    'Паспорт: Код подразделения (П)': { editable: true, rule: 'PASSPORT_DIVISION_CODE', required: false, isIdentityField: false },
+    'Марка автомобиля (П)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
+    'гос. номер автомобиля (П)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
     'Фамилия Имя Отчество (М)': { editable: true, rule: 'FULL_NAME_RU', required: false, isIdentityField: false },
+    'Телефон +7 (М)': { editable: true, rule: 'PHONE_RU', required: false, isIdentityField: false },
     'Электронная почта (М)': { editable: true, rule: 'EMAIL', required: false, isIdentityField: false },
+    'Дата рождения (М)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false },
+    'Паспорт: Серия, номер (М)': { editable: true, rule: 'PASSPORT_RU', required: false, isIdentityField: false },
+    'Паспорт: Кем выдан (М)': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false },
+    'Паспорт: Когда выдан (М)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false },
+    'Паспорт: Прописка (М)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
+    'Паспорт: Код подразделения (М)': { editable: true, rule: 'PASSPORT_DIVISION_CODE', required: false, isIdentityField: false },
+    'Марка автомобиля (М)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
+    'гос. номер автомобиля (М)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
     'Фамилия Имя Отчество (Д)': { editable: true, rule: 'FULL_NAME_RU', required: false, isIdentityField: false },
+    'Телефон +7 (Д)': { editable: true, rule: 'PHONE_RU', required: false, isIdentityField: false },
     'Электронная почта (Д)': { editable: true, rule: 'EMAIL', required: false, isIdentityField: false },
+    'Дата рождения (Д)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false },
+    'Паспорт: Серия, номер (Д)': { editable: true, rule: 'PASSPORT_RU', required: false, isIdentityField: false },
+    'Паспорт: Кем выдан (Д)': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false },
+    'Паспорт: Когда выдан (Д)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false },
+    'Паспорт: Прописка (Д)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
+    'Паспорт: Код подразделения (Д)': { editable: true, rule: 'PASSPORT_DIVISION_CODE', required: false, isIdentityField: false },
+    'Марка автомобиля (Д)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
+    'гос. номер автомобиля (Д)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
     'Свидетельство: Серия, номер (С)': { editable: true, rule: 'CERTIFICATE_RU', required: false, isIdentityField: false },
     'Паспорт: Серия, номер (С)': { editable: true, rule: 'PASSPORT_RU', required: false, isIdentityField: false },
     'Свидетельство: Кем выдан (С)': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false },
@@ -1116,6 +1143,21 @@ function isEnrollmentYearInRange_(value) {
   return Number.isInteger(year) && year >= 1950 && year <= getMaxEnrollmentYear_();
 }
 
+function isValidRuDate_(value) {
+  const match = String(value || '').match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (!match) return false;
+
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = Number(match[3]);
+
+  if (month < 1 || month > 12) return false;
+  if (day < 1) return false;
+
+  const daysInMonth = new Date(year, month, 0).getDate();
+  return day <= daysInMonth;
+}
+
 function validateEditableFieldValue_(columnName, value) {
   const fieldConfig = EDIT_CONFIG.fields[String(columnName || '')];
   if (!fieldConfig) throw new Error('Поле не настроено для редактирования.');
@@ -1138,6 +1180,10 @@ function validateEditableFieldValue_(columnName, value) {
     throw new Error(`Год должен быть в диапазоне 1950-${getMaxEnrollmentYear_()}.`);
   }
 
+  if (rule.special === 'date' && !isValidRuDate_(normalizedValue)) {
+    throw new Error(`Значение поля "${columnName}" не является корректной календарной датой.`);
+  }
+
   return { fieldConfig, rule, value: normalizedValue };
 }
 
@@ -1147,10 +1193,11 @@ function prependSiteEditNote_(cell, historyTimestamp, newValue) {
   cell.setNote(note ? `${historyLine}\n${note}` : historyLine);
 }
 
-function setValueWithSiteEditNote_(cell, newValue, historyTimestamp) {
+function setValueWithSiteEditNote_(cell, newValue, historyTimestamp, options = {}) {
   const oldValue = formatCellValue(cell.getValue()).trim();
   if (oldValue === newValue) return false;
 
+  if (options.asPlainText) cell.setNumberFormat('@');
   cell.setValue(newValue);
   prependSiteEditNote_(cell, historyTimestamp, newValue);
   return true;
@@ -1209,7 +1256,9 @@ function updateResultCell(login, password, snils, columnName, value) {
     const oldValue = formatCellValue(cell.getValue()).trim();
     const identityChanged = Boolean(validation.fieldConfig.isIdentityField && oldValue !== validation.value);
     const historyTimestamp = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, `${CONFIG.DATE_FORMAT} HH:mm:ss`);
-    const changed = setValueWithSiteEditNote_(cell, validation.value, historyTimestamp);
+    const changed = setValueWithSiteEditNote_(cell, validation.value, historyTimestamp, {
+      asPlainText: validation.rule.special === 'date'
+    });
     const onSaveChanged = changed ? runFieldOnSaveAction_(validation.fieldConfig, sheet, header, rowIndex, historyTimestamp) : false;
     return { ok: true, identityChanged: changed && identityChanged, changed, onSaveChanged };
   }
