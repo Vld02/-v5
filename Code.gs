@@ -1175,9 +1175,6 @@ function updateResultCell(login, password, snils, columnName, value) {
     if (rowSnils && normalizedSnils && rowSnils !== normalizedSnils) continue;
 
     const rowIndex = i + 2;
-    if (String(columnName || '') === 'Дата рождения (С)' && validation.value !== rowPassword) {
-      throw new Error('Дата рождения должна совпадать с паролем.');
-    }
 
     const oldValue = String(sheet.getRange(rowIndex, targetCol + 1).getValue() ?? '').trim();
     const identityChanged = Boolean(validation.fieldConfig.isIdentityField && oldValue !== validation.value);

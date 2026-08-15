@@ -936,21 +936,15 @@
     setTimeout(() => toast.remove(), 3500);
   }
 
-  function resetDocsAuthorizationAfterIdentityChange(message) {
-    localStorage.removeItem('savedLogin');
-    localStorage.removeItem('savedDate');
-    localStorage.removeItem('savedSnils');
-    localStorage.removeItem('isLoggedIn');
-    sessionStorage.clear();
-    hideSnilsStep();
-    currentDocsRow = { header: [], row: [], colors: [] };
-    document.getElementById('result').innerHTML = '';
-    dom.login.value = '';
-    dom.password.value = '';
-    dom.snils.value = '';
-    dom.error.textContent = message || 'Для продолжения необходимо войти заново.';
-    stopAuthLoading();
-    dom.login.focus();
+  function updateCurrentIdentityAfterSave(columnName, value) {
+    if (columnName === 'Фамилия Имя Отчество (С)') {
+      dom.login.value = value;
+    } else if (columnName === 'Дата рождения (С)') {
+      dom.password.value = value;
+    } else if (columnName === 'Снилс: номер') {
+      dom.snils.value = formatSnilsInput(value);
+    }
+    saveAuthInputs(dom.login.value.trim(), dom.password.value.trim(), dom.snils.value.trim());
   }
 
   function filterSuggestions(query, options) {
@@ -1719,7 +1713,7 @@
     const oldValue = String(currentDocsRow.row[colIndex] ?? '').trim();
     const identityChanged = Boolean(rule.isIdentityField && saveValue !== oldValue);
     if (!isValidFieldValue(saveValue, rule)) return;
-    if (identityChanged && !confirm('Вы изменяете данные, используемые для идентификации пользователя.\n\nПосле сохранения текущая сессия будет завершена, и потребуется войти в систему заново.\n\nПродолжить?')) return;
+    if (identityChanged && !confirm('Вы изменяете данные, используемые для идентификации пользователя.\n\nПосле успешного сохранения следующие запросы будут использовать новое значение.\n\nПродолжить?')) return;
     btn.disabled = true;
     btn.textContent = '⏳';
     google.script.run
@@ -1729,11 +1723,10 @@
         const style = bg ? `background:${bg};` : '';
         cell.innerHTML = `<button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="edit">✎</button><div class="cell-value-text">${escapeHtml(saveValue)}</div>`;
         cell.setAttribute('style', style);
-        showToast('Сохранено');
         if (identityChanged || (response && response.identityChanged)) {
-          alert('Данные, используемые для идентификации, изменены. Для продолжения необходимо войти заново.');
-          resetDocsAuthorizationAfterIdentityChange('Для продолжения необходимо войти заново.');
+          updateCurrentIdentityAfterSave(currentDocsRow.header[colIndex], saveValue);
         }
+        showToast('Сохранено');
       })
       .withFailureHandler(error => {
         btn.disabled = false;
