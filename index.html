@@ -185,8 +185,8 @@
   .parent-section-toggle { margin-left:auto; font-weight:normal; opacity:0.75; }
   .parent-section-title { flex:1; }
   .parent-section-content[hidden] { display:none; }
-  .cell-edit-shell { position:relative; }
-  .cell-edit-actions { min-height:2rem; display:flex; justify-content:flex-end; gap:var(--space-sm); margin-bottom:var(--space-xs); }
+  .cell-edit-shell { position:relative; display:flex; align-items:flex-start; gap:var(--space-sm); }
+  .cell-edit-actions { min-height:2rem; display:flex; flex:0 0 auto; gap:var(--space-sm); }
   .cell-edit-actions .is-placeholder { visibility:hidden; pointer-events:none; }
   .cell-edit-btn { width:2rem; height:2rem; padding:0; display:inline-flex; align-items:center; justify-content:center; color:inherit; line-height:1; }
   .cell-edit-btn svg { width:1rem; height:1rem; display:block; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; fill:none; flex:0 0 auto; }
@@ -194,7 +194,7 @@
   .cell-edit-btn.save-ready { background:#e9f3ff; border-color:#8ab4f8; }
   .cell-edit-btn.is-saving { cursor:progress; }
   .cell-value-text { white-space:pre-wrap; }
-  .cell-editor { position:relative; }
+  .cell-editor { position:relative; flex:1 1 auto; min-width:0; }
   .cell-value-input, .cell-value-display { width:100%; box-sizing:border-box; margin:0; padding:0.35rem 0.5rem; border:0.05rem solid #c5c5c5; border-radius:0.4rem; outline:none; font:inherit; background:#fff; min-height:2rem; }
   .cell-value-display { display:flex; align-items:center; overflow-wrap:anywhere; }
   .cell-value-input:focus { border-color:#8ab4f8; box-shadow:0 0 0 0.1rem rgba(138,180,248,0.2); }
@@ -1746,7 +1746,7 @@
   }
 
   function renderCellDisplayMarkup(colIndex, value, editable = true, extraClass = '') {
-    return `<div class="cell-edit-shell">${renderCellViewActions(colIndex, editable, extraClass)}<div class="cell-editor"><div class="cell-value-display"><div class="cell-value-text">${escapeHtml(value)}</div></div></div></div>`;
+    return `<div class="cell-edit-shell"><div class="cell-editor"><div class="cell-value-display"><div class="cell-value-text">${escapeHtml(value)}</div></div></div>${renderCellViewActions(colIndex, editable, extraClass)}</div>`;
   }
 
   function renderCellDisplay(cell, colIndex, value) {
@@ -1769,7 +1769,7 @@
       const textNode = cell.querySelector('.cell-value-text');
       const value = textNode ? textNode.textContent : '';
       cell.dataset.originalValue = value;
-      cell.innerHTML = `<div class="cell-edit-shell">${renderCellEditActions(colIndex)}<div class="cell-editor"><input class="cell-value-input" data-col-index="${colIndex}" value="${escapeHtmlAttr(value)}" /></div></div>`;
+      cell.innerHTML = `<div class="cell-edit-shell"><div class="cell-editor"><input class="cell-value-input" data-col-index="${colIndex}" value="${escapeHtmlAttr(value)}" /></div>${renderCellEditActions(colIndex)}</div>`;
       const input = cell.querySelector('input');
       const suggestConfig = FIELD_SUGGEST_CONFIG[currentDocsRow.header[colIndex]];
       let suggestionOptions = [];
