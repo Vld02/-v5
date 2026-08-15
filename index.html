@@ -928,85 +928,39 @@
   const TRAINING_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1K1TtjIL2retzFoXBlQaePKbeKIEkMZZedZX-Ans4VjY/edit?usp=sharing';
 
   /* ============================================================
-   НАБОР ПРАВИЛ РЕДАКТИРОВАНИЯ
+   КОНФИГУРАЦИЯ РЕДАКТИРОВАНИЯ НА КЛИЕНТЕ
 
-   Это универсальные типы данных, а не названия столбцов таблицы.
-   Один ключ EDIT_RULES может использоваться любым количеством полей
-   из FIELD_CONFIG. Менять regex/placeholder/special нужно здесь,
-   если меняется формат данных для всех связанных столбцов.
+   Единственный источник истины находится на сервере в Code.gs:
+   EDIT_CONFIG.rules и EDIT_CONFIG.fields. Браузер хранит только
+   полученную копию в editConfig, чтобы построить интерфейс, подсказки,
+   плейсхолдеры и клиентскую проверку для удобства пользователя.
 
-   ВАЖНО ДЛЯ БЕЗОПАСНОСТИ:
-   клиентские ограничения не являются защитой. Эти правила помогают
-   пользователю вводить данные, но сервер обязан повторно проверить
-   editable, required и regex перед записью в Google Таблицу.
-
-   НЕ ДОБАВЛЯТЬ сюда конкретные заголовки таблицы. Для этого есть
-   FIELD_CONFIG ниже.
+   ВАЖНО: эту копию можно изменить через DevTools, поэтому она не
+   является защитой. updateResultCell() всегда заново проверяет
+   поле и значение по серверному EDIT_CONFIG.
    ============================================================ */
-  const EDIT_RULES = Object.freeze({
-    TEXT: { title: 'Текст', description: 'Произвольное текстовое значение. Сохраняет прежнее поведение полей без строгого формата.', example: 'Текст', placeholder: '', regex: '^.*$', special: '' },
-    SUGGEST_TEXT: { title: 'Текст из подсказок', description: 'Произвольный текст с выпадающими подсказками из FIELD_SUGGEST_CONFIG.', example: 'Значение из списка', placeholder: '', regex: '^.*$', special: 'suggest' },
-    FULL_NAME_RU: { title: 'ФИО', description: 'Фамилия, имя и отчество: три слова, каждое начинается с заглавной русской буквы.', example: 'Иванов Иван Иванович', placeholder: 'Иванов Иван Иванович', regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: 'fullname' },
-    YEAR: { title: 'Год', description: 'Год в диапазоне от 1950 до 2050.', example: '2024', placeholder: '2024', regex: '^(19[5-9]\\d|20[0-4]\\d|2050)$', special: 'year' },
-    CLASS_COURSE: { title: 'Класс / курс', description: 'Цифра 0-11 или римская цифра I-VI.', example: '7', placeholder: '7', regex: '^(?:[0-9]|1[01]|I|II|III|IV|V|VI)$', special: 'classCourse' },
-    RU_UPPER_LETTER: { title: 'Русская заглавная буква', description: 'Одна заглавная русская буква.', example: 'А', placeholder: 'А', regex: '^[А-ЯЁ]$', special: 'singleRuUpper' },
-    PHONE_RU: { title: 'Номер телефона', description: 'Российский номер телефона в формате +7 999 123-45-67.', example: '+7 999 123-45-67', placeholder: '+7 999 123-45-67', regex: '^\\+7\\s\\d{3}\\s\\d{3}-\\d{2}-\\d{2}$', special: 'phoneRu' },
-    EMAIL: { title: 'Электронная почта', description: 'Адрес электронной почты латиницей с доменом.', example: 'name@example.ru', placeholder: 'name@example.ru', regex: '^[A-Za-z0-9.!#$%&\'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$', special: 'email' },
-    CERTIFICATE_RU: { title: 'Свидетельство о рождении', description: 'Серия римскими цифрами, русские буквы и шестизначный номер.', example: 'IV-АБ № 123456', placeholder: 'IV-АБ № 123456', regex: '^([VIX]{1,4}-[А-ЯЁ]{1,3}\\s*№\\s*\\d{6})$', special: 'certificate' },
-    DATE_RU: { title: 'Дата', description: 'Дата в формате ДД.ММ.ГГГГ.', example: '01.09.2010', placeholder: 'ДД.ММ.ГГГГ', regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', special: 'date' },
-    SNILS: { title: 'СНИЛС', description: 'СНИЛС из 11 цифр с допустимыми дефисами или пробелами.', example: '000-000-000-00', placeholder: '000-000-000-00', regex: '^\\d{3}[-\\s]?\\d{3}[-\\s]?\\d{3}[-\\s]?\\d{2}$', special: 'snils' }
-  });
+  let editConfig = null;
+  let editConfigPromise = null;
 
-  /* ============================================================
-   СООТВЕТСТВИЕ ПОЛЕЙ И ПРАВИЛ
+  function loadEditConfig() {
+    if (editConfig) return Promise.resolve(editConfig);
+    if (editConfigPromise) return editConfigPromise;
 
-   Здесь находится конфигурация конкретных заголовков таблицы:
-   1. editable — можно ли менять поле через интерфейс и на сервере.
-   2. rule — ключ универсального правила из EDIT_RULES.
-   3. required — можно ли оставить значение пустым.
-   4. isIdentityField — поле участвует в идентификации пользователя.
-   5. onSave — дополнительное действие после успешной записи.
+    editConfigPromise = new Promise((resolve, reject) => {
+      google.script.run
+        .withSuccessHandler(config => {
+          editConfig = config || { rules: {}, fields: {} };
+          resolve(editConfig);
+        })
+        .withFailureHandler(error => {
+          editConfigPromise = null;
+          reject(error);
+        })
+        .getEditConfig();
+    });
 
-   Чтобы запретить редактирование, меняется только editable: false.
-   Чтобы изменить формат, меняется ссылка rule, а не regex в поле.
-   Сервер обязан использовать этот же смысл конфигурации и не доверять
-   данным, пришедшим из браузера.
-   ============================================================ */
-  const FIELD_CONFIG = Object.freeze({
-    default: { editable: false, rule: 'TEXT', required: false, isIdentityField: false },
-    'Фамилия Имя Отчество (С)': { editable: true, rule: 'FULL_NAME_RU', required: true, isIdentityField: true },
-    'Дата рождения (С)': { editable: false, rule: 'DATE_RU', required: true, isIdentityField: true },
-    'Месяц рождения (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
-    'Год набора': { editable: true, rule: 'YEAR', required: false, isIdentityField: false },
-    'Пол (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
-    'Школа': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, onSave: 'UPDATE_SCHOOL_DATE' },
-    'Класс / курс': { editable: true, rule: 'CLASS_COURSE', required: false, isIdentityField: false },
-    'Литера класса (буква)': { editable: true, rule: 'RU_UPPER_LETTER', required: false, isIdentityField: false },
-    'Директор школы: Фамилия Имя Отчество': { editable: true, rule: 'FULL_NAME_RU', required: false, isIdentityField: false },
-    'Адрес регистрации / Прописка (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
-    'Телефон +7 (С)': { editable: true, rule: 'PHONE_RU', required: false, isIdentityField: false },
-    'Электронная почта (С)': { editable: true, rule: 'EMAIL', required: false, isIdentityField: false },
-    'Фамилия Имя Отчество (П)': { editable: true, rule: 'FULL_NAME_RU', required: false, isIdentityField: false },
-    'Электронная почта (П)': { editable: true, rule: 'EMAIL', required: false, isIdentityField: false },
-    'Фамилия Имя Отчество (М)': { editable: true, rule: 'FULL_NAME_RU', required: false, isIdentityField: false },
-    'Электронная почта (М)': { editable: true, rule: 'EMAIL', required: false, isIdentityField: false },
-    'Фамилия Имя Отчество (Д)': { editable: true, rule: 'FULL_NAME_RU', required: false, isIdentityField: false },
-    'Электронная почта (Д)': { editable: true, rule: 'EMAIL', required: false, isIdentityField: false },
-    'Свидетельство: Серия, номер (С)': { editable: true, rule: 'CERTIFICATE_RU', required: false, isIdentityField: false },
-    'Паспорт: Серия, номер (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
-    'Паспорт или Свидетельство: Кем выдан (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
-    'Паспорт или Свидетельство: Когда выдан (С)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false },
-    'Паспорт: Код подразделения (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
-    'Снилс: номер': { editable: true, rule: 'SNILS', required: false, isIdentityField: true },
-    'Полис: Страховая компания': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
-    'Тренировочная группа': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false },
-    'МГФСО группа': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false },
-    'Тренер МГФСО': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false },
-    'Разряд': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false },
-    'Мед полис: номер': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
-    'Номер и страховя компания': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
-    'ID номер МГФСО': { editable: true, rule: 'TEXT', required: false, isIdentityField: false }
-  });
+    return editConfigPromise;
+  }
 
   const FIELD_SUGGEST_CONFIG = Object.freeze({
     'Школа': { sourceSheet: 'Списки данных', sourceHeader: 'Школы', startRow: 2 },
@@ -1019,9 +973,15 @@
 
   let currentDocsRow = { header: [], row: [], colors: [] };
 
+  loadEditConfig().catch(() => {});
+
   function getFieldEditRule(headerTitle) {
-    const fieldConfig = FIELD_CONFIG[headerTitle] || FIELD_CONFIG.default;
-    const editRule = EDIT_RULES[fieldConfig.rule] || EDIT_RULES.TEXT;
+    if (!editConfig) {
+      return { editable: false, rule: 'TEXT', required: false, isIdentityField: false, regex: '^.*$', special: '', placeholder: '', ruleKey: 'TEXT' };
+    }
+
+    const fieldConfig = editConfig.fields[headerTitle] || { editable: false, rule: 'TEXT', required: false, isIdentityField: false };
+    const editRule = editConfig.rules[fieldConfig.rule] || editConfig.rules.TEXT || { regex: '^.*$', special: '', placeholder: '' };
     return { ...editRule, ...fieldConfig, ruleKey: fieldConfig.rule };
   }
 
@@ -1485,7 +1445,12 @@
 
         localStorage.setItem('isLoggedIn', '1');
         hideSnilsStep();
-        showDocsResult(response);
+        loadEditConfig()
+          .then(() => showDocsResult(response))
+          .catch(() => {
+            dom.error.textContent = 'Не удалось загрузить правила редактирования.';
+            stopAuthLoading();
+          });
       })
       .checkLogin(loginVal, passwordForServer, clientInfo, snilsFormatted);
   }
@@ -1534,7 +1499,12 @@
         authState.login = '';
         authState.password = '';
         dom.snilsWrap.style.display = 'block';
-        showDocsResult(response);
+        loadEditConfig()
+          .then(() => showDocsResult(response))
+          .catch(() => {
+            dom.error.textContent = 'Не удалось загрузить правила редактирования.';
+            stopAuthLoading();
+          });
       })
       .verifySnils(authState.login, authState.password, snilsFormatted, clientInfo);
   }
@@ -2042,6 +2012,7 @@
 
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
+    loadEditConfig().catch(() => {});
     if (localStorage.getItem('isLoggedIn') !== '1') return;
     const now = Date.now();
     const lastSyncAt = Number(localStorage.getItem(LAST_SILENT_SYNC_KEY) || 0);
