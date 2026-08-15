@@ -185,15 +185,24 @@
   .parent-section-toggle { margin-left:auto; font-weight:normal; opacity:0.75; }
   .parent-section-title { flex:1; }
   .parent-section-content[hidden] { display:none; }
-  .cell-edit-btn { position:absolute; top:0.2rem; right:0.2rem; border:0.05rem solid #c5c5c5; background:#fff; border-radius:0.3rem; width:1.7rem; height:1.7rem; padding:0; margin:0; font-size:0.95rem; line-height:1; display:flex; align-items:center; justify-content:center; z-index:60; }
+  .cell-edit-shell { position:relative; min-height:2rem; padding-right:calc(1.7rem + var(--space-xs)); }
+  .cell-edit-actions { position:absolute; top:calc(-1 * var(--space-sm)); right:calc(-1 * var(--space-sm)); bottom:calc(-1 * var(--space-sm)); width:1.7rem; display:flex; flex-direction:column; gap:0; }
+  .cell-edit-btn { width:1.7rem; min-height:0; flex:1 1 0; padding:0; display:inline-flex; align-items:center; justify-content:center; color:inherit; line-height:1; }
+  .cell-edit-btn svg { width:0.65rem; height:0.65rem; display:block; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; fill:none; flex:0 0 auto; }
   .cell-edit-btn.non-editable { opacity:0.45; cursor:not-allowed; }
   .cell-edit-btn.save-ready { background:#e9f3ff; border-color:#8ab4f8; }
+  .cell-edit-btn.is-saving { cursor:progress; }
   .cell-edit-btn:disabled { opacity:0.55; cursor:not-allowed; }
-  .cell-value-text { padding:0.2rem 2rem 0.2rem 0; white-space:pre-wrap; min-height:1.6rem; display:flex; align-items:center; }
-  .cell-editor { padding-right:2.15rem; position:relative; }
-  .cell-value-input { width:100%; box-sizing:border-box; margin:0; padding:0.35rem 0.5rem; border:0.05rem solid #c5c5c5; border-radius:0.4rem; outline:none; font:inherit; background:#fff; min-height:2rem; }
+  .cell-value-text { white-space:pre-wrap; }
+  .cell-editor { position:relative; min-width:0; }
+  .cell-value-input, .cell-value-display { width:100%; box-sizing:border-box; margin:0; padding:0.35rem 0.5rem; border:0.05rem solid #c5c5c5; border-radius:0.4rem; outline:none; font:inherit; min-height:2rem; }
+  .cell-value-input { background:#fff; }
+  .cell-value-display { display:flex; align-items:center; overflow-wrap:anywhere; border-color:transparent; background:transparent; }
   .cell-value-input:focus { border-color:#8ab4f8; box-shadow:0 0 0 0.1rem rgba(138,180,248,0.2); }
-  .cell-suggest-list { position:absolute; left:0; right:2rem; top:calc(100% - 0.05rem); z-index:40; margin-top:0; background:#fff; border:0.05rem solid #c5c5c5; border-top:none; border-radius:0 0 0.4rem 0.4rem; box-shadow:0 0.3rem 0.8rem rgba(0,0,0,0.12); max-height:12rem; overflow:auto; }
+  .cell-edit-help { position:relative; }
+  .cell-help-popover { position:absolute; right:calc(100% + var(--space-xs)); top:0; z-index:80; width:max-content; max-width:min(16rem, 70vw); padding:0.45rem 0.55rem; border:0.05rem solid var(--border); border-radius:var(--radius-sm); background:#fff; box-shadow:0 0.3rem 0.8rem rgba(0,0,0,0.12); font-size:0.85rem; line-height:1.25; opacity:0; visibility:hidden; pointer-events:none; }
+  .cell-edit-help:hover .cell-help-popover, .cell-edit-help:focus-within .cell-help-popover, .cell-edit-help.is-pinned .cell-help-popover { opacity:1; visibility:visible; pointer-events:auto; }
+  .cell-suggest-list { position:absolute; left:0; right:0; top:calc(100% - 0.05rem); z-index:40; margin-top:0; background:#fff; border:0.05rem solid #c5c5c5; border-top:none; border-radius:0 0 0.4rem 0.4rem; box-shadow:0 0.3rem 0.8rem rgba(0,0,0,0.12); max-height:12rem; overflow:auto; }
   .cell-suggest-item { padding:0.35rem 0.5rem; cursor:pointer; border-bottom:0.05rem solid #f0f0f0; }
   .cell-suggest-item:last-child { border-bottom:none; }
   .cell-suggest-item:hover, .cell-suggest-item.active { background:#eef5ff; }
@@ -1651,7 +1660,7 @@
         const style = bg ? `background:${bg};` : '';
         const rule = getFieldEditRule(header[i]);
         const btnClass = rule.editable ? '' : 'non-editable';
-        html += `<div class="item"><div class="item-title">${escapeHtml(cleanedTitle)}</div><div class="item-value" style="${style}" data-col-index="${i}"><button type="button" class="cell-edit-btn ${btnClass}" data-col-index="${i}" data-mode="edit" ${rule.editable ? '' : 'disabled'}>✎</button><div class="cell-value-text">${escapeHtml(row[i] ?? '')}</div></div></div>`;
+        html += `<div class="item"><div class="item-title">${escapeHtml(cleanedTitle)}</div><div class="item-value" style="${style}" data-col-index="${i}">${renderCellDisplayMarkup(i, row[i] ?? '', rule.editable, btnClass, rule)}</div></div>`;
       }
 
       if (isParentSection) html += '</div></div>';
@@ -1719,19 +1728,85 @@
     if (toggle) toggle.textContent = nextExpanded ? '−' : '＋';
   });
 
+  function iconSvg(name) {
+    const icons = {
+      edit: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>',
+      save: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>',
+      cancel: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>',
+      help: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9.1 9a3 3 0 1 1 5.8 1c-.7 1.2-2.4 1.7-2.4 3"/><path d="M12 17h.01"/><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>'
+    };
+    return icons[name] || '';
+  }
+
+  function renderCellEditButton(colIndex, editable = true, extraClass = '') {
+    return `<button type="button" class="attendance-icon-btn cell-edit-btn ${extraClass}" data-col-index="${colIndex}" data-mode="edit" title="Редактировать" aria-label="Редактировать" ${editable ? '' : 'disabled'}>${iconSvg('edit')}</button>`;
+  }
+
+  function getFieldDescription(rule) {
+    const parts = [];
+    if (rule.description) parts.push(rule.description);
+    if (rule.example) parts.push(`Пример: ${rule.example}`);
+    if (rule.required) parts.push('Обязательное поле.');
+    return parts.join(' ');
+  }
+
+  function renderCellHelpButton(colIndex, rule) {
+    const description = getFieldDescription(rule) || 'Нет дополнительного описания.';
+    return `<div class="cell-edit-help"><button type="button" class="attendance-icon-btn cell-edit-btn" data-col-index="${colIndex}" data-mode="help" title="Описание" aria-label="Описание поля" aria-expanded="false">${iconSvg('help')}</button><div class="cell-help-popover" role="note">${escapeHtml(description)}</div></div>`;
+  }
+
+  function renderCellViewActions(colIndex, editable = true, extraClass = '', rule = {}) {
+    return `<div class="cell-edit-actions">${renderCellHelpButton(colIndex, rule)}${renderCellEditButton(colIndex, editable, extraClass)}</div>`;
+  }
+
+  function renderCellEditActions(colIndex) {
+    return `<div class="cell-edit-actions"><button type="button" class="attendance-icon-btn cell-edit-btn" data-col-index="${colIndex}" data-mode="save" title="Сохранить" aria-label="Сохранить" disabled>${iconSvg('save')}</button><button type="button" class="attendance-icon-btn cell-edit-btn" data-col-index="${colIndex}" data-mode="cancel" title="Отмена" aria-label="Отмена">${iconSvg('cancel')}</button></div>`;
+  }
+
+  function renderCellDisplayMarkup(colIndex, value, editable = true, extraClass = '', rule = {}) {
+    return `<div class="cell-edit-shell"><div class="cell-editor"><div class="cell-value-display"><div class="cell-value-text">${escapeHtml(value)}</div></div></div>${renderCellViewActions(colIndex, editable, extraClass, rule)}</div>`;
+  }
+
+  function renderCellDisplay(cell, colIndex, value) {
+    const bg = currentDocsRow.colors[colIndex] || '';
+    const style = bg ? `background:${bg};` : '';
+    const rule = getFieldEditRule(currentDocsRow.header[colIndex]);
+    const btnClass = rule.editable ? '' : 'non-editable';
+    cell.innerHTML = renderCellDisplayMarkup(colIndex, value, rule.editable, btnClass, rule);
+    cell.setAttribute('style', style);
+  }
+
 
   document.addEventListener('click', function(e) {
     const btn = e.target.closest('.cell-edit-btn');
     if (!btn) return;
     const colIndex = Number(btn.dataset.colIndex);
     const rule = getFieldEditRule(currentDocsRow.header[colIndex]);
-    if (!rule.editable || Number.isNaN(colIndex)) return;
+    if (Number.isNaN(colIndex)) return;
     const cell = btn.closest('.item-value');
     const mode = btn.dataset.mode || 'edit';
+    if (mode === 'help') {
+      const help = btn.closest('.cell-edit-help');
+      if (!help) return;
+      e.stopPropagation();
+      const nextPinned = !help.classList.contains('is-pinned');
+      document.querySelectorAll('.cell-edit-help.is-pinned').forEach(node => {
+        if (node !== help) {
+          node.classList.remove('is-pinned');
+          const pinnedBtn = node.querySelector('.cell-edit-btn[data-mode="help"]');
+          if (pinnedBtn) pinnedBtn.setAttribute('aria-expanded', 'false');
+        }
+      });
+      help.classList.toggle('is-pinned', nextPinned);
+      btn.setAttribute('aria-expanded', nextPinned ? 'true' : 'false');
+      return;
+    }
+    if (!rule.editable) return;
     if (mode === 'edit') {
       const textNode = cell.querySelector('.cell-value-text');
       const value = textNode ? textNode.textContent : '';
-      cell.innerHTML = `<button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="save" disabled>💾</button><div class="cell-editor"><input class="cell-value-input" data-col-index="${colIndex}" value="${escapeHtmlAttr(value)}" /></div>`;
+      cell.dataset.originalValue = value;
+      cell.innerHTML = `<div class="cell-edit-shell"><div class="cell-editor"><input class="cell-value-input" data-col-index="${colIndex}" value="${escapeHtmlAttr(value)}" /></div>${renderCellEditActions(colIndex)}</div>`;
       const input = cell.querySelector('input');
       const suggestConfig = FIELD_SUGGEST_CONFIG[currentDocsRow.header[colIndex]];
       let suggestionOptions = [];
@@ -1774,7 +1849,8 @@
       input.focus();
       input.select();
       const validate = () => {
-        const saveBtn = cell.querySelector('.cell-edit-btn');
+        const saveBtn = cell.querySelector('.cell-edit-btn[data-mode="save"]');
+        if (!saveBtn) return;
         const trimmed = input.value.trim();
         const ok = isValidFieldValue(trimmed, rule);
         saveBtn.disabled = !ok;
@@ -1796,6 +1872,13 @@
           items.forEach((node, idx) => node.classList.toggle('active', idx === activeSuggestionIndex));
           return;
         }
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          dropSuggestionList();
+          const cancelBtn = cell.querySelector('.cell-edit-btn[data-mode="cancel"]');
+          if (cancelBtn) cancelBtn.click();
+          return;
+        }
         if (event.key !== 'Enter') return;
         event.preventDefault();
         if (items.length) {
@@ -1806,7 +1889,7 @@
         }
         input.blur();
         setTimeout(() => {
-          const saveBtn = cell.querySelector('.cell-edit-btn');
+          const saveBtn = cell.querySelector('.cell-edit-btn[data-mode="save"]');
           validate();
           if (!saveBtn || saveBtn.disabled) return;
           saveBtn.click();
@@ -1825,6 +1908,14 @@
       }
       return;
     }
+    if (mode === 'cancel') {
+      const originalValue = cell.dataset.originalValue ?? '';
+      const existing = cell.querySelector('.cell-suggest-list');
+      if (existing) existing.remove();
+      delete cell.dataset.originalValue;
+      renderCellDisplay(cell, colIndex, originalValue);
+      return;
+    }
     const input = cell.querySelector('input');
     const saveValue = (input?.value || '').trim();
     const oldValue = String(currentDocsRow.row[colIndex] ?? '').trim();
@@ -1832,14 +1923,15 @@
     if (!isValidFieldValue(saveValue, rule)) return;
     if (identityChanged && !confirm('Вы изменяете данные, используемые для идентификации пользователя.\n\nПосле успешного сохранения следующие запросы будут использовать новое значение.\n\nПродолжить?')) return;
     btn.disabled = true;
-    btn.textContent = '⏳';
+    const cancelBtn = cell.querySelector('.cell-edit-btn[data-mode="cancel"]');
+    if (cancelBtn) cancelBtn.disabled = true;
+    btn.classList.add('is-saving');
+    btn.setAttribute('aria-label', 'Сохранение');
     google.script.run
       .withSuccessHandler(response => {
         currentDocsRow.row[colIndex] = saveValue;
-        const bg = currentDocsRow.colors[colIndex] || '';
-        const style = bg ? `background:${bg};` : '';
-        cell.innerHTML = `<button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="edit">✎</button><div class="cell-value-text">${escapeHtml(saveValue)}</div>`;
-        cell.setAttribute('style', style);
+        delete cell.dataset.originalValue;
+        renderCellDisplay(cell, colIndex, saveValue);
         if (identityChanged || (response && response.identityChanged)) {
           updateCurrentIdentityAfterSave(currentDocsRow.header[colIndex], saveValue);
         }
@@ -1847,11 +1939,23 @@
       })
       .withFailureHandler(error => {
         btn.disabled = false;
-        btn.textContent = '💾';
+        const cancelBtn = cell.querySelector('.cell-edit-btn[data-mode="cancel"]');
+        if (cancelBtn) cancelBtn.disabled = false;
+        btn.classList.remove('is-saving');
+        btn.setAttribute('aria-label', 'Сохранить');
         const message = error && error.message ? error.message : 'Не удалось сохранить изменения.';
         showToast(`Ошибка: ${message}`, 'error');
       })
       .updateResultCell(dom.login.value.trim(), dom.password.value.trim(), dom.snils.value.trim(), currentDocsRow.header[colIndex], saveValue);
+  });
+
+  document.addEventListener('click', function(e) {
+    if (e.target.closest('.cell-edit-help')) return;
+    document.querySelectorAll('.cell-edit-help.is-pinned').forEach(node => {
+      node.classList.remove('is-pinned');
+      const btn = node.querySelector('.cell-edit-btn[data-mode="help"]');
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+    });
   });
 
   function escapeHtmlAttr(s) {
