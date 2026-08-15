@@ -162,6 +162,29 @@
   .item:first-of-type { border-top: 0.05rem solid #d8d8d8; }
   .item-title { font-weight: bold; width: 45%; padding: var(--space-sm); background:#f7f7f7; border-right:0.05rem solid #d8d8d8; display:flex; align-items:center; }
   .item-value { width: 55%; padding: var(--space-sm); position: relative; min-height: 2.2rem; }
+  .parent-section { margin-top:1rem; }
+  .parent-section-header {
+    width:100%;
+    margin:0 0 0.5rem;
+    padding:0 0 0.35rem;
+    border:0;
+    border-bottom:0.1rem solid #000;
+    background:transparent;
+    color:inherit;
+    font:inherit;
+    font-weight:bold;
+    font-size:1.2rem;
+    text-align:center;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:0.75rem;
+    cursor:pointer;
+  }
+  .parent-section-header:hover { background:#f7f7f7; }
+  .parent-section-toggle { margin-left:auto; font-weight:normal; opacity:0.75; }
+  .parent-section-title { flex:1; }
+  .parent-section-content[hidden] { display:none; }
   .cell-edit-btn { position:absolute; top:0.2rem; right:0.2rem; border:0.05rem solid #c5c5c5; background:#fff; border-radius:0.3rem; width:1.7rem; height:1.7rem; padding:0; margin:0; font-size:0.95rem; line-height:1; display:flex; align-items:center; justify-content:center; z-index:60; }
   .cell-edit-btn.non-editable { opacity:0.45; cursor:not-allowed; }
   .cell-edit-btn.save-ready { background:#e9f3ff; border-color:#8ab4f8; }
@@ -845,7 +868,12 @@
     'Тренировочная группа': { sourceSheet: 'Списки данных', sourceHeader: 'Группы тренировки', startRow: 5 },
     'МГФСО группа': { sourceSheet: 'Списки данных', sourceHeader: 'Группы МГФСО', startRow: 2 },
     'Тренер МГФСО': { sourceSheet: 'Списки данных', sourceHeader: 'Тренер МГФСО', startRow: 2 },
-    'Разряд': { sourceSheet: 'Списки данных', sourceHeader: 'Список разрядов', startRow: 2 }
+    'Разряд': { sourceSheet: 'Списки данных', sourceHeader: 'Список разрядов', startRow: 2 },
+    'Свидетельство: Кем выдан (С)': { sourceSheet: 'Результат', sourceHeader: 'Свидетельство: Кем выдан (С)', startRow: 2 },
+    'Паспорт: Кем выдан': { sourceSheet: 'Результат', sourceHeader: 'Паспорт: Кем выдан', startRow: 2 },
+    'Паспорт: Кем выдан (П)': { sourceSheet: 'Результат', sourceHeader: 'Паспорт: Кем выдан (П)', startRow: 2 },
+    'Паспорт: Кем выдан (М)': { sourceSheet: 'Результат', sourceHeader: 'Паспорт: Кем выдан (М)', startRow: 2 },
+    'Паспорт: Кем выдан (Д)': { sourceSheet: 'Результат', sourceHeader: 'Паспорт: Кем выдан (Д)', startRow: 2 }
   });
 
   let currentDocsRow = { header: [], row: [], colors: [] };
@@ -874,6 +902,10 @@
     }
     if (rule.special === 'email') return value.replace(/[А-Яа-яЁё]/g, '');
     if (rule.special === 'snils') return formatSnilsInput(value);
+    if (rule.special === 'passportRu') return formatPassportRuInput(value);
+    if (rule.special === 'passportDivisionCode') return formatPassportDivisionCodeInput(value);
+    if (rule.special === 'medPolicyNumber') return formatMedPolicyNumberInput(value);
+    if (rule.special === 'mgfsoId') return value.replace(/\D/g, '').slice(0, 7);
     if (rule.special === 'phoneRu') {
       const raw = value.trim();
       const digits = raw.replace(/\D/g, '');
@@ -911,6 +943,30 @@
     return value;
   }
 
+
+  function formatPassportRuInput(value) {
+    const digits = String(value || '').replace(/\D/g, '').slice(0, 10);
+    const seriesA = digits.slice(0, 2);
+    const seriesB = digits.slice(2, 4);
+    const number = digits.slice(4, 10);
+    let formatted = seriesA;
+    if (seriesB) formatted += ` ${seriesB}`;
+    if (number) formatted += ` ${number}`;
+    return formatted;
+  }
+
+  function formatPassportDivisionCodeInput(value) {
+    const digits = String(value || '').replace(/\D/g, '').slice(0, 6);
+    const first = digits.slice(0, 3);
+    const second = digits.slice(3, 6);
+    return second ? `${first}-${second}` : first;
+  }
+
+  function formatMedPolicyNumberInput(value) {
+    const digits = String(value || '').replace(/\D/g, '').slice(0, 16);
+    return digits.match(/.{1,4}/g)?.join(' ') || '';
+  }
+
   function getMaxEnrollmentYear() {
     return new Date().getFullYear() + 1;
   }
@@ -920,11 +976,27 @@
     return Number.isInteger(year) && year >= 1950 && year <= getMaxEnrollmentYear();
   }
 
+  function isValidRuDate(value) {
+    const match = String(value || '').match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+    if (!match) return false;
+
+    const day = Number(match[1]);
+    const month = Number(match[2]);
+    const year = Number(match[3]);
+
+    if (month < 1 || month > 12) return false;
+    if (day < 1) return false;
+
+    const daysInMonth = new Date(year, month, 0).getDate();
+    return day <= daysInMonth;
+  }
+
   function isValidFieldValue(trimmedValue, rule) {
     const value = String(trimmedValue || '');
     if (value === '') return !rule.required;
     if (!new RegExp(rule.regex).test(value)) return false;
     if (rule.special === 'year') return isEnrollmentYearInRange(value);
+    if (rule.special === 'date') return isValidRuDate(value);
     return true;
   }
 
@@ -1494,6 +1566,28 @@
     return params.length ? `${base}?${params.join('&')}` : base;
   }
 
+  const PARENT_SECTION_SUFFIXES = Object.freeze(['П', 'М', 'Д']);
+  const PARENT_SECTION_FIELDS = Object.freeze([
+    'Фамилия Имя Отчество',
+    'Телефон +7',
+    'Электронная почта',
+    'Дата рождения',
+    'Паспорт: Серия, номер',
+    'Паспорт: Кем выдан',
+    'Паспорт: Когда выдан',
+    'Паспорт: Прописка',
+    'Паспорт: Код подразделения',
+    'Марка автомобиля',
+    'гос. номер автомобиля'
+  ]);
+
+  function hasParentSectionData(header, row, suffix) {
+    return PARENT_SECTION_FIELDS.some(field => {
+      const index = header.indexOf(`${field} (${suffix})`);
+      return index >= 0 && String(row[index] ?? '').trim() !== '';
+    });
+  }
+
   function showDocsResult(response) {
     if (response.error) {
       dom.error.textContent = response.error;
@@ -1535,17 +1629,21 @@
       const startIndex = sectionPositions[s];
       const endIndex = sectionPositions[s + 1];
       const sectionTitle = SECTION_STARTS[header[startIndex]];
+      const suffixMatch = header[startIndex].match(/\(([ПМД])\)$/);
+      const parentSuffix = suffixMatch ? suffixMatch[1] : '';
+      const isParentSection = PARENT_SECTION_SUFFIXES.includes(parentSuffix);
+      const hasValue = isParentSection
+        ? hasParentSectionData(header, row, parentSuffix)
+        : row.slice(startIndex, endIndex).some(value => String(value ?? '').trim() !== '');
+      if (!hasValue && !isParentSection) continue;
 
-      let hasValue = false;
-      for (let i = startIndex; i < endIndex; i++) {
-        if ((row[i] ?? '').trim() !== '') {
-          hasValue = true;
-          break;
-        }
+      const contentId = isParentSection ? `parent-section-${parentSuffix}` : '';
+      const isExpanded = !isParentSection || hasValue;
+      if (isParentSection) {
+        html += `<div class="parent-section" data-parent-section="${parentSuffix}"><button type="button" class="parent-section-header" aria-expanded="${isExpanded ? 'true' : 'false'}" aria-controls="${contentId}"><span class="parent-section-title">${escapeHtml(sectionTitle)}</span><span class="parent-section-toggle" aria-hidden="true">${isExpanded ? '−' : '＋'}</span></button><div id="${contentId}" class="parent-section-content" ${isExpanded ? '' : 'hidden'}>`;
+      } else {
+        html += `<div style="margin-top:1rem;margin-bottom:0.5rem;font-weight:bold;font-size:1.2rem;text-align:center;border-bottom:0.1rem solid #000;padding-bottom:0.35rem;">${sectionTitle}</div>`;
       }
-      if (!hasValue) continue;
-
-      html += `<div style="margin-top:1rem;margin-bottom:0.5rem;font-weight:bold;font-size:1.2rem;text-align:center;border-bottom:0.1rem solid #000;padding-bottom:0.35rem;">${sectionTitle}</div>`;
 
       for (let i = startIndex; i < endIndex; i++) {
         const cleanedTitle = header[i].replace(/\(С\)|\(П\)|\(М\)|\(Д\)/g, '').trim();
@@ -1555,6 +1653,8 @@
         const btnClass = rule.editable ? '' : 'non-editable';
         html += `<div class="item"><div class="item-title">${escapeHtml(cleanedTitle)}</div><div class="item-value" style="${style}" data-col-index="${i}"><button type="button" class="cell-edit-btn ${btnClass}" data-col-index="${i}" data-mode="edit" ${rule.editable ? '' : 'disabled'}>✎</button><div class="cell-value-text">${escapeHtml(row[i] ?? '')}</div></div></div>`;
       }
+
+      if (isParentSection) html += '</div></div>';
     }
 
     document.getElementById('result').innerHTML = html;
@@ -1601,6 +1701,23 @@
     logExternalFormClickClient();
     window.open(formUrl, '_blank', 'noopener');
   }
+
+  document.addEventListener('click', function(e) {
+    const headerBtn = e.target.closest('.parent-section-header');
+    if (!headerBtn) return;
+
+    const contentId = headerBtn.getAttribute('aria-controls');
+    const content = contentId ? document.getElementById(contentId) : null;
+    if (!content) return;
+
+    const isExpanded = headerBtn.getAttribute('aria-expanded') === 'true';
+    const nextExpanded = !isExpanded;
+    headerBtn.setAttribute('aria-expanded', nextExpanded ? 'true' : 'false');
+    content.hidden = !nextExpanded;
+
+    const toggle = headerBtn.querySelector('.parent-section-toggle');
+    if (toggle) toggle.textContent = nextExpanded ? '−' : '＋';
+  });
 
 
   document.addEventListener('click', function(e) {
