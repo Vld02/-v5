@@ -845,7 +845,9 @@
     'Тренировочная группа': { sourceSheet: 'Списки данных', sourceHeader: 'Группы тренировки', startRow: 5 },
     'МГФСО группа': { sourceSheet: 'Списки данных', sourceHeader: 'Группы МГФСО', startRow: 2 },
     'Тренер МГФСО': { sourceSheet: 'Списки данных', sourceHeader: 'Тренер МГФСО', startRow: 2 },
-    'Разряд': { sourceSheet: 'Списки данных', sourceHeader: 'Список разрядов', startRow: 2 }
+    'Разряд': { sourceSheet: 'Списки данных', sourceHeader: 'Список разрядов', startRow: 2 },
+    'Свидетельство: Кем выдан (С)': { sourceSheet: 'Результат', sourceHeader: 'Свидетельство: Кем выдан (С)', startRow: 2 },
+    'Паспорт: Кем выдан': { sourceSheet: 'Результат', sourceHeader: 'Паспорт: Кем выдан', startRow: 2 }
   });
 
   let currentDocsRow = { header: [], row: [], colors: [] };
@@ -874,6 +876,10 @@
     }
     if (rule.special === 'email') return value.replace(/[А-Яа-яЁё]/g, '');
     if (rule.special === 'snils') return formatSnilsInput(value);
+    if (rule.special === 'passportRu') return formatPassportRuInput(value);
+    if (rule.special === 'passportDivisionCode') return formatPassportDivisionCodeInput(value);
+    if (rule.special === 'medPolicyNumber') return formatMedPolicyNumberInput(value);
+    if (rule.special === 'mgfsoId') return value.replace(/\D/g, '').slice(0, 7);
     if (rule.special === 'phoneRu') {
       const raw = value.trim();
       const digits = raw.replace(/\D/g, '');
@@ -909,6 +915,30 @@
       return formatted;
     }
     return value;
+  }
+
+
+  function formatPassportRuInput(value) {
+    const digits = String(value || '').replace(/\D/g, '').slice(0, 10);
+    const seriesA = digits.slice(0, 2);
+    const seriesB = digits.slice(2, 4);
+    const number = digits.slice(4, 10);
+    let formatted = seriesA;
+    if (seriesB) formatted += ` ${seriesB}`;
+    if (number) formatted += ` ${number}`;
+    return formatted;
+  }
+
+  function formatPassportDivisionCodeInput(value) {
+    const digits = String(value || '').replace(/\D/g, '').slice(0, 6);
+    const first = digits.slice(0, 3);
+    const second = digits.slice(3, 6);
+    return second ? `${first}-${second}` : first;
+  }
+
+  function formatMedPolicyNumberInput(value) {
+    const digits = String(value || '').replace(/\D/g, '').slice(0, 16);
+    return digits.match(/.{1,4}/g)?.join(' ') || '';
   }
 
   function getMaxEnrollmentYear() {

@@ -1038,7 +1038,11 @@ const EDIT_CONFIG = Object.freeze({
     EMAIL: { title: 'Электронная почта', description: 'Адрес электронной почты.', example: 'name@example.ru', placeholder: 'name@example.ru', regex: '^[A-Za-z0-9.!#$%&\'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$', special: 'email' },
     CERTIFICATE_RU: { title: 'Свидетельство о рождении', description: 'Серия и номер свидетельства.', example: 'IV-АБ № 123456', placeholder: 'IV-АБ № 123456', regex: '^([VIX]{1,4}-[А-ЯЁ]{1,3}\\s*№\\s*\\d{6})$', special: 'certificate' },
     DATE_RU: { title: 'Дата', description: 'Дата ДД.ММ.ГГГГ.', example: '01.09.2010', placeholder: 'ДД.ММ.ГГГГ', regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', special: 'date' },
-    SNILS: { title: 'СНИЛС', description: 'СНИЛС из 11 цифр.', example: '000-000-000-00', placeholder: '000-000-000-00', regex: '^\\d{3}[-\\s]?\\d{3}[-\\s]?\\d{3}[-\\s]?\\d{2}$', special: 'snils' }
+    SNILS: { title: 'СНИЛС', description: 'СНИЛС из 11 цифр.', example: '000-000-000-00', placeholder: '000-000-000-00', regex: '^\\d{3}[-\\s]?\\d{3}[-\\s]?\\d{3}[-\\s]?\\d{2}$', special: 'snils' },
+    PASSPORT_RU: { title: 'Паспорт РФ', description: 'Серия и номер паспорта в формате 12 34 567890.', example: '12 34 567890', placeholder: '12 34 567890', regex: '^\\d{2}\\s\\d{2}\\s\\d{6}$', special: 'passportRu' },
+    PASSPORT_DIVISION_CODE: { title: 'Код подразделения', description: 'Код подразделения в формате 123-456.', example: '123-456', placeholder: '123-456', regex: '^\\d{3}-\\d{3}$', special: 'passportDivisionCode' },
+    MED_POLICY_NUMBER: { title: 'Номер медполиса', description: 'Номер медицинского полиса в формате 1234 5678 9012 3456.', example: '1234 5678 9012 3456', placeholder: '1234 5678 9012 3456', regex: '^\\d{4}\\s\\d{4}\\s\\d{4}\\s\\d{4}$', special: 'medPolicyNumber' },
+    MGFSO_ID: { title: 'ID МГФСО', description: 'ID МГФСО из 7 цифр.', example: '1234567', placeholder: '1234567', regex: '^\\d{7}$', special: 'mgfsoId' }
   }),
 
   /* ============================================================
@@ -1068,19 +1072,28 @@ const EDIT_CONFIG = Object.freeze({
     'Фамилия Имя Отчество (Д)': { editable: true, rule: 'FULL_NAME_RU', required: false, isIdentityField: false },
     'Электронная почта (Д)': { editable: true, rule: 'EMAIL', required: false, isIdentityField: false },
     'Свидетельство: Серия, номер (С)': { editable: true, rule: 'CERTIFICATE_RU', required: false, isIdentityField: false },
-    'Паспорт: Серия, номер (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
+    'Паспорт: Серия, номер (С)': { editable: true, rule: 'PASSPORT_RU', required: false, isIdentityField: false },
+    'Свидетельство: Кем выдан (С)': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false },
+    'Паспорт: Кем выдан': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false },
     'Паспорт или Свидетельство: Кем выдан (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
+    'Свидетельство: Когда выдан (С)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false },
+    'Паспорт: Когда выдан (С)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false },
     'Паспорт или Свидетельство: Когда выдан (С)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false },
-    'Паспорт: Код подразделения (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
+    'Паспорт: Код подразделения (С)': { editable: true, rule: 'PASSPORT_DIVISION_CODE', required: false, isIdentityField: false },
     'Снилс: номер': { editable: true, rule: 'SNILS', required: false, isIdentityField: true },
     'Полис: Страховая компания': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
     'Тренировочная группа': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false },
     'МГФСО группа': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false },
     'Тренер МГФСО': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false },
     'Разряд': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false },
-    'Мед полис: номер': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
+    'Мед полис: номер': { editable: true, rule: 'MED_POLICY_NUMBER', required: false, isIdentityField: false },
+    'Дата зачисления в МГФСО': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false },
+    'Дата получения разряда': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false },
+    'Срок действия страховки': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false },
     'Номер и страховя компания': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
-    'ID номер МГФСО': { editable: true, rule: 'TEXT', required: false, isIdentityField: false }
+    'ID номер МГФСО': { editable: true, rule: 'MGFSO_ID', required: false, isIdentityField: false },
+    'Мед допуск до': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false },
+    'РУСАДА': { editable: true, rule: 'YEAR', required: false, isIdentityField: false }
   })
 });
 
