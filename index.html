@@ -927,40 +927,87 @@
   const TRAINING_HISTORY_STORAGE_KEY = 'trainingHistoryItemsV1';
   const TRAINING_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1K1TtjIL2retzFoXBlQaePKbeKIEkMZZedZX-Ans4VjY/edit?usp=sharing';
 
-  const FIELD_EDIT_RULES = {
-    default: { editable: false, regex: '^.*$', special: '' },
-    'Фамилия Имя Отчество (С)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: 'fullname' },
-    'Месяц рождения (С)': { editable: true, regex: '^.*$', special: '' },
-    'Год набора': { editable: true, regex: '^(19[5-9]\\d|20[0-4]\\d|2050)$', special: 'year' },
-    'Пол (С)': { editable: true, regex: '^.*$', special: '' },
-    'Школа': { editable: true, regex: '^.*$', special: '' },
-    'Класс / курс': { editable: true, regex: '^(?:[0-9]|1[01]|I|II|III|IV|V|VI)$', special: 'classCourse' },
-    'Литера класса (буква)': { editable: true, regex: '^[А-ЯЁ]$', special: 'singleRuUpper' },
-    'Директор школы: Фамилия Имя Отчество': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: 'fullname' },
-    'Адрес регистрации / Прописка (С)': { editable: true, regex: '^.*$', special: '' },
-    'Телефон +7 (С)': { editable: true, regex: '^\\+7\\s\\d{3}\\s\\d{3}-\\d{2}-\\d{2}$', special: 'phoneRu' },
-    'Электронная почта (С)': { editable: true, regex: '^[A-Za-z0-9.!#$%&\'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$', special: 'email' },
-    'Фамилия Имя Отчество (П)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: 'fullname' },
-    'Электронная почта (П)': { editable: true, regex: '^[A-Za-z0-9.!#$%&\'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$', special: 'email' },
-    'Фамилия Имя Отчество (М)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: 'fullname' },
-    'Электронная почта (М)': { editable: true, regex: '^[A-Za-z0-9.!#$%&\'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$', special: 'email' },
-    'Фамилия Имя Отчество (Д)': { editable: true, regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: 'fullname' },
-    'Электронная почта (Д)': { editable: true, regex: '^[A-Za-z0-9.!#$%&\'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$', special: 'email' },
-    'Свидетельство: Серия, номер (С)': { editable: true, regex: '^([VIX]{1,4}-[А-ЯЁ]{1,3}\\s*№\\s*\\d{6})$', special: 'certificate' },
-    'Паспорт: Серия, номер (С)': { editable: true, regex: '^.*$', special: '' },
-    'Паспорт или Свидетельство: Кем выдан (С)': { editable: true, regex: '^.*$', special: '' },
-    'Паспорт или Свидетельство: Когда выдан (С)': { editable: true, regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', special: 'date' },
-    'Паспорт: Код подразделения (С)': { editable: true, regex: '^.*$', special: '' },
-    'Снилс: номер': { editable: true, regex: '^\\d{3}[-\\s]?\\d{3}[-\\s]?\\d{3}[-\\s]?\\d{2}$', special: 'snils' },
-    'Полис: Страховая компания': { editable: true, regex: '^.*$', special: '' },
-    'Тренировочная группа': { editable: true, regex: '^.*$', special: 'suggest' },
-    'МГФСО группа': { editable: true, regex: '^.*$', special: 'suggest' },
-    'Тренер МГФСО': { editable: true, regex: '^.*$', special: 'suggest' },
-    'Разряд': { editable: true, regex: '^.*$', special: 'suggest' },
-    'Мед полис: номер': { editable: true, regex: '^.*$', special: '' },
-    'Номер и страховя компания': { editable: true, regex: '^.*$', special: '' },
-    'ID номер МГФСО': { editable: true, regex: '^.*$', special: '' }
-  };
+  /* ============================================================
+   НАБОР ПРАВИЛ РЕДАКТИРОВАНИЯ
+
+   Это универсальные типы данных, а не названия столбцов таблицы.
+   Один ключ EDIT_RULES может использоваться любым количеством полей
+   из FIELD_CONFIG. Менять regex/placeholder/special нужно здесь,
+   если меняется формат данных для всех связанных столбцов.
+
+   ВАЖНО ДЛЯ БЕЗОПАСНОСТИ:
+   клиентские ограничения не являются защитой. Эти правила помогают
+   пользователю вводить данные, но сервер обязан повторно проверить
+   editable, required и regex перед записью в Google Таблицу.
+
+   НЕ ДОБАВЛЯТЬ сюда конкретные заголовки таблицы. Для этого есть
+   FIELD_CONFIG ниже.
+   ============================================================ */
+  const EDIT_RULES = Object.freeze({
+    TEXT: { title: 'Текст', description: 'Произвольное текстовое значение. Сохраняет прежнее поведение полей без строгого формата.', example: 'Текст', placeholder: '', regex: '^.*$', special: '' },
+    SUGGEST_TEXT: { title: 'Текст из подсказок', description: 'Произвольный текст с выпадающими подсказками из FIELD_SUGGEST_CONFIG.', example: 'Значение из списка', placeholder: '', regex: '^.*$', special: 'suggest' },
+    FULL_NAME_RU: { title: 'ФИО', description: 'Фамилия, имя и отчество: три слова, каждое начинается с заглавной русской буквы.', example: 'Иванов Иван Иванович', placeholder: 'Иванов Иван Иванович', regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: 'fullname' },
+    YEAR: { title: 'Год', description: 'Год в диапазоне от 1950 до 2050.', example: '2024', placeholder: '2024', regex: '^(19[5-9]\\d|20[0-4]\\d|2050)$', special: 'year' },
+    CLASS_COURSE: { title: 'Класс / курс', description: 'Цифра 0-11 или римская цифра I-VI.', example: '7', placeholder: '7', regex: '^(?:[0-9]|1[01]|I|II|III|IV|V|VI)$', special: 'classCourse' },
+    RU_UPPER_LETTER: { title: 'Русская заглавная буква', description: 'Одна заглавная русская буква.', example: 'А', placeholder: 'А', regex: '^[А-ЯЁ]$', special: 'singleRuUpper' },
+    PHONE_RU: { title: 'Номер телефона', description: 'Российский номер телефона в формате +7 999 123-45-67.', example: '+7 999 123-45-67', placeholder: '+7 999 123-45-67', regex: '^\\+7\\s\\d{3}\\s\\d{3}-\\d{2}-\\d{2}$', special: 'phoneRu' },
+    EMAIL: { title: 'Электронная почта', description: 'Адрес электронной почты латиницей с доменом.', example: 'name@example.ru', placeholder: 'name@example.ru', regex: '^[A-Za-z0-9.!#$%&\'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$', special: 'email' },
+    CERTIFICATE_RU: { title: 'Свидетельство о рождении', description: 'Серия римскими цифрами, русские буквы и шестизначный номер.', example: 'IV-АБ № 123456', placeholder: 'IV-АБ № 123456', regex: '^([VIX]{1,4}-[А-ЯЁ]{1,3}\\s*№\\s*\\d{6})$', special: 'certificate' },
+    DATE_RU: { title: 'Дата', description: 'Дата в формате ДД.ММ.ГГГГ.', example: '01.09.2010', placeholder: 'ДД.ММ.ГГГГ', regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', special: 'date' },
+    SNILS: { title: 'СНИЛС', description: 'СНИЛС из 11 цифр с допустимыми дефисами или пробелами.', example: '000-000-000-00', placeholder: '000-000-000-00', regex: '^\\d{3}[-\\s]?\\d{3}[-\\s]?\\d{3}[-\\s]?\\d{2}$', special: 'snils' }
+  });
+
+  /* ============================================================
+   СООТВЕТСТВИЕ ПОЛЕЙ И ПРАВИЛ
+
+   Здесь находится конфигурация конкретных заголовков таблицы:
+   1. editable — можно ли менять поле через интерфейс и на сервере.
+   2. rule — ключ универсального правила из EDIT_RULES.
+   3. required — можно ли оставить значение пустым.
+   4. isIdentityField — поле участвует в идентификации пользователя.
+   5. onSave — дополнительное действие после успешной записи.
+
+   Чтобы запретить редактирование, меняется только editable: false.
+   Чтобы изменить формат, меняется ссылка rule, а не regex в поле.
+   Сервер обязан использовать этот же смысл конфигурации и не доверять
+   данным, пришедшим из браузера.
+   ============================================================ */
+  const FIELD_CONFIG = Object.freeze({
+    default: { editable: false, rule: 'TEXT', required: false, isIdentityField: false },
+    'Фамилия Имя Отчество (С)': { editable: true, rule: 'FULL_NAME_RU', required: true, isIdentityField: true },
+    'Дата рождения (С)': { editable: false, rule: 'DATE_RU', required: true, isIdentityField: true },
+    'Месяц рождения (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
+    'Год набора': { editable: true, rule: 'YEAR', required: false, isIdentityField: false },
+    'Пол (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
+    'Школа': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, onSave: 'UPDATE_SCHOOL_DATE' },
+    'Класс / курс': { editable: true, rule: 'CLASS_COURSE', required: false, isIdentityField: false },
+    'Литера класса (буква)': { editable: true, rule: 'RU_UPPER_LETTER', required: false, isIdentityField: false },
+    'Директор школы: Фамилия Имя Отчество': { editable: true, rule: 'FULL_NAME_RU', required: false, isIdentityField: false },
+    'Адрес регистрации / Прописка (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
+    'Телефон +7 (С)': { editable: true, rule: 'PHONE_RU', required: false, isIdentityField: false },
+    'Электронная почта (С)': { editable: true, rule: 'EMAIL', required: false, isIdentityField: false },
+    'Фамилия Имя Отчество (П)': { editable: true, rule: 'FULL_NAME_RU', required: false, isIdentityField: false },
+    'Электронная почта (П)': { editable: true, rule: 'EMAIL', required: false, isIdentityField: false },
+    'Фамилия Имя Отчество (М)': { editable: true, rule: 'FULL_NAME_RU', required: false, isIdentityField: false },
+    'Электронная почта (М)': { editable: true, rule: 'EMAIL', required: false, isIdentityField: false },
+    'Фамилия Имя Отчество (Д)': { editable: true, rule: 'FULL_NAME_RU', required: false, isIdentityField: false },
+    'Электронная почта (Д)': { editable: true, rule: 'EMAIL', required: false, isIdentityField: false },
+    'Свидетельство: Серия, номер (С)': { editable: true, rule: 'CERTIFICATE_RU', required: false, isIdentityField: false },
+    'Паспорт: Серия, номер (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
+    'Паспорт или Свидетельство: Кем выдан (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
+    'Паспорт или Свидетельство: Когда выдан (С)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false },
+    'Паспорт: Код подразделения (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
+    'Снилс: номер': { editable: true, rule: 'SNILS', required: false, isIdentityField: true },
+    'Полис: Страховая компания': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
+    'Тренировочная группа': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false },
+    'МГФСО группа': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false },
+    'Тренер МГФСО': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false },
+    'Разряд': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false },
+    'Мед полис: номер': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
+    'Номер и страховя компания': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
+    'ID номер МГФСО': { editable: true, rule: 'TEXT', required: false, isIdentityField: false }
+  });
+
   const FIELD_SUGGEST_CONFIG = Object.freeze({
     'Школа': { sourceSheet: 'Списки данных', sourceHeader: 'Школы', startRow: 2 },
     'Полис: Страховая компания': { sourceSheet: 'Результат', sourceHeader: 'Полис: Страховая компания', startRow: 2 },
@@ -973,7 +1020,9 @@
   let currentDocsRow = { header: [], row: [], colors: [] };
 
   function getFieldEditRule(headerTitle) {
-    return FIELD_EDIT_RULES[headerTitle] || FIELD_EDIT_RULES.default;
+    const fieldConfig = FIELD_CONFIG[headerTitle] || FIELD_CONFIG.default;
+    const editRule = EDIT_RULES[fieldConfig.rule] || EDIT_RULES.TEXT;
+    return { ...editRule, ...fieldConfig, ruleKey: fieldConfig.rule };
   }
 
   function applyInputSpecial(rawValue, rule) {
@@ -1026,7 +1075,26 @@
   }
 
   function isValidFieldValue(trimmedValue, rule) {
-    return trimmedValue === '' || new RegExp(rule.regex).test(trimmedValue);
+    const value = String(trimmedValue || '');
+    if (value === '') return !rule.required;
+    return new RegExp(rule.regex).test(value);
+  }
+
+  function resetDocsAuthorizationAfterIdentityChange(message) {
+    localStorage.removeItem('savedLogin');
+    localStorage.removeItem('savedDate');
+    localStorage.removeItem('savedSnils');
+    localStorage.removeItem('isLoggedIn');
+    sessionStorage.clear();
+    hideSnilsStep();
+    currentDocsRow = { header: [], row: [], colors: [] };
+    document.getElementById('result').innerHTML = '';
+    dom.login.value = '';
+    dom.password.value = '';
+    dom.snils.value = '';
+    dom.error.textContent = message || 'Для продолжения необходимо войти заново.';
+    stopAuthLoading();
+    dom.login.focus();
   }
 
   function filterSuggestions(query, options) {
@@ -1783,6 +1851,7 @@
         const editor = cell.querySelector('.cell-editor');
         if (editor) editor.appendChild(wrap);
       };
+      if (rule.placeholder) input.placeholder = rule.placeholder;
       if (rule.special === 'date') input.placeholder = 'ДД.ММ.ГГГГ';
       if (rule.special === 'date') input.addEventListener('blur', function() {
         const formatted = formatDateInput(input.value, { finalizeYear: true });
@@ -1842,16 +1911,23 @@
     }
     const input = cell.querySelector('input');
     const saveValue = (input?.value || '').trim();
+    const oldValue = String(currentDocsRow.row[colIndex] ?? '').trim();
+    const identityChanged = Boolean(rule.isIdentityField && saveValue !== oldValue);
     if (!isValidFieldValue(saveValue, rule)) return;
+    if (identityChanged && !confirm('Вы изменяете данные, используемые для идентификации пользователя.\n\nПосле сохранения текущая сессия будет завершена, и потребуется войти в систему заново.\n\nПродолжить?')) return;
     btn.disabled = true;
     btn.textContent = '⏳';
     google.script.run
-      .withSuccessHandler(() => {
+      .withSuccessHandler(response => {
         currentDocsRow.row[colIndex] = saveValue;
         const bg = currentDocsRow.colors[colIndex] || '';
         const style = bg ? `background:${bg};` : '';
         cell.innerHTML = `<button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="edit">✎</button><div class="cell-value-text">${escapeHtml(saveValue)}</div>`;
         cell.setAttribute('style', style);
+        if (identityChanged || (response && response.identityChanged)) {
+          alert('Данные, используемые для идентификации, изменены. Для продолжения необходимо войти заново.');
+          resetDocsAuthorizationAfterIdentityChange('Для продолжения необходимо войти заново.');
+        }
       })
       .withFailureHandler(() => {
         btn.disabled = false;
