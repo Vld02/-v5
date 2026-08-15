@@ -185,12 +185,18 @@
   .parent-section-toggle { margin-left:auto; font-weight:normal; opacity:0.75; }
   .parent-section-title { flex:1; }
   .parent-section-content[hidden] { display:none; }
-  .cell-edit-btn { position:absolute; top:0.2rem; right:0.2rem; border:0.05rem solid #c5c5c5; background:#fff; border-radius:0.3rem; width:1.7rem; height:1.7rem; padding:0; margin:0; font-size:0.95rem; line-height:1; display:flex; align-items:center; justify-content:center; z-index:60; }
+  .cell-edit-actions { position:absolute; top:0.2rem; right:0.2rem; display:flex; gap:var(--space-xs); z-index:60; }
+  .item-value > .cell-edit-btn[data-mode="edit"] { position:absolute; top:0.2rem; right:0.2rem; z-index:60; }
+  .cell-edit-btn { border:0.05rem solid var(--border); background:#fff; border-radius:var(--radius-sm); width:2rem; height:2rem; padding:0; margin:0; color:inherit; line-height:1; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; }
+  .cell-edit-btn svg { width:1rem; height:1rem; display:block; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; fill:none; flex:0 0 auto; }
+  .cell-edit-btn:hover:not(:disabled) { background:#f7f7f7; }
+  .cell-edit-btn:active:not(:disabled) { background:#eaeaea; transform:translateY(0.05rem); }
   .cell-edit-btn.non-editable { opacity:0.45; cursor:not-allowed; }
   .cell-edit-btn.save-ready { background:#e9f3ff; border-color:#8ab4f8; }
+  .cell-edit-btn.is-saving { cursor:progress; }
   .cell-edit-btn:disabled { opacity:0.55; cursor:not-allowed; }
-  .cell-value-text { padding:0.2rem 2rem 0.2rem 0; white-space:pre-wrap; min-height:1.6rem; display:flex; align-items:center; }
-  .cell-editor { padding-right:2.15rem; position:relative; }
+  .cell-value-text { padding:0.2rem 2.5rem 0.2rem 0; white-space:pre-wrap; min-height:1.6rem; display:flex; align-items:center; }
+  .cell-editor { padding-top:2.25rem; position:relative; }
   .cell-value-input { width:100%; box-sizing:border-box; margin:0; padding:0.35rem 0.5rem; border:0.05rem solid #c5c5c5; border-radius:0.4rem; outline:none; font:inherit; background:#fff; min-height:2rem; }
   .cell-value-input:focus { border-color:#8ab4f8; box-shadow:0 0 0 0.1rem rgba(138,180,248,0.2); }
   .cell-suggest-list { position:absolute; left:0; right:2rem; top:calc(100% - 0.05rem); z-index:40; margin-top:0; background:#fff; border:0.05rem solid #c5c5c5; border-top:none; border-radius:0 0 0.4rem 0.4rem; box-shadow:0 0.3rem 0.8rem rgba(0,0,0,0.12); max-height:12rem; overflow:auto; }
@@ -1651,7 +1657,7 @@
         const style = bg ? `background:${bg};` : '';
         const rule = getFieldEditRule(header[i]);
         const btnClass = rule.editable ? '' : 'non-editable';
-        html += `<div class="item"><div class="item-title">${escapeHtml(cleanedTitle)}</div><div class="item-value" style="${style}" data-col-index="${i}"><button type="button" class="cell-edit-btn ${btnClass}" data-col-index="${i}" data-mode="edit" ${rule.editable ? '' : 'disabled'}>✎</button><div class="cell-value-text">${escapeHtml(row[i] ?? '')}</div></div></div>`;
+        html += `<div class="item"><div class="item-title">${escapeHtml(cleanedTitle)}</div><div class="item-value" style="${style}" data-col-index="${i}">${renderCellEditButton(i, rule.editable, btnClass)}<div class="cell-value-text">${escapeHtml(row[i] ?? '')}</div></div></div>`;
       }
 
       if (isParentSection) html += '</div></div>';
@@ -1719,6 +1725,30 @@
     if (toggle) toggle.textContent = nextExpanded ? '−' : '＋';
   });
 
+  function iconSvg(name) {
+    const icons = {
+      edit: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>',
+      save: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>',
+      cancel: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>'
+    };
+    return icons[name] || '';
+  }
+
+  function renderCellEditButton(colIndex, editable = true, extraClass = '') {
+    return `<button type="button" class="cell-edit-btn ${extraClass}" data-col-index="${colIndex}" data-mode="edit" title="Редактировать" aria-label="Редактировать" ${editable ? '' : 'disabled'}>${iconSvg('edit')}</button>`;
+  }
+
+  function renderCellEditActions(colIndex) {
+    return `<div class="cell-edit-actions"><button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="save" title="Сохранить" aria-label="Сохранить" disabled>${iconSvg('save')}</button><button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="cancel" title="Отмена" aria-label="Отмена">${iconSvg('cancel')}</button></div>`;
+  }
+
+  function renderCellDisplay(cell, colIndex, value) {
+    const bg = currentDocsRow.colors[colIndex] || '';
+    const style = bg ? `background:${bg};` : '';
+    cell.innerHTML = `${renderCellEditButton(colIndex)}<div class="cell-value-text">${escapeHtml(value)}</div>`;
+    cell.setAttribute('style', style);
+  }
+
 
   document.addEventListener('click', function(e) {
     const btn = e.target.closest('.cell-edit-btn');
@@ -1731,7 +1761,8 @@
     if (mode === 'edit') {
       const textNode = cell.querySelector('.cell-value-text');
       const value = textNode ? textNode.textContent : '';
-      cell.innerHTML = `<button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="save" disabled>💾</button><div class="cell-editor"><input class="cell-value-input" data-col-index="${colIndex}" value="${escapeHtmlAttr(value)}" /></div>`;
+      cell.dataset.originalValue = value;
+      cell.innerHTML = `${renderCellEditActions(colIndex)}<div class="cell-editor"><input class="cell-value-input" data-col-index="${colIndex}" value="${escapeHtmlAttr(value)}" /></div>`;
       const input = cell.querySelector('input');
       const suggestConfig = FIELD_SUGGEST_CONFIG[currentDocsRow.header[colIndex]];
       let suggestionOptions = [];
@@ -1774,7 +1805,8 @@
       input.focus();
       input.select();
       const validate = () => {
-        const saveBtn = cell.querySelector('.cell-edit-btn');
+        const saveBtn = cell.querySelector('.cell-edit-btn[data-mode="save"]');
+        if (!saveBtn) return;
         const trimmed = input.value.trim();
         const ok = isValidFieldValue(trimmed, rule);
         saveBtn.disabled = !ok;
@@ -1796,6 +1828,13 @@
           items.forEach((node, idx) => node.classList.toggle('active', idx === activeSuggestionIndex));
           return;
         }
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          dropSuggestionList();
+          const cancelBtn = cell.querySelector('.cell-edit-btn[data-mode="cancel"]');
+          if (cancelBtn) cancelBtn.click();
+          return;
+        }
         if (event.key !== 'Enter') return;
         event.preventDefault();
         if (items.length) {
@@ -1806,7 +1845,7 @@
         }
         input.blur();
         setTimeout(() => {
-          const saveBtn = cell.querySelector('.cell-edit-btn');
+          const saveBtn = cell.querySelector('.cell-edit-btn[data-mode="save"]');
           validate();
           if (!saveBtn || saveBtn.disabled) return;
           saveBtn.click();
@@ -1825,6 +1864,14 @@
       }
       return;
     }
+    if (mode === 'cancel') {
+      const originalValue = cell.dataset.originalValue ?? '';
+      const existing = cell.querySelector('.cell-suggest-list');
+      if (existing) existing.remove();
+      delete cell.dataset.originalValue;
+      renderCellDisplay(cell, colIndex, originalValue);
+      return;
+    }
     const input = cell.querySelector('input');
     const saveValue = (input?.value || '').trim();
     const oldValue = String(currentDocsRow.row[colIndex] ?? '').trim();
@@ -1832,14 +1879,15 @@
     if (!isValidFieldValue(saveValue, rule)) return;
     if (identityChanged && !confirm('Вы изменяете данные, используемые для идентификации пользователя.\n\nПосле успешного сохранения следующие запросы будут использовать новое значение.\n\nПродолжить?')) return;
     btn.disabled = true;
-    btn.textContent = '⏳';
+    const cancelBtn = cell.querySelector('.cell-edit-btn[data-mode="cancel"]');
+    if (cancelBtn) cancelBtn.disabled = true;
+    btn.classList.add('is-saving');
+    btn.setAttribute('aria-label', 'Сохранение');
     google.script.run
       .withSuccessHandler(response => {
         currentDocsRow.row[colIndex] = saveValue;
-        const bg = currentDocsRow.colors[colIndex] || '';
-        const style = bg ? `background:${bg};` : '';
-        cell.innerHTML = `<button type="button" class="cell-edit-btn" data-col-index="${colIndex}" data-mode="edit">✎</button><div class="cell-value-text">${escapeHtml(saveValue)}</div>`;
-        cell.setAttribute('style', style);
+        delete cell.dataset.originalValue;
+        renderCellDisplay(cell, colIndex, saveValue);
         if (identityChanged || (response && response.identityChanged)) {
           updateCurrentIdentityAfterSave(currentDocsRow.header[colIndex], saveValue);
         }
@@ -1847,7 +1895,10 @@
       })
       .withFailureHandler(error => {
         btn.disabled = false;
-        btn.textContent = '💾';
+        const cancelBtn = cell.querySelector('.cell-edit-btn[data-mode="cancel"]');
+        if (cancelBtn) cancelBtn.disabled = false;
+        btn.classList.remove('is-saving');
+        btn.setAttribute('aria-label', 'Сохранить');
         const message = error && error.message ? error.message : 'Не удалось сохранить изменения.';
         showToast(`Ошибка: ${message}`, 'error');
       })
