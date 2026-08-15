@@ -1128,12 +1128,28 @@ function validateEditableFieldValue_(columnName, value) {
   return { fieldConfig, rule, value: normalizedValue };
 }
 
-function runFieldOnSaveAction_(fieldConfig, sheet, header, rowIndex) {
-  if (fieldConfig.onSave !== 'UPDATE_SCHOOL_DATE') return;
+function prependSiteEditNote_(cell, historyTimestamp, newValue) {
+  const note = cell.getNote() || '';
+  const historyLine = `С: ${historyTimestamp}, ${newValue}`;
+  cell.setNote(note ? `${historyLine}\n${note}` : historyLine);
+}
+
+function setValueWithSiteEditNote_(cell, newValue, historyTimestamp) {
+  const oldValue = formatCellValue(cell.getValue()).trim();
+  if (oldValue === newValue) return false;
+
+  cell.setValue(newValue);
+  prependSiteEditNote_(cell, historyTimestamp, newValue);
+  return true;
+}
+
+function runFieldOnSaveAction_(fieldConfig, sheet, header, rowIndex, historyTimestamp) {
+  if (fieldConfig.onSave !== 'UPDATE_SCHOOL_DATE') return false;
   const schoolUpdatedCol = header.indexOf('Дата обн. инф. о школе (С)');
-  if (schoolUpdatedCol === -1) return;
-  const timestamp = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, `${CONFIG.DATE_FORMAT} HH:mm:ss`);
-  sheet.getRange(rowIndex, schoolUpdatedCol + 1).setValue(timestamp);
+  if (schoolUpdatedCol === -1) return false;
+  const timestamp = historyTimestamp;
+  const cell = sheet.getRange(rowIndex, schoolUpdatedCol + 1);
+  return setValueWithSiteEditNote_(cell, timestamp, historyTimestamp);
 }
 
 /**
@@ -1176,11 +1192,13 @@ function updateResultCell(login, password, snils, columnName, value) {
 
     const rowIndex = i + 2;
 
-    const oldValue = String(sheet.getRange(rowIndex, targetCol + 1).getValue() ?? '').trim();
+    const cell = sheet.getRange(rowIndex, targetCol + 1);
+    const oldValue = formatCellValue(cell.getValue()).trim();
     const identityChanged = Boolean(validation.fieldConfig.isIdentityField && oldValue !== validation.value);
-    sheet.getRange(rowIndex, targetCol + 1).setValue(validation.value);
-    runFieldOnSaveAction_(validation.fieldConfig, sheet, header, rowIndex);
-    return { ok: true, identityChanged };
+    const historyTimestamp = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, `${CONFIG.DATE_FORMAT} HH:mm:ss`);
+    const changed = setValueWithSiteEditNote_(cell, validation.value, historyTimestamp);
+    const onSaveChanged = changed ? runFieldOnSaveAction_(validation.fieldConfig, sheet, header, rowIndex, historyTimestamp) : false;
+    return { ok: true, identityChanged: changed && identityChanged, changed, onSaveChanged };
   }
 
   throw new Error('Строка для обновления не найдена.');
