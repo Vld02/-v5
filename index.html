@@ -719,14 +719,14 @@
     <h2 class="section-heading">ДБВv5 Документы</h2>
 
     <label>ФИО занимающегося:</label>
-    <input id="login" type="text" placeholder="Фамилия Имя Отчество" />
+    <input id="login" name="ww_kids_login" type="text" autocomplete="username" placeholder="Фамилия Имя Отчество" />
 
     <label>Дата рождения:</label>
-    <input id="password" name="birthDateText" type="text" inputmode="numeric" maxlength="10" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="ДД.ММ.ГГГГ" />
+    <input id="password" name="ww_kids_birthdate" type="text" inputmode="numeric" maxlength="10" autocomplete="bday" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="ДД.ММ.ГГГГ" />
 
     <div id="snilsWrap" style="display:none;">
       <label>СНИЛС:</label>
-      <input id="snils" type="text" inputmode="numeric" maxlength="14" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="000-000-000-00" />
+      <input id="snils" name="ww_kids_snils" type="text" inputmode="numeric" maxlength="14" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="000-000-000-00" />
     </div>
 
     <div class="auth-actions">
@@ -1025,7 +1025,6 @@
     } else if (columnName === 'Снилс: номер') {
       dom.snils.value = formatSnilsInput(value);
     }
-    saveAuthInputs(dom.login.value.trim(), dom.password.value.trim(), dom.snils.value.trim());
   }
 
   function filterSuggestions(query, options) {
@@ -1123,20 +1122,9 @@
     authState.login = login;
     authState.password = password;
 
-    const savedSnils = localStorage.getItem('savedSnils');
-    if (savedSnils && !dom.snils.value.trim()) {
-      dom.snils.value = formatSnilsInput(savedSnils);
-    }
-
     dom.snilsWrap.style.display = 'block';
     dom.snils.focus();
     stopAuthLoading();
-  }
-
-  function saveAuthInputs(loginVal, dateVal, snilsVal) {
-    localStorage.setItem('savedLogin', loginVal);
-    localStorage.setItem('savedDate', dateVal);
-    localStorage.setItem('savedSnils', snilsVal);
   }
 
   function parseDateString(value) {
@@ -1320,8 +1308,6 @@
     const passwordForServer = toServerDate(dateInput.value);
     const snilsFormatted = formatSnilsInput(dom.snils.value);
     dom.snils.value = snilsFormatted;
-    saveAuthInputs(loginVal, dateInput.value, snilsFormatted);
-
     logLoginButtonClickClient();
 
     if (!loginVal || !passwordForServer) {
@@ -1398,9 +1384,6 @@
           return;
         }
 
-        localStorage.setItem('savedLogin', authState.login);
-        localStorage.setItem('savedDate', dom.password.value);
-        localStorage.setItem('savedSnils', snilsFormatted);
         localStorage.setItem('isLoggedIn', '1');
         authState.awaitingSnils = false;
         authState.login = '';
@@ -1438,17 +1421,14 @@
   }
 
   function loadDataSilently() {
-    const loginVal = localStorage.getItem('savedLogin');
-    const dateRaw = localStorage.getItem('savedDate');
-    if (!loginVal || !dateRaw) return;
-
-    const passwordForServer = toServerDate(dateRaw);
-    if (!passwordForServer) return;
+    const loginVal = dom.login.value.trim();
+    const passwordForServer = toServerDate(formatDateInput(dom.password.value, { finalizeYear: true }));
+    if (!loginVal || !passwordForServer) return;
     google.script.run.checkLogin(loginVal, passwordForServer, { silent: true });
   }
 
   function getSavedLoginForLog() {
-    return localStorage.getItem('savedLogin') || dom.login.value.trim() || 'неизвестно';
+    return dom.login.value.trim() || 'неизвестно';
   }
 
   function logFormClickClient() {
@@ -1486,14 +1466,6 @@
   }
 
   window.addEventListener('DOMContentLoaded', () => {
-    const savedLogin = localStorage.getItem('savedLogin');
-    const savedDate = localStorage.getItem('savedDate');
-    const savedSnils = localStorage.getItem('savedSnils');
-
-    if (savedLogin) dom.login.value = savedLogin;
-    if (savedDate) dom.password.value = formatDateInput(savedDate);
-    if (savedSnils) dom.snils.value = formatSnilsInput(savedSnils);
-
     logInitialPageOpen();
   });
 
