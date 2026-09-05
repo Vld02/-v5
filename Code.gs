@@ -332,14 +332,6 @@ function logAuthAttempt(payload) {
 }
 
 /**
- * Логирует клик по кнопке открытия формы.
- * @param {string} login Логин пользователя.
- */
-function logEditFormClick(login) {
-  logAccess({ login, status: 'Нажал: Заполнить / редактировать' });
-}
-
-/**
  * Логирует нажатие кнопки входа.
  * @param {string} login Логин пользователя.
  */
@@ -360,22 +352,6 @@ function logSectionVisit(login, section) {
   };
   const sectionName = sectionMap[section] || section;
   logAccess({ login, status: `Перешёл в раздел ${sectionName}` });
-}
-
-/**
- * Логирует клик по кнопке заполнения формы.
- * @param {string} login Логин пользователя.
- */
-function logFillFormClick(login) {
-  logAccess({ login, status: 'Нажал: Заполнить форму' });
-}
-
-/**
- * Логирует открытие формы в отдельной вкладке.
- * @param {string} login Логин пользователя.
- */
-function logExternalFormClick(login) {
-  logAccess({ login, status: 'Нажал: Открыть форму в отдельной вкладке' });
 }
 
 /*************************************************

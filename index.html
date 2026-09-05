@@ -125,39 +125,6 @@
   input { padding: 0.65em 0.75em; margin: var(--space-sm) 0; width: 100%; box-sizing: border-box; font: inherit; }
   button { padding: 0.7em 1.1em; margin-top: var(--space-md); cursor: pointer; font: inherit; }
 
-  .block {
-    margin-top: var(--space-lg);
-    padding: var(--space-md);
-    border: 0.05rem solid var(--border);
-    border-radius: var(--radius-md);
-    background: #fafafa;
-  }
-
-  .button-link {
-    display: inline-block;
-    white-space: nowrap;
-    padding: 0.7em 1.1em;
-    background: #4285f4;
-    color: #fff;
-    text-decoration: none;
-    border-radius: var(--radius-sm);
-    margin-left: 50%;
-    transform: translateX(-50%);
-    margin-bottom: var(--space-sm);
-    border: none;
-    cursor: pointer;
-  }
-
-  .button-link.form-action {
-    min-width: min(100%, 18rem);
-  }
-
-  .button-link.disabled {
-    background: #9e9e9e;
-    cursor: default;
-    pointer-events: none;
-  }
-
   .item { display: flex; border: 0.05rem solid #d8d8d8; border-top: none; min-height: 2.2rem; }
   .item:first-of-type { border-top: 0.05rem solid #d8d8d8; }
   .item-title { font-weight: bold; width: 45%; padding: var(--space-sm); background:#f7f7f7; border-right:0.05rem solid #d8d8d8; display:flex; align-items:center; }
@@ -737,7 +704,6 @@
       </div>
     </div>
     <div id="result"></div>
-    <div id="formContainer" style="margin-top:1rem;"></div>
   </section>
 
   <section id="tab-attendance" class="tab-panel">
@@ -747,7 +713,6 @@
         <button type="button" class="attendance-icon-btn" title="Вставить" aria-label="Вставить" onclick="pasteAttendanceToLastCell()">📋</button>
         <button type="button" class="attendance-icon-btn" title="Очистить" aria-label="Очистить" onclick="clearAttendanceTable()">🗑️</button>
       </div>
-      <button onclick="openAttendanceForm()" title="Откроется гугл форма для заполнения тренировки">Заполнить тренировку</button>
       <div class="attendance-toolbar-group">
         <button type="button" class="attendance-icon-btn" title="Скопировать полное ФИО" aria-label="Скопировать полное ФИО" onclick="copyAttendanceFullFio()">📄</button>
       </div>
@@ -829,8 +794,6 @@
   };
   const ACTIVE_TAB_STORAGE_KEY = 'activeTab';
   const ATTENDANCE_ROWS_STORAGE_KEY = 'attendanceRowsDraftV1';
-  const ATTENDANCE_DRAFT_DELETE_AFTER_KEY = 'attendanceDraftDeleteAfterAtV1';
-  const ATTENDANCE_DRAFT_TTL_MS = 30 * 60 * 1000;
   const LAST_SILENT_SYNC_KEY = 'lastSilentSyncAt';
   const SILENT_SYNC_INTERVAL_MS = 15 * 60 * 1000;
   const TRAINING_HISTORY_STORAGE_KEY = 'trainingHistoryItemsV1';
@@ -1437,24 +1400,12 @@
     return localStorage.getItem('savedLogin') || dom.login.value.trim() || 'неизвестно';
   }
 
-  function logFormClickClient() {
-    google.script.run.logEditFormClick(getSavedLoginForLog());
-  }
-
   function logLoginButtonClickClient() {
     google.script.run.logLoginButtonClick(getSavedLoginForLog());
   }
 
   function logSectionVisitClient(section) {
     google.script.run.logSectionVisit(getSavedLoginForLog(), section);
-  }
-
-  function logFillFormClickClient() {
-    google.script.run.logFillFormClick(getSavedLoginForLog());
-  }
-
-  function logExternalFormClickClient() {
-    google.script.run.logExternalFormClick(getSavedLoginForLog());
   }
 
   async function logInitialPageOpen() {
@@ -1482,84 +1433,6 @@
 
     logInitialPageOpen();
   });
-
-  const ENTRY_MAP = {
-    'Фамилия Имя Отчество (С)': { type: 'text', id: 'entry.839624196' },
-    'Дата рождения (С)': { type: 'dateParts', id: 'entry.486784767' },
-    'Школа автоматический итоговый результат': { type: 'text', id: 'entry.940501672' },
-    'Класс / курс': { type: 'text', id: 'entry.821953319' },
-    'Литера класса (буква)': { type: 'text', id: 'entry.684875902' },
-    'Директор школы: Фамилия Имя Отчество': { type: 'text', id: 'entry.2072597319' },
-    'Адрес регистрации / Прописка (С)': { type: 'text', id: 'entry.865566941' },
-    'Телефон +7 (С)': { type: 'text', id: 'entry.970307056' },
-    'Электронная почта (С)': { type: 'text', id: 'entry.3304605' },
-    'Свидетельство: Серия, номер (С)': { type: 'text', id: 'entry.1514966749' },
-    'Паспорт: Код подразделения (С)': { type: 'text', id: 'entry.1581252849' },
-    'Снилс: номер': { type: 'text', id: 'entry.937341347' },
-    'Полис: Страховая компания': { type: 'otherOption', id: 'entry.146274222' },
-    'Мед полис: номер': { type: 'text', id: 'entry.1917395961' },
-    'Паспорт или Свидетельство: Кем выдан (С)': { type: 'otherOption', id: 'entry.698271959' },
-    'Паспорт или Свидетельство: Когда выдан (С)': { type: 'dateParts', id: 'entry.1532804302' },
-    'Отец - Основные данные': { type: 'text', id: 'entry.1469131559' },
-    'Фамилия Имя Отчество (П)': { type: 'text', id: 'entry.1058110522' },
-    'Телефон +7 (П)': { type: 'text', id: 'entry.1049937641' },
-    'Электронная почта (П)': { type: 'text', id: 'entry.1782553661' },
-    'Дополн. данные отца (документы)': { type: 'text', id: 'entry.1221032392' },
-    'Дата рождения (П)': { type: 'dateParts', id: 'entry.8454711' },
-    'Паспорт: Серия, номер (П)': { type: 'text', id: 'entry.244093263' },
-    'Паспорт: Кем выдан (П)': { type: 'otherOption', id: 'entry.1906456441' },
-    'Паспорт: Когда выдан (П)': { type: 'dateParts', id: 'entry.1455656355' },
-    'Паспорт: Прописка (П)': { type: 'text', id: 'entry.646278185' },
-    'Паспорт: Код подразделения (П)': { type: 'text', id: 'entry.1694042252' },
-    'Марка автомобиля (П)': { type: 'text', id: 'entry.578806920' },
-    'гос. номер автомобиля (П)': { type: 'text', id: 'entry.2102422380' },
-    'Мать - Основные данные': { type: 'text', id: 'entry.1523036313' },
-    'Фамилия Имя Отчество (М)': { type: 'text', id: 'entry.1648441516' },
-    'Телефон +7 (М)': { type: 'text', id: 'entry.1584003848' },
-    'Электронная почта (М)': { type: 'text', id: 'entry.1072346272' },
-    'Дополн. данные Матери (документы)': { type: 'text', id: 'entry.806876438' },
-    'Дата рождения (М)': { type: 'dateParts', id: 'entry.1093632809' },
-    'Паспорт: Серия, номер (М)': { type: 'text', id: 'entry.1956661242' },
-    'Паспорт: Кем выдан (М)': { type: 'otherOption', id: 'entry.1932909788' },
-    'Паспорт: Когда выдан (М)': { type: 'dateParts', id: 'entry.1988590081' },
-    'Паспорт: Прописка (М)': { type: 'text', id: 'entry.1118515654' },
-    'Паспорт: Код подразделения (М)': { type: 'text', id: 'entry.630042479' },
-    'Марка автомобиля (М)': { type: 'text', id: 'entry.197033163' },
-    'гос. номер автомобиля (М)': { type: 'text', id: 'entry.709907584' },
-    'Завершить опрос': { type: 'text', id: 'entry.465523931' }
-  };
-
-  function buildFormUrl(header, row) {
-    const base = 'https://docs.google.com/forms/d/e/1FAIpQLSfLOcMYEWaOwF3qYuzsnSmaDbOSR6WGB7AUP7oYHBpzlo7npQ/viewform';
-    const params = [];
-
-    for (let i = 0; i < header.length; i++) {
-      const title = header[i];
-      let value = row[i];
-      if (value === undefined || value === null) continue;
-      value = String(value).trim();
-      if (!value) continue;
-
-      const map = ENTRY_MAP[title];
-      if (!map) continue;
-
-      if (map.type === 'text') {
-        params.push(`${map.id}=${encodeURIComponent(value)}`);
-      } else if (map.type === 'otherOption') {
-        params.push(`${map.id}=__other_option__`);
-        params.push(`${map.id}.other_option_response=${encodeURIComponent(value)}`);
-      } else if (map.type === 'dateParts') {
-        const d = parseDateString(value);
-        if (d) {
-          params.push(`${map.id}_year=${encodeURIComponent(d.year)}`);
-          params.push(`${map.id}_month=${encodeURIComponent(d.month)}`);
-          params.push(`${map.id}_day=${encodeURIComponent(d.day)}`);
-        }
-      }
-    }
-
-    return params.length ? `${base}?${params.join('&')}` : base;
-  }
 
   const PARENT_SECTION_SUFFIXES = Object.freeze(['П', 'М', 'Д']);
   const PARENT_SECTION_FIELDS = Object.freeze([
@@ -1595,15 +1468,7 @@
     const colors = response.colors || [];
     currentDocsRow = { header: [...header], row: [...row], colors: [...colors] };
 
-    const formUrl = buildFormUrl(header, row);
-    let html = `
-      <div class="block" id="formBlock">
-        <button id="openFormBtn" class="button-link form-action" onclick="openEmbeddedForm('${formUrl}')" title="Откроется Гугл форма для заполнения данных">Заполнить / редактировать</button>
-        <div id="externalFormBtnWrapper" style="display:none;margin-top:0.75rem;">
-          <button class="button-link" onclick="openFormInNewWindow('${formUrl}')">Открыть форму в отдельной вкладке</button>
-        </div>
-        <div id="embeddedFormHolder"></div>
-      </div>`;
+    let html = '';
 
     const SECTION_STARTS = {
       'Фамилия Имя Отчество (С)': 'Спортсмен',
@@ -1654,47 +1519,6 @@
 
     document.getElementById('result').innerHTML = html;
     stopAuthLoading();
-  }
-
-  function openEmbeddedForm(formUrl) {
-    logFormClickClient();
-
-    const btn = document.getElementById('openFormBtn');
-    if (btn) {
-      btn.classList.add('disabled');
-      btn.textContent = 'Форма открыта';
-    }
-
-    const externalBtn = document.getElementById('externalFormBtnWrapper');
-    if (externalBtn) externalBtn.style.display = 'block';
-
-    const container = document.getElementById('embeddedFormHolder');
-    if (!container) return;
-    container.style.marginTop = '0.75rem';
-    container.style.overflow = 'visible';
-    container.style.maxHeight = 'none';
-    container.style.transition = 'none';
-    container.style.opacity = '1';
-
-    const previousScrollY = window.scrollY;
-    const iframe = document.createElement('iframe');
-    iframe.src = `${formUrl}&embedded=true`;
-    iframe.width = '100%';
-    iframe.height = '1000';
-    iframe.frameBorder = '0';
-    iframe.textContent = 'Загрузка…';
-    iframe.addEventListener('load', () => {
-      window.scrollTo({ top: previousScrollY, left: 0, behavior: 'auto' });
-    });
-
-    container.innerHTML = '';
-    container.appendChild(iframe);
-    window.scrollTo({ top: previousScrollY, left: 0, behavior: 'auto' });
-  }
-
-  function openFormInNewWindow(formUrl) {
-    logExternalFormClickClient();
-    window.open(formUrl, '_blank', 'noopener');
   }
 
   document.addEventListener('click', function(e) {
@@ -2122,13 +1946,6 @@
   }
 
   function restoreAttendanceDraft() {
-    const deleteAfterAt = Number(localStorage.getItem(ATTENDANCE_DRAFT_DELETE_AFTER_KEY) || 0);
-    if (deleteAfterAt && Date.now() >= deleteAfterAt) {
-      localStorage.removeItem(ATTENDANCE_ROWS_STORAGE_KEY);
-      localStorage.removeItem(ATTENDANCE_DRAFT_DELETE_AFTER_KEY);
-      return false;
-    }
-
     let rows = [];
     try {
       rows = JSON.parse(localStorage.getItem(ATTENDANCE_ROWS_STORAGE_KEY) || '[]');
@@ -2361,7 +2178,6 @@
     tbody.innerHTML = '';
     tbody.appendChild(createRow());
     saveAttendanceDraft();
-    localStorage.removeItem(ATTENDANCE_DRAFT_DELETE_AFTER_KEY);
     showAttendanceNotice('Таблица очищена');
   }
 
@@ -3386,39 +3202,6 @@
   hydrateExistingRows();
   const hasCachedTrainingHistory = restoreTrainingHistoryCache();
   loadTrainingHistory(hasCachedTrainingHistory);
-  async function openAttendanceForm() {
-    if (debounceTimer) {
-      clearTimeout(debounceTimer);
-      debounceTimer = null;
-      latestMatchPromise = runMatch();
-    }
-
-    if (matchInFlight) {
-      await latestMatchPromise;
-    }
-
-    const rows = [...tbody.rows];
-    const hasUnselectedRows = rows.some(r => {
-      const options = r.querySelectorAll('.fio-option');
-      if (!options.length) return false;
-      return !r.querySelector('.fio-option.selected');
-    });
-
-    if (hasUnselectedRows) {
-      showAttendanceNotice('Выберите все ФИО');
-      return;
-    }
-
-    const values = getAttendanceSelectedValues();
-
-    localStorage.setItem(ATTENDANCE_DRAFT_DELETE_AFTER_KEY, String(Date.now() + ATTENDANCE_DRAFT_TTL_MS));
-
-    logFillFormClickClient();
-
-    const prefillValue = encodeURIComponent(values.join('\n'));
-    const url = 'https://docs.google.com/forms/d/e/1FAIpQLSdGwQQhPaY3wXjT90TX2daQx7U-mjnfkoL_7VZ9nJ8NUqbKtw/viewform?entry.286976530=' + prefillValue;
-    window.open(url, '_blank');
-  }
 </script>
 </body>
 </html>
