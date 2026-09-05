@@ -11,7 +11,12 @@ const CONFIG = Object.freeze({
   TIMEZONE: 'GMT+3',
   DATE_FORMAT: 'dd.MM.yyyy',
   NAMES_CACHE_KEY: 'dbv5_full_names_v1',
-  NAMES_CACHE_TTL_SECONDS: 300
+  NAMES_CACHE_TTL_SECONDS: 300,
+  DRIVE_CONFIG: Object.freeze({
+    // ID of the pre-created "Пользователи" folder.
+    usersRootFolderId: '1AyjWNspWbBVswPdrSy0M-JEbvZBzsjq1',
+    userFolderTemplate: '{Фамилия} {Имя} {Отчество} {Дата рождения (С)}'
+  })
 });
 
 /*************************************************
@@ -332,14 +337,6 @@ function logAuthAttempt(payload) {
 }
 
 /**
- * Логирует клик по кнопке открытия формы.
- * @param {string} login Логин пользователя.
- */
-function logEditFormClick(login) {
-  logAccess({ login, status: 'Нажал: Заполнить / редактировать' });
-}
-
-/**
  * Логирует нажатие кнопки входа.
  * @param {string} login Логин пользователя.
  */
@@ -363,19 +360,11 @@ function logSectionVisit(login, section) {
 }
 
 /**
- * Логирует клик по кнопке заполнения формы.
+ * Логирует клик по кнопке заполнения формы тренировки.
  * @param {string} login Логин пользователя.
  */
 function logFillFormClick(login) {
   logAccess({ login, status: 'Нажал: Заполнить форму' });
-}
-
-/**
- * Логирует открытие формы в отдельной вкладке.
- * @param {string} login Логин пользователя.
- */
-function logExternalFormClick(login) {
-  logAccess({ login, status: 'Нажал: Открыть форму в отдельной вкладке' });
 }
 
 /*************************************************
@@ -1028,21 +1017,21 @@ function calculateMatch(short, full, maxErrors) {
    ============================================================ */
 const EDIT_CONFIG = Object.freeze({
   rules: Object.freeze({
-    TEXT: { title: 'Текст', description: 'Произвольное текстовое значение.', example: 'Текст', placeholder: '', regex: '^.*$', special: '' },
-    SUGGEST_TEXT: { title: 'Текст из подсказок', description: 'Произвольный текст с подсказками.', example: 'Значение из списка', placeholder: '', regex: '^.*$', special: 'suggest' },
-    FULL_NAME_RU: { title: 'ФИО', description: 'Фамилия, имя и отчество.', example: 'Иванов Иван Иванович', placeholder: 'Иванов Иван Иванович', regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: 'fullname' },
-    YEAR: { title: 'Год', description: 'Год в динамическом диапазоне 1950 — текущий год + 1.', example: '2024', placeholder: '2024', regex: '^\\d{4}$', special: 'year' },
-    CLASS_COURSE: { title: 'Класс / курс', description: '0-11 или I-VI.', example: '7', placeholder: '7', regex: '^(?:[0-9]|1[01]|I|II|III|IV|V|VI)$', special: 'classCourse' },
-    RU_UPPER_LETTER: { title: 'Русская заглавная буква', description: 'Одна заглавная русская буква.', example: 'А', placeholder: 'А', regex: '^[А-ЯЁ]$', special: 'singleRuUpper' },
-    PHONE_RU: { title: 'Номер телефона', description: 'Российский номер +7 999 123-45-67.', example: '+7 999 123-45-67', placeholder: '+7 999 123-45-67', regex: '^\\+7\\s\\d{3}\\s\\d{3}-\\d{2}-\\d{2}$', special: 'phoneRu' },
-    EMAIL: { title: 'Электронная почта', description: 'Адрес электронной почты.', example: 'name@example.ru', placeholder: 'name@example.ru', regex: '^[A-Za-z0-9.!#$%&\'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$', special: 'email' },
-    CERTIFICATE_RU: { title: 'Свидетельство о рождении', description: 'Серия и номер свидетельства.', example: 'IV-АБ № 123456', placeholder: 'IV-АБ № 123456', regex: '^([VIX]{1,4}-[А-ЯЁ]{1,3}\\s*№\\s*\\d{6})$', special: 'certificate' },
-    DATE_RU: { title: 'Дата', description: 'Дата ДД.ММ.ГГГГ.', example: '01.09.2010', placeholder: 'ДД.ММ.ГГГГ', regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', special: 'date' },
-    SNILS: { title: 'СНИЛС', description: 'СНИЛС из 11 цифр.', example: '000-000-000-00', placeholder: '000-000-000-00', regex: '^\\d{3}[-\\s]?\\d{3}[-\\s]?\\d{3}[-\\s]?\\d{2}$', special: 'snils' },
-    PASSPORT_RU: { title: 'Паспорт РФ', description: 'Серия и номер паспорта в формате 12 34 567890.', example: '12 34 567890', placeholder: '12 34 567890', regex: '^\\d{2}\\s\\d{2}\\s\\d{6}$', special: 'passportRu' },
-    PASSPORT_DIVISION_CODE: { title: 'Код подразделения', description: 'Код подразделения в формате 123-456.', example: '123-456', placeholder: '123-456', regex: '^\\d{3}-\\d{3}$', special: 'passportDivisionCode' },
-    MED_POLICY_NUMBER: { title: 'Номер медполиса', description: 'Номер медицинского полиса в формате 1234 5678 9012 3456.', example: '1234 5678 9012 3456', placeholder: '1234 5678 9012 3456', regex: '^\\d{4}\\s\\d{4}\\s\\d{4}\\s\\d{4}$', special: 'medPolicyNumber' },
-    MGFSO_ID: { title: 'ID МГФСО', description: 'ID МГФСО из 7 цифр.', example: '1234567', placeholder: '1234567', regex: '^\\d{7}$', special: 'mgfsoId' }
+    TEXT: { title: 'Текст', placeholder: '', regex: '^.*$', special: '' },
+    SUGGEST_TEXT: { title: 'Текст из подсказок', placeholder: '', regex: '^.*$', special: 'suggest' },
+    FULL_NAME_RU: { title: 'ФИО', placeholder: 'Иванов Иван Иванович', regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: 'fullname' },
+    YEAR: { title: 'Год', placeholder: '2024', regex: '^\\d{4}$', special: 'year' },
+    CLASS_COURSE: { title: 'Класс / курс', placeholder: '7', regex: '^(?:[0-9]|1[01]|I|II|III|IV|V|VI)$', special: 'classCourse' },
+    RU_UPPER_LETTER: { title: 'Русская заглавная буква', placeholder: 'А', regex: '^[А-ЯЁ]$', special: 'singleRuUpper' },
+    PHONE_RU: { title: 'Номер телефона', placeholder: '+7 999 123-45-67', regex: '^\\+7\\s\\d{3}\\s\\d{3}-\\d{2}-\\d{2}$', special: 'phoneRu' },
+    EMAIL: { title: 'Электронная почта', placeholder: 'name@example.ru', regex: '^[A-Za-z0-9.!#$%&\'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$', special: 'email' },
+    CERTIFICATE_RU: { title: 'Свидетельство о рождении', placeholder: 'IV-АБ № 123456', regex: '^([VIX]{1,4}-[А-ЯЁ]{1,3}\\s*№\\s*\\d{6})$', special: 'certificate' },
+    DATE_RU: { title: 'Дата', placeholder: 'ДД.ММ.ГГГГ', regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', special: 'date' },
+    SNILS: { title: 'СНИЛС', placeholder: '000-000-000-00', regex: '^\\d{3}[-\\s]?\\d{3}[-\\s]?\\d{3}[-\\s]?\\d{2}$', special: 'snils' },
+    PASSPORT_RU: { title: 'Паспорт РФ', placeholder: '12 34 567890', regex: '^\\d{2}\\s\\d{2}\\s\\d{6}$', special: 'passportRu' },
+    PASSPORT_DIVISION_CODE: { title: 'Код подразделения', placeholder: '123-456', regex: '^\\d{3}-\\d{3}$', special: 'passportDivisionCode' },
+    MED_POLICY_NUMBER: { title: 'Номер медполиса', placeholder: '1234 5678 9012 3456', regex: '^\\d{4}\\s\\d{4}\\s\\d{4}\\s\\d{4}$', special: 'medPolicyNumber' },
+    MGFSO_ID: { title: 'ID МГФСО', placeholder: '1234567', regex: '^\\d{7}$', special: 'mgfsoId' }
   }),
 
   /* ============================================================
@@ -1053,75 +1042,95 @@ const EDIT_CONFIG = Object.freeze({
    откажет даже при ручном вызове updateResultCell() из DevTools.
    ============================================================ */
   fields: Object.freeze({
-    'Фамилия Имя Отчество (С)': { editable: true, rule: 'FULL_NAME_RU', required: true, isIdentityField: true },
-    'Дата рождения (С)': { editable: true, rule: 'DATE_RU', required: true, isIdentityField: true },
-    'Месяц рождения (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
-    'Год набора': { editable: true, rule: 'YEAR', required: false, isIdentityField: false },
-    'Пол (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
-    'Школа': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, onSave: 'UPDATE_SCHOOL_DATE' },
-    'Класс / курс': { editable: true, rule: 'CLASS_COURSE', required: false, isIdentityField: false },
-    'Литера класса (буква)': { editable: true, rule: 'RU_UPPER_LETTER', required: false, isIdentityField: false },
-    'Директор школы: Фамилия Имя Отчество': { editable: true, rule: 'FULL_NAME_RU', required: false, isIdentityField: false },
-    'Адрес регистрации / Прописка (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
-    'Телефон +7 (С)': { editable: true, rule: 'PHONE_RU', required: false, isIdentityField: false },
-    'Электронная почта (С)': { editable: true, rule: 'EMAIL', required: false, isIdentityField: false },
-    'Фамилия Имя Отчество (П)': { editable: true, rule: 'FULL_NAME_RU', required: false, isIdentityField: false },
-    'Телефон +7 (П)': { editable: true, rule: 'PHONE_RU', required: false, isIdentityField: false },
-    'Электронная почта (П)': { editable: true, rule: 'EMAIL', required: false, isIdentityField: false },
-    'Дата рождения (П)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false },
-    'Паспорт: Серия, номер (П)': { editable: true, rule: 'PASSPORT_RU', required: false, isIdentityField: false },
-    'Паспорт: Кем выдан (С)': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false },
-    'Паспорт: Кем выдан (П)': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false },
-    'Паспорт: Когда выдан (П)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false },
-    'Паспорт: Прописка (П)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
-    'Паспорт: Код подразделения (П)': { editable: true, rule: 'PASSPORT_DIVISION_CODE', required: false, isIdentityField: false },
-    'Марка автомобиля (П)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
-    'гос. номер автомобиля (П)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
-    'Фамилия Имя Отчество (М)': { editable: true, rule: 'FULL_NAME_RU', required: false, isIdentityField: false },
-    'Телефон +7 (М)': { editable: true, rule: 'PHONE_RU', required: false, isIdentityField: false },
-    'Электронная почта (М)': { editable: true, rule: 'EMAIL', required: false, isIdentityField: false },
-    'Дата рождения (М)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false },
-    'Паспорт: Серия, номер (М)': { editable: true, rule: 'PASSPORT_RU', required: false, isIdentityField: false },
-    'Паспорт: Кем выдан (М)': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false },
-    'Паспорт: Когда выдан (М)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false },
-    'Паспорт: Прописка (М)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
-    'Паспорт: Код подразделения (М)': { editable: true, rule: 'PASSPORT_DIVISION_CODE', required: false, isIdentityField: false },
-    'Марка автомобиля (М)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
-    'гос. номер автомобиля (М)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
-    'Фамилия Имя Отчество (Д)': { editable: true, rule: 'FULL_NAME_RU', required: false, isIdentityField: false },
-    'Телефон +7 (Д)': { editable: true, rule: 'PHONE_RU', required: false, isIdentityField: false },
-    'Электронная почта (Д)': { editable: true, rule: 'EMAIL', required: false, isIdentityField: false },
-    'Дата рождения (Д)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false },
-    'Паспорт: Серия, номер (Д)': { editable: true, rule: 'PASSPORT_RU', required: false, isIdentityField: false },
-    'Паспорт: Кем выдан (Д)': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false },
-    'Паспорт: Когда выдан (Д)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false },
-    'Паспорт: Прописка (Д)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
-    'Паспорт: Код подразделения (Д)': { editable: true, rule: 'PASSPORT_DIVISION_CODE', required: false, isIdentityField: false },
-    'Марка автомобиля (Д)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
-    'гос. номер автомобиля (Д)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
-    'Свидетельство: Серия, номер (С)': { editable: true, rule: 'CERTIFICATE_RU', required: false, isIdentityField: false },
-    'Паспорт: Серия, номер (С)': { editable: true, rule: 'PASSPORT_RU', required: false, isIdentityField: false },
-    'Свидетельство: Кем выдан (С)': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false },
-    'Паспорт: Кем выдан': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false },
-    'Паспорт или Свидетельство: Кем выдан (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
-    'Свидетельство: Когда выдан (С)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false },
-    'Паспорт: Когда выдан (С)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false },
-    'Паспорт или Свидетельство: Когда выдан (С)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false },
-    'Паспорт: Код подразделения (С)': { editable: true, rule: 'PASSPORT_DIVISION_CODE', required: false, isIdentityField: false },
-    'Снилс: номер': { editable: true, rule: 'SNILS', required: false, isIdentityField: true },
-    'Полис: Страховая компания': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
-    'Тренировочная группа': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false },
-    'МГФСО группа': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false },
-    'Тренер МГФСО': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false },
-    'Разряд': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false },
-    'Мед полис: номер': { editable: true, rule: 'MED_POLICY_NUMBER', required: false, isIdentityField: false },
-    'Дата зачисления в МГФСО': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false },
-    'Дата получения разряда': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false },
-    'Срок действия страховки': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false },
-    'Номер и страховя компания': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
-    'ID номер МГФСО': { editable: true, rule: 'MGFSO_ID', required: false, isIdentityField: false },
-    'Мед допуск до': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false },
-    'РУСАДА': { editable: true, rule: 'YEAR', required: false, isIdentityField: false }
+    'Фамилия Имя Отчество (С)': { editable: true, rule: 'FULL_NAME_RU', required: true, isIdentityField: true, description: 'Фамилия, имя и отчество.', example: 'Иванов Иван Иванович' },
+    'Дата рождения (С)': { editable: true, rule: 'DATE_RU', required: true, isIdentityField: true, description: 'Дата рождения в формате ДД.ММ.ГГГГ.', example: '01.09.2010' },
+    'Месяц рождения (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, description: 'Произвольное текстовое значение.', example: 'Текст' },
+    'Год набора': { editable: true, rule: 'YEAR', required: false, isIdentityField: false, description: 'Год в динамическом диапазоне 1950 — текущий год + 1.', example: '2024' },
+    'Пол (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, description: 'Произвольное текстовое значение.', example: 'Текст' },
+    'Школа': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false, onSave: 'UPDATE_SCHOOL_DATE', description: 'Произвольный текст с подсказками.', example: 'Значение из списка', suggestions: { sourceSheet: 'Списки данных', sourceHeader: 'Школы', startRow: 2 } },
+    'Класс / курс': { editable: true, rule: 'CLASS_COURSE', required: false, isIdentityField: false, description: '0-11 или I-VI.', example: '7' },
+    'Литера класса (буква)': { editable: true, rule: 'RU_UPPER_LETTER', required: false, isIdentityField: false, description: 'Одна заглавная русская буква.', example: 'А' },
+    'Директор школы: Фамилия Имя Отчество': { editable: true, rule: 'FULL_NAME_RU', required: false, isIdentityField: false, description: 'Фамилия, имя и отчество.', example: 'Иванов Иван Иванович' },
+    'Адрес регистрации / Прописка (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, description: 'Произвольное текстовое значение.', example: 'Текст' },
+    'Телефон +7 (С)': { editable: true, rule: 'PHONE_RU', required: false, isIdentityField: false, description: 'Российский номер +7 999 123-45-67.', example: '+7 999 123-45-67' },
+    'Электронная почта (С)': { editable: true, rule: 'EMAIL', required: false, isIdentityField: false, description: 'Адрес электронной почты.', example: 'name@example.ru' },
+    'Фамилия Имя Отчество (П)': { editable: true, rule: 'FULL_NAME_RU', required: false, isIdentityField: false, description: 'Фамилия, имя и отчество.', example: 'Иванов Иван Иванович' },
+    'Телефон +7 (П)': { editable: true, rule: 'PHONE_RU', required: false, isIdentityField: false, description: 'Российский номер +7 999 123-45-67.', example: '+7 999 123-45-67' },
+    'Электронная почта (П)': { editable: true, rule: 'EMAIL', required: false, isIdentityField: false, description: 'Адрес электронной почты.', example: 'name@example.ru' },
+    'Дата рождения (П)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false, description: 'Дата ДД.ММ.ГГГГ.', example: '01.09.2010' },
+    'Паспорт: Серия, номер (П)': { editable: true, rule: 'PASSPORT_RU', required: false, isIdentityField: false, description: 'Серия и номер паспорта в формате 12 34 567890.', example: '12 34 567890' },
+    'Паспорт: Кем выдан (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, description: 'Произвольное текстовое значение.', example: 'Текст' },
+    'Паспорт: Кем выдан (П)': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false, description: 'Произвольный текст с подсказками.', example: 'Значение из списка', suggestions: { sourceSheet: 'Результат', sourceHeader: 'Паспорт: Кем выдан (П)', startRow: 2 } },
+    'Паспорт: Когда выдан (П)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false, description: 'Дата ДД.ММ.ГГГГ.', example: '01.09.2010' },
+    'Паспорт: Прописка (П)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, description: 'Произвольное текстовое значение.', example: 'Текст' },
+    'Паспорт: Код подразделения (П)': { editable: true, rule: 'PASSPORT_DIVISION_CODE', required: false, isIdentityField: false, description: 'Код подразделения в формате 123-456.', example: '123-456' },
+    'Марка автомобиля (П)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, description: 'Произвольное текстовое значение.', example: 'Текст' },
+    'гос. номер автомобиля (П)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, description: 'Произвольное текстовое значение.', example: 'Текст' },
+    'Фамилия Имя Отчество (М)': { editable: true, rule: 'FULL_NAME_RU', required: false, isIdentityField: false, description: 'Фамилия, имя и отчество.', example: 'Иванов Иван Иванович' },
+    'Телефон +7 (М)': { editable: true, rule: 'PHONE_RU', required: false, isIdentityField: false, description: 'Российский номер +7 999 123-45-67.', example: '+7 999 123-45-67' },
+    'Электронная почта (М)': { editable: true, rule: 'EMAIL', required: false, isIdentityField: false, description: 'Адрес электронной почты.', example: 'name@example.ru' },
+    'Дата рождения (М)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false, description: 'Дата ДД.ММ.ГГГГ.', example: '01.09.2010' },
+    'Паспорт: Серия, номер (М)': { editable: true, rule: 'PASSPORT_RU', required: false, isIdentityField: false, description: 'Серия и номер паспорта в формате 12 34 567890.', example: '12 34 567890' },
+    'Паспорт: Кем выдан (М)': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false, description: 'Произвольный текст с подсказками.', example: 'Значение из списка', suggestions: { sourceSheet: 'Результат', sourceHeader: 'Паспорт: Кем выдан (М)', startRow: 2 } },
+    'Паспорт: Когда выдан (М)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false, description: 'Дата ДД.ММ.ГГГГ.', example: '01.09.2010' },
+    'Паспорт: Прописка (М)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, description: 'Произвольное текстовое значение.', example: 'Текст' },
+    'Паспорт: Код подразделения (М)': { editable: true, rule: 'PASSPORT_DIVISION_CODE', required: false, isIdentityField: false, description: 'Код подразделения в формате 123-456.', example: '123-456' },
+    'Марка автомобиля (М)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, description: 'Произвольное текстовое значение.', example: 'Текст' },
+    'гос. номер автомобиля (М)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, description: 'Произвольное текстовое значение.', example: 'Текст' },
+    'Фамилия Имя Отчество (Д)': { editable: true, rule: 'FULL_NAME_RU', required: false, isIdentityField: false, description: 'Фамилия, имя и отчество.', example: 'Иванов Иван Иванович' },
+    'Телефон +7 (Д)': { editable: true, rule: 'PHONE_RU', required: false, isIdentityField: false, description: 'Российский номер +7 999 123-45-67.', example: '+7 999 123-45-67' },
+    'Электронная почта (Д)': { editable: true, rule: 'EMAIL', required: false, isIdentityField: false, description: 'Адрес электронной почты.', example: 'name@example.ru' },
+    'Дата рождения (Д)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false, description: 'Дата ДД.ММ.ГГГГ.', example: '01.09.2010' },
+    'Паспорт: Серия, номер (Д)': { editable: true, rule: 'PASSPORT_RU', required: false, isIdentityField: false, description: 'Серия и номер паспорта в формате 12 34 567890.', example: '12 34 567890' },
+    'Паспорт: Кем выдан (Д)': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false, description: 'Произвольный текст с подсказками.', example: 'Значение из списка', suggestions: { sourceSheet: 'Результат', sourceHeader: 'Паспорт: Кем выдан (Д)', startRow: 2 } },
+    'Паспорт: Когда выдан (Д)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false, description: 'Дата ДД.ММ.ГГГГ.', example: '01.09.2010' },
+    'Паспорт: Прописка (Д)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, description: 'Произвольное текстовое значение.', example: 'Текст' },
+    'Паспорт: Код подразделения (Д)': { editable: true, rule: 'PASSPORT_DIVISION_CODE', required: false, isIdentityField: false, description: 'Код подразделения в формате 123-456.', example: '123-456' },
+    'Марка автомобиля (Д)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, description: 'Произвольное текстовое значение.', example: 'Текст' },
+    'гос. номер автомобиля (Д)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, description: 'Произвольное текстовое значение.', example: 'Текст' },
+    'Свидетельство: Серия, номер (С)': { editable: true, rule: 'CERTIFICATE_RU', required: false, isIdentityField: false, description: 'Серия и номер свидетельства.', example: 'IV-АБ № 123456' },
+    'Паспорт: Серия, номер (С)': { editable: true, rule: 'PASSPORT_RU', required: false, isIdentityField: false, description: 'Серия и номер паспорта в формате 12 34 567890.', example: '12 34 567890' },
+    'Свидетельство: Кем выдан (С)': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false, description: 'Произвольный текст с подсказками.', example: 'Значение из списка', suggestions: { sourceSheet: 'Результат', sourceHeader: 'Свидетельство: Кем выдан (С)', startRow: 2 } },
+    'Паспорт: Кем выдан': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false, description: 'Произвольный текст с подсказками.', example: 'Значение из списка', suggestions: { sourceSheet: 'Результат', sourceHeader: 'Паспорт: Кем выдан', startRow: 2 } },
+    'Паспорт или Свидетельство: Кем выдан (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, description: 'Произвольное текстовое значение.', example: 'Текст' },
+    'Свидетельство: Когда выдан (С)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false, description: 'Дата ДД.ММ.ГГГГ.', example: '01.09.2010' },
+    'Паспорт: Когда выдан (С)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false, description: 'Дата ДД.ММ.ГГГГ.', example: '01.09.2010' },
+    'Паспорт или Свидетельство: Когда выдан (С)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false, description: 'Дата ДД.ММ.ГГГГ.', example: '01.09.2010' },
+    'Паспорт: Код подразделения (С)': { editable: true, rule: 'PASSPORT_DIVISION_CODE', required: false, isIdentityField: false, description: 'Код подразделения в формате 123-456.', example: '123-456' },
+    'Снилс: номер': { editable: true, rule: 'SNILS', required: false, isIdentityField: true, description: 'СНИЛС из 11 цифр.', example: '000-000-000-00' },
+    'Полис: Страховая компания': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false, description: 'Произвольный текст с подсказками.', example: 'Значение из списка', suggestions: { sourceSheet: 'Результат', sourceHeader: 'Полис: Страховая компания', startRow: 2 } },
+    'Тренировочная группа': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false, description: 'Произвольный текст с подсказками.', example: 'Значение из списка', suggestions: { sourceSheet: 'Списки данных', sourceHeader: 'Группы тренировки', startRow: 5 } },
+    'МГФСО группа': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false, description: 'Произвольный текст с подсказками.', example: 'Значение из списка', suggestions: { sourceSheet: 'Списки данных', sourceHeader: 'Группы МГФСО', startRow: 2 } },
+    'Тренер МГФСО': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false, description: 'Произвольный текст с подсказками.', example: 'Значение из списка', suggestions: { sourceSheet: 'Списки данных', sourceHeader: 'Тренер МГФСО', startRow: 2 } },
+    'Разряд': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false, description: 'Произвольный текст с подсказками.', example: 'Значение из списка', suggestions: { sourceSheet: 'Списки данных', sourceHeader: 'Список разрядов', startRow: 2 } },
+    'Мед полис: номер': { editable: true, rule: 'MED_POLICY_NUMBER', required: false, isIdentityField: false, description: 'Номер медицинского полиса в формате 1234 5678 9012 3456.', example: '1234 5678 9012 3456' },
+    'Дата зачисления в МГФСО': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false, description: 'Укажите дату зачисления в МГФСО.', example: '15.08.2024' },
+    'Дата получения разряда': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false, description: 'Дата ДД.ММ.ГГГГ.', example: '01.09.2010' },
+    'Срок действия страховки': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false, description: 'Дата ДД.ММ.ГГГГ.', example: '01.09.2010' },
+    'Номер и страховя компания': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, description: 'Произвольное текстовое значение.', example: 'Текст' },
+    'ID номер МГФСО': { editable: true, rule: 'MGFSO_ID', required: false, isIdentityField: false, description: 'ID МГФСО из 7 цифр.', example: '1234567' },
+    'Мед допуск до': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false, description: 'Дата ДД.ММ.ГГГГ.', example: '01.09.2010' },
+    'РУСАДА': { editable: true, rule: 'YEAR', required: false, isIdentityField: false, description: 'Год в динамическом диапазоне 1950 — текущий год + 1.', example: '2024' },
+    'Свидетельство: скан (C)': { editable: false, attachment: 'CERTIFICATE_C' },
+    'Паспорт: скан (С)': { editable: false, attachment: 'PASSPORT_C' },
+    'Снилс: Скан (C)': { editable: false, attachment: 'SNILS_C' },
+    'Полис: Скан (C)': { editable: false, attachment: 'POLICY_C' },
+    'Мед допуск: Скан': { editable: false, attachment: 'MEDICAL_C' },
+    'Русада: Скан': { editable: false, attachment: 'RUSADA_C' },
+    'Паспорт: Скан (П)': { editable: false, attachment: 'PASSPORT_P' },
+    'Паспорт: Скан (М)': { editable: false, attachment: 'PASSPORT_M' },
+    'Паспорт: Скан (Д)': { editable: false, attachment: 'PASSPORT_D' }
+  }),
+  attachments: Object.freeze({
+    CERTIFICATE_C: { title: 'Свидетельство о рождении', enabled: true, linkColumn: 'Свидетельство: скан (C)', fileNameTemplate: '{Фамилия} {Имя} {Отчество} - Свидетельство о рождении', allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'], maxSizeMb: 20, replaceMode: 'replace' },
+    PASSPORT_C: { title: 'Паспорт', enabled: true, linkColumn: 'Паспорт: скан (С)', fileNameTemplate: '{Фамилия} {Имя} {Отчество} - Паспорт', allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'], maxSizeMb: 20, replaceMode: 'replace' },
+    SNILS_C: { title: 'СНИЛС', enabled: false, linkColumn: 'Снилс: Скан (C)', fileNameTemplate: '{Фамилия} {Имя} {Отчество} - СНИЛС', allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'], maxSizeMb: 20, replaceMode: 'replace' },
+    POLICY_C: { title: 'Полис', enabled: false, linkColumn: 'Полис: Скан (C)', fileNameTemplate: '{Фамилия} {Имя} {Отчество} - Полис', allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'], maxSizeMb: 20, replaceMode: 'replace' },
+    MEDICAL_C: { title: 'Медицинский допуск', enabled: true, linkColumn: 'Мед допуск: Скан', fileNameTemplate: '{Фамилия} {Имя} {Отчество} - Мед допуск', allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'], maxSizeMb: 20, replaceMode: 'replace' },
+    RUSADA_C: { title: 'РУСАДА', enabled: false, linkColumn: 'Русада: Скан', fileNameTemplate: '{Фамилия} {Имя} {Отчество} - РУСАДА', allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'], maxSizeMb: 20, replaceMode: 'replace' },
+    PASSPORT_P: { title: 'Паспорт отца', enabled: false, linkColumn: 'Паспорт: Скан (П)', fileNameTemplate: '{Фамилия Имя Отчество (П)} - Паспорт', allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'], maxSizeMb: 20, replaceMode: 'replace' },
+    PASSPORT_M: { title: 'Паспорт матери', enabled: false, linkColumn: 'Паспорт: Скан (М)', fileNameTemplate: '{Фамилия Имя Отчество (М)} - Паспорт', allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'], maxSizeMb: 20, replaceMode: 'replace' },
+    PASSPORT_D: { title: 'Паспорт представителя', enabled: false, linkColumn: 'Паспорт: Скан (Д)', fileNameTemplate: '{Фамилия Имя Отчество (Д)} - Паспорт', allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'], maxSizeMb: 20, replaceMode: 'replace' }
   })
 });
 
@@ -1289,14 +1298,22 @@ function updateResultCell(login, password, snils, columnName, value) {
 }
 
 /**
- * Возвращает уникальные варианты значений из заданного столбца по заголовку.
- * @param {string} sheetName Имя листа-источника.
- * @param {string} columnHeader Заголовок столбца.
- * @param {number} startRow С какой строки читать значения (1-indexed).
+ * Возвращает уникальные варианты подсказок для настроенного поля.
+ * Источник данных определяется конфигурацией конкретного поля, а не клиентом.
+ * @param {string} columnName Заголовок редактируемого столбца.
  * @returns {string[]}
  */
-function getFieldSuggestions(sheetName, columnHeader, startRow) {
-  const sheet = getSheet(String(sheetName || ''));
+function getFieldSuggestions(columnName) {
+  const fieldConfig = EDIT_CONFIG.fields[String(columnName || '')];
+  if (!fieldConfig || fieldConfig.rule !== 'SUGGEST_TEXT') return [];
+
+  const suggestions = fieldConfig.suggestions;
+  if (!suggestions || typeof suggestions !== 'object') return [];
+
+  const { sourceSheet, sourceHeader, startRow } = suggestions;
+  if (!sourceSheet || !sourceHeader || !Number.isFinite(Number(startRow)) || Number(startRow) < 1) return [];
+
+  const sheet = getSheet(String(sourceSheet));
   if (!sheet) return [];
 
   const lastRow = sheet.getLastRow();
@@ -1304,10 +1321,10 @@ function getFieldSuggestions(sheetName, columnHeader, startRow) {
   if (lastRow < 2 || lastCol < 1) return [];
 
   const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
-  const colIndex = header.indexOf(String(columnHeader || ''));
+  const colIndex = header.indexOf(String(sourceHeader));
   if (colIndex === -1) return [];
 
-  const fromRow = Math.max(2, Number(startRow) || 2);
+  const fromRow = Math.max(2, Number(startRow));
   if (fromRow > lastRow) return [];
 
   const values = sheet.getRange(fromRow, colIndex + 1, lastRow - fromRow + 1, 1).getValues()
@@ -1324,4 +1341,78 @@ function getFieldSuggestions(sheetName, columnHeader, startRow) {
   });
 
   return uniq;
+}
+
+/** Resolves configuration and user row for a protected attachment upload. */
+function getAttachmentUploadContext_(login, password, snils, columnName, attachmentKey) {
+  const fieldConfig = EDIT_CONFIG.fields[String(columnName || '')];
+  if (!fieldConfig || !fieldConfig.attachment || fieldConfig.attachment !== attachmentKey) throw new Error('Поле не настроено для прикрепления документа.');
+  const attachment = EDIT_CONFIG.attachments[attachmentKey];
+  if (!attachment || attachment.enabled !== true || attachment.linkColumn !== columnName) throw new Error('Прикрепление этого документа отключено.');
+  if (!CONFIG.DRIVE_CONFIG.usersRootFolderId) throw new Error('Не настроена папка Google Drive для документов.');
+  const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
+  if (!sheet) throw new Error('Лист с результатами не найден.');
+  const lastRow = sheet.getLastRow(), lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) throw new Error('Таблица пуста.');
+  const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+  const linkCol = header.indexOf(attachment.linkColumn);
+  if (linkCol === -1) throw new Error('Колонка ссылки для документа не найдена.');
+  const authCols = getAuthColumnIndexes(header), snilsCol = getSnilsColumnIndex(header);
+  const auth = loadAuthColumns(sheet, lastRow - 1, authCols, snilsCol);
+  const normalizedLogin = normalizeLogin(login), normalizedSnils = normalizeSnils(snils);
+  for (let i = 0; i < lastRow - 1; i++) {
+    if (normalizeLogin(auth.logins[i][0]) !== normalizedLogin || formatCellValue(auth.passwords[i][0]).trim() !== String(password || '').trim()) continue;
+    const expectedSnils = normalizeSnils(auth.snilsValues[i][0]);
+    if (expectedSnils && expectedSnils !== normalizedSnils) continue;
+    return { attachment, sheet, header, rowIndex: i + 2, row: sheet.getRange(i + 2, 1, 1, lastCol).getValues()[0], linkCol };
+  }
+  throw new Error('Не удалось подтвердить пользователя.');
+}
+
+function expandAttachmentTemplate_(template, header, row) {
+  const values = {};
+  header.forEach((title, index) => { values[title] = formatCellValue(row[index]).trim(); });
+  const fullName = values['Фамилия Имя Отчество (С)'] || '';
+  const parts = fullName.split(/\s+/).filter(Boolean);
+  values['Фамилия'] = parts[0] || '';
+  values['Имя'] = parts[1] || '';
+  values['Отчество'] = parts.slice(2).join(' ');
+  return String(template || '').replace(/\{([^}]+)\}/g, (_, key) => values[key] || '').replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function getOrCreateUserFolder_(context) {
+  const root = DriveApp.getFolderById(CONFIG.DRIVE_CONFIG.usersRootFolderId);
+  const name = expandAttachmentTemplate_(CONFIG.DRIVE_CONFIG.userFolderTemplate, context.header, context.row);
+  if (!name) throw new Error('Не удалось сформировать имя папки пользователя.');
+  const folders = root.getFoldersByName(name);
+  return folders.hasNext() ? folders.next() : root.createFolder(name);
+}
+
+/** Uploads a configured attachment. File data must be a data URL read by the browser. */
+function uploadAttachment(login, password, snils, columnName, attachmentKey, file) {
+  const context = getAttachmentUploadContext_(login, password, snils, columnName, attachmentKey);
+  if (!file || typeof file.dataUrl !== 'string' || !file.name) throw new Error('Выберите файл для загрузки.');
+  const extension = String(file.name).split('.').pop().toLowerCase();
+  if (!extension || context.attachment.allowedExtensions.indexOf(extension) === -1) throw new Error('Недопустимое расширение файла.');
+  const base64 = file.dataUrl.split(',')[1] || '';
+  const bytes = Utilities.base64Decode(base64);
+  if (!bytes.length || bytes.length > Number(context.attachment.maxSizeMb) * 1024 * 1024) throw new Error('Размер файла превышает допустимый.');
+  const folder = getOrCreateUserFolder_(context);
+  const name = `${expandAttachmentTemplate_(context.attachment.fileNameTemplate, context.header, context.row)}.${extension}`;
+  if (!name || name === `.${extension}`) throw new Error('Не удалось сформировать имя файла.');
+  const blob = Utilities.newBlob(bytes, String(file.mimeType || 'application/octet-stream'), name);
+  const oldUrl = formatCellValue(context.row[context.linkCol]).trim();
+  const newFile = folder.createFile(blob);
+  try {
+    const url = newFile.getUrl();
+    context.sheet.getRange(context.rowIndex, context.linkCol + 1).setValue(url);
+    const oldId = (oldUrl.match(/[-\w]{25,}/) || [])[0];
+    if (oldId && context.attachment.replaceMode === 'replace') {
+      try { DriveApp.getFileById(oldId).setTrashed(true); } catch (_) {}
+    }
+    return { ok: true, url, fileName: name, replaced: Boolean(oldUrl) };
+  } catch (error) {
+    newFile.setTrashed(true);
+    throw error;
+  }
 }

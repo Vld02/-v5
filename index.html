@@ -125,39 +125,6 @@
   input { padding: 0.65em 0.75em; margin: var(--space-sm) 0; width: 100%; box-sizing: border-box; font: inherit; }
   button { padding: 0.7em 1.1em; margin-top: var(--space-md); cursor: pointer; font: inherit; }
 
-  .block {
-    margin-top: var(--space-lg);
-    padding: var(--space-md);
-    border: 0.05rem solid var(--border);
-    border-radius: var(--radius-md);
-    background: #fafafa;
-  }
-
-  .button-link {
-    display: inline-block;
-    white-space: nowrap;
-    padding: 0.7em 1.1em;
-    background: #4285f4;
-    color: #fff;
-    text-decoration: none;
-    border-radius: var(--radius-sm);
-    margin-left: 50%;
-    transform: translateX(-50%);
-    margin-bottom: var(--space-sm);
-    border: none;
-    cursor: pointer;
-  }
-
-  .button-link.form-action {
-    min-width: min(100%, 18rem);
-  }
-
-  .button-link.disabled {
-    background: #9e9e9e;
-    cursor: default;
-    pointer-events: none;
-  }
-
   .item { display: flex; border: 0.05rem solid #d8d8d8; border-top: none; min-height: 2.2rem; }
   .item:first-of-type { border-top: 0.05rem solid #d8d8d8; }
   .item-title { font-weight: bold; width: 45%; padding: var(--space-sm); background:#f7f7f7; border-right:0.05rem solid #d8d8d8; display:flex; align-items:center; }
@@ -701,6 +668,15 @@
     box-shadow: 0 0.35rem 1rem rgba(0,0,0,.25);
   }
   .toast.error { background: rgba(176, 0, 32, 0.95); }
+  .attachment-modal[hidden] { display:none; }
+  .attachment-modal { position:fixed; inset:0; z-index:1100; display:grid; place-items:center; background:rgba(0,0,0,.45); padding:1rem; }
+  .attachment-dialog { width:min(32rem, 100%); background:#fff; border-radius:var(--radius-md); padding:1rem; box-shadow:0 .5rem 2rem rgba(0,0,0,.3); }
+  .attachment-dropzone { display:block; margin:1rem 0; padding:2rem 1rem; border:2px dashed #8ab4f8; border-radius:var(--radius-sm); text-align:center; cursor:pointer; }
+  .attachment-dropzone.is-dragover { background:#e9f3ff; }
+  .attachment-actions { display:flex; justify-content:flex-end; gap:.75rem; }
+  .attachment-open { display:inline-block; margin-top:.35rem; }
+  .attachment-title-button { margin:0 0 0 .5rem; padding:.25rem .5rem; font-size:.85em; }
+  .item-title { justify-content:space-between; }
 </style>
 </head>
 <body>
@@ -713,6 +689,11 @@
 </header>
 
 <div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+<div id="attachmentModal" class="attachment-modal" hidden role="dialog" aria-modal="true" aria-labelledby="attachmentTitle">
+  <div class="attachment-dialog"><h3 id="attachmentTitle">Прикрепить документ</h3><p id="attachmentReplaceNotice" hidden></p>
+  <label id="attachmentDropzone" class="attachment-dropzone">Перетащите файл сюда или выберите файл<input id="attachmentFileInput" type="file" hidden></label>
+  <div id="attachmentFileInfo">Файл не выбран.</div><div class="attachment-actions"><button type="button" id="attachmentCancel">Отмена</button><button type="button" id="attachmentSave" disabled>Сохранить</button></div></div>
+</div>
 
 <div class="page">
   <section id="tab-docs" class="tab-panel active">
@@ -737,7 +718,6 @@
       </div>
     </div>
     <div id="result"></div>
-    <div id="formContainer" style="margin-top:1rem;"></div>
   </section>
 
   <section id="tab-attendance" class="tab-panel">
@@ -870,20 +850,6 @@
 
     return editConfigPromise;
   }
-
-  const FIELD_SUGGEST_CONFIG = Object.freeze({
-    'Школа': { sourceSheet: 'Списки данных', sourceHeader: 'Школы', startRow: 2 },
-    'Полис: Страховая компания': { sourceSheet: 'Результат', sourceHeader: 'Полис: Страховая компания', startRow: 2 },
-    'Тренировочная группа': { sourceSheet: 'Списки данных', sourceHeader: 'Группы тренировки', startRow: 5 },
-    'МГФСО группа': { sourceSheet: 'Списки данных', sourceHeader: 'Группы МГФСО', startRow: 2 },
-    'Тренер МГФСО': { sourceSheet: 'Списки данных', sourceHeader: 'Тренер МГФСО', startRow: 2 },
-    'Разряд': { sourceSheet: 'Списки данных', sourceHeader: 'Список разрядов', startRow: 2 },
-    'Свидетельство: Кем выдан (С)': { sourceSheet: 'Результат', sourceHeader: 'Свидетельство: Кем выдан (С)', startRow: 2 },
-    'Паспорт: Кем выдан': { sourceSheet: 'Результат', sourceHeader: 'Паспорт: Кем выдан', startRow: 2 },
-    'Паспорт: Кем выдан (П)': { sourceSheet: 'Результат', sourceHeader: 'Паспорт: Кем выдан (П)', startRow: 2 },
-    'Паспорт: Кем выдан (М)': { sourceSheet: 'Результат', sourceHeader: 'Паспорт: Кем выдан (М)', startRow: 2 },
-    'Паспорт: Кем выдан (Д)': { sourceSheet: 'Результат', sourceHeader: 'Паспорт: Кем выдан (Д)', startRow: 2 }
-  });
 
   let currentDocsRow = { header: [], row: [], colors: [] };
 
@@ -1451,10 +1417,6 @@
     return localStorage.getItem('savedLogin') || dom.login.value.trim() || 'неизвестно';
   }
 
-  function logFormClickClient() {
-    google.script.run.logEditFormClick(getSavedLoginForLog());
-  }
-
   function logLoginButtonClickClient() {
     google.script.run.logLoginButtonClick(getSavedLoginForLog());
   }
@@ -1465,10 +1427,6 @@
 
   function logFillFormClickClient() {
     google.script.run.logFillFormClick(getSavedLoginForLog());
-  }
-
-  function logExternalFormClickClient() {
-    google.script.run.logExternalFormClick(getSavedLoginForLog());
   }
 
   async function logInitialPageOpen() {
@@ -1496,84 +1454,6 @@
 
     logInitialPageOpen();
   });
-
-  const ENTRY_MAP = {
-    'Фамилия Имя Отчество (С)': { type: 'text', id: 'entry.839624196' },
-    'Дата рождения (С)': { type: 'dateParts', id: 'entry.486784767' },
-    'Школа автоматический итоговый результат': { type: 'text', id: 'entry.940501672' },
-    'Класс / курс': { type: 'text', id: 'entry.821953319' },
-    'Литера класса (буква)': { type: 'text', id: 'entry.684875902' },
-    'Директор школы: Фамилия Имя Отчество': { type: 'text', id: 'entry.2072597319' },
-    'Адрес регистрации / Прописка (С)': { type: 'text', id: 'entry.865566941' },
-    'Телефон +7 (С)': { type: 'text', id: 'entry.970307056' },
-    'Электронная почта (С)': { type: 'text', id: 'entry.3304605' },
-    'Свидетельство: Серия, номер (С)': { type: 'text', id: 'entry.1514966749' },
-    'Паспорт: Код подразделения (С)': { type: 'text', id: 'entry.1581252849' },
-    'Снилс: номер': { type: 'text', id: 'entry.937341347' },
-    'Полис: Страховая компания': { type: 'otherOption', id: 'entry.146274222' },
-    'Мед полис: номер': { type: 'text', id: 'entry.1917395961' },
-    'Паспорт или Свидетельство: Кем выдан (С)': { type: 'otherOption', id: 'entry.698271959' },
-    'Паспорт или Свидетельство: Когда выдан (С)': { type: 'dateParts', id: 'entry.1532804302' },
-    'Отец - Основные данные': { type: 'text', id: 'entry.1469131559' },
-    'Фамилия Имя Отчество (П)': { type: 'text', id: 'entry.1058110522' },
-    'Телефон +7 (П)': { type: 'text', id: 'entry.1049937641' },
-    'Электронная почта (П)': { type: 'text', id: 'entry.1782553661' },
-    'Дополн. данные отца (документы)': { type: 'text', id: 'entry.1221032392' },
-    'Дата рождения (П)': { type: 'dateParts', id: 'entry.8454711' },
-    'Паспорт: Серия, номер (П)': { type: 'text', id: 'entry.244093263' },
-    'Паспорт: Кем выдан (П)': { type: 'otherOption', id: 'entry.1906456441' },
-    'Паспорт: Когда выдан (П)': { type: 'dateParts', id: 'entry.1455656355' },
-    'Паспорт: Прописка (П)': { type: 'text', id: 'entry.646278185' },
-    'Паспорт: Код подразделения (П)': { type: 'text', id: 'entry.1694042252' },
-    'Марка автомобиля (П)': { type: 'text', id: 'entry.578806920' },
-    'гос. номер автомобиля (П)': { type: 'text', id: 'entry.2102422380' },
-    'Мать - Основные данные': { type: 'text', id: 'entry.1523036313' },
-    'Фамилия Имя Отчество (М)': { type: 'text', id: 'entry.1648441516' },
-    'Телефон +7 (М)': { type: 'text', id: 'entry.1584003848' },
-    'Электронная почта (М)': { type: 'text', id: 'entry.1072346272' },
-    'Дополн. данные Матери (документы)': { type: 'text', id: 'entry.806876438' },
-    'Дата рождения (М)': { type: 'dateParts', id: 'entry.1093632809' },
-    'Паспорт: Серия, номер (М)': { type: 'text', id: 'entry.1956661242' },
-    'Паспорт: Кем выдан (М)': { type: 'otherOption', id: 'entry.1932909788' },
-    'Паспорт: Когда выдан (М)': { type: 'dateParts', id: 'entry.1988590081' },
-    'Паспорт: Прописка (М)': { type: 'text', id: 'entry.1118515654' },
-    'Паспорт: Код подразделения (М)': { type: 'text', id: 'entry.630042479' },
-    'Марка автомобиля (М)': { type: 'text', id: 'entry.197033163' },
-    'гос. номер автомобиля (М)': { type: 'text', id: 'entry.709907584' },
-    'Завершить опрос': { type: 'text', id: 'entry.465523931' }
-  };
-
-  function buildFormUrl(header, row) {
-    const base = 'https://docs.google.com/forms/d/e/1FAIpQLSfLOcMYEWaOwF3qYuzsnSmaDbOSR6WGB7AUP7oYHBpzlo7npQ/viewform';
-    const params = [];
-
-    for (let i = 0; i < header.length; i++) {
-      const title = header[i];
-      let value = row[i];
-      if (value === undefined || value === null) continue;
-      value = String(value).trim();
-      if (!value) continue;
-
-      const map = ENTRY_MAP[title];
-      if (!map) continue;
-
-      if (map.type === 'text') {
-        params.push(`${map.id}=${encodeURIComponent(value)}`);
-      } else if (map.type === 'otherOption') {
-        params.push(`${map.id}=__other_option__`);
-        params.push(`${map.id}.other_option_response=${encodeURIComponent(value)}`);
-      } else if (map.type === 'dateParts') {
-        const d = parseDateString(value);
-        if (d) {
-          params.push(`${map.id}_year=${encodeURIComponent(d.year)}`);
-          params.push(`${map.id}_month=${encodeURIComponent(d.month)}`);
-          params.push(`${map.id}_day=${encodeURIComponent(d.day)}`);
-        }
-      }
-    }
-
-    return params.length ? `${base}?${params.join('&')}` : base;
-  }
 
   const PARENT_SECTION_SUFFIXES = Object.freeze(['П', 'М', 'Д']);
   const PARENT_SECTION_FIELDS = Object.freeze([
@@ -1609,15 +1489,7 @@
     const colors = response.colors || [];
     currentDocsRow = { header: [...header], row: [...row], colors: [...colors] };
 
-    const formUrl = buildFormUrl(header, row);
-    let html = `
-      <div class="block" id="formBlock">
-        <button id="openFormBtn" class="button-link form-action" onclick="openEmbeddedForm('${formUrl}')" title="Откроется Гугл форма для заполнения данных">Заполнить / редактировать</button>
-        <div id="externalFormBtnWrapper" style="display:none;margin-top:0.75rem;">
-          <button class="button-link" onclick="openFormInNewWindow('${formUrl}')">Открыть форму в отдельной вкладке</button>
-        </div>
-        <div id="embeddedFormHolder"></div>
-      </div>`;
+    let html = '';
 
     const SECTION_STARTS = {
       'Фамилия Имя Отчество (С)': 'Спортсмен',
@@ -1660,7 +1532,7 @@
         const style = bg ? `background:${bg};` : '';
         const rule = getFieldEditRule(header[i]);
         const btnClass = rule.editable ? '' : 'non-editable';
-        html += `<div class="item"><div class="item-title">${escapeHtml(cleanedTitle)}</div><div class="item-value" style="${style}" data-col-index="${i}">${renderCellDisplayMarkup(i, row[i] ?? '', rule.editable, btnClass, rule)}</div></div>`;
+        html += `<div class="item"><div class="item-title"><span>${escapeHtml(cleanedTitle)}</span>${renderAttachmentTitleButton(i, rule)}</div><div class="item-value" style="${style}" data-col-index="${i}">${renderCellDisplayMarkup(i, row[i] ?? '', rule.editable, btnClass, rule)}</div></div>`;
       }
 
       if (isParentSection) html += '</div></div>';
@@ -1668,47 +1540,6 @@
 
     document.getElementById('result').innerHTML = html;
     stopAuthLoading();
-  }
-
-  function openEmbeddedForm(formUrl) {
-    logFormClickClient();
-
-    const btn = document.getElementById('openFormBtn');
-    if (btn) {
-      btn.classList.add('disabled');
-      btn.textContent = 'Форма открыта';
-    }
-
-    const externalBtn = document.getElementById('externalFormBtnWrapper');
-    if (externalBtn) externalBtn.style.display = 'block';
-
-    const container = document.getElementById('embeddedFormHolder');
-    if (!container) return;
-    container.style.marginTop = '0.75rem';
-    container.style.overflow = 'visible';
-    container.style.maxHeight = 'none';
-    container.style.transition = 'none';
-    container.style.opacity = '1';
-
-    const previousScrollY = window.scrollY;
-    const iframe = document.createElement('iframe');
-    iframe.src = `${formUrl}&embedded=true`;
-    iframe.width = '100%';
-    iframe.height = '1000';
-    iframe.frameBorder = '0';
-    iframe.textContent = 'Загрузка…';
-    iframe.addEventListener('load', () => {
-      window.scrollTo({ top: previousScrollY, left: 0, behavior: 'auto' });
-    });
-
-    container.innerHTML = '';
-    container.appendChild(iframe);
-    window.scrollTo({ top: previousScrollY, left: 0, behavior: 'auto' });
-  }
-
-  function openFormInNewWindow(formUrl) {
-    logExternalFormClickClient();
-    window.open(formUrl, '_blank', 'noopener');
   }
 
   document.addEventListener('click', function(e) {
@@ -1733,7 +1564,8 @@
       edit: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>',
       save: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>',
       cancel: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>',
-      help: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9.1 9a3 3 0 1 1 5.8 1c-.7 1.2-2.4 1.7-2.4 3"/><path d="M12 17h.01"/><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>'
+      help: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9.1 9a3 3 0 1 1 5.8 1c-.7 1.2-2.4 1.7-2.4 3"/><path d="M12 17h.01"/><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>',
+      attach: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m21.4 11.6-8.5 8.5a6 6 0 0 1-8.5-8.5l8.2-8.2a4 4 0 1 1 5.7 5.7l-8.2 8.2a2 2 0 0 1-2.8-2.8l7.8-7.8"/></svg>'
     };
     return icons[name] || '';
   }
@@ -1755,6 +1587,10 @@
     return `<div class="cell-edit-help"><button type="button" class="attendance-icon-btn cell-edit-btn" data-col-index="${colIndex}" data-mode="help" title="Описание" aria-label="Описание поля" aria-expanded="false">${iconSvg('help')}</button><div class="cell-help-popover" role="note">${escapeHtml(description)}</div></div>`;
   }
 
+  function getAttachmentConfig(rule) { return rule.attachment && editConfig?.attachments?.[rule.attachment]?.enabled ? editConfig.attachments[rule.attachment] : null; }
+  function renderAttachmentTitleButton(colIndex, rule) {
+    return getAttachmentConfig(rule) ? `<button type="button" class="attachment-title-button" data-col-index="${colIndex}">Прикрепить</button>` : '';
+  }
   function renderCellViewActions(colIndex, editable = true, extraClass = '', rule = {}) {
     return `<div class="cell-edit-actions">${renderCellHelpButton(colIndex, rule)}${renderCellEditButton(colIndex, editable, extraClass)}</div>`;
   }
@@ -1764,7 +1600,9 @@
   }
 
   function renderCellDisplayMarkup(colIndex, value, editable = true, extraClass = '', rule = {}) {
-    return `<div class="cell-edit-shell"><div class="cell-editor"><div class="cell-value-display"><div class="cell-value-text">${escapeHtml(value)}</div></div></div>${renderCellViewActions(colIndex, editable, extraClass, rule)}</div>`;
+    const attachment = getAttachmentConfig(rule);
+    const display = attachment && /^https:\/\//.test(String(value)) ? `<a class="attachment-open" href="${escapeHtmlAttr(value)}" target="_blank" rel="noopener">Открыть файл</a><div class="cell-value-text" hidden>${escapeHtml(value)}</div>` : `<div class="cell-value-text">${escapeHtml(value)}</div>`;
+    return `<div class="cell-edit-shell"><div class="cell-editor"><div class="cell-value-display">${display}</div></div>${renderCellViewActions(colIndex, editable, extraClass, rule)}</div>`;
   }
 
   function renderCellDisplay(cell, colIndex, value) {
@@ -1776,6 +1614,44 @@
     cell.setAttribute('style', style);
   }
 
+
+  let pendingAttachment = null;
+  function openAttachmentModal(colIndex, rule, cell) {
+    const config = getAttachmentConfig(rule); if (!config) return;
+    pendingAttachment = { colIndex, rule, cell, config, file: null };
+    const modal = document.getElementById('attachmentModal'), input = document.getElementById('attachmentFileInput');
+    document.getElementById('attachmentTitle').textContent = `Прикрепить: ${config.title}`;
+    const existing = String(currentDocsRow.row[colIndex] || ''); const notice = document.getElementById('attachmentReplaceNotice');
+    notice.hidden = !existing; notice.textContent = existing ? 'Текущий документ будет заменён после подтверждения сохранения.' : '';
+    input.value = ''; document.getElementById('attachmentFileInfo').textContent = 'Файл не выбран.'; document.getElementById('attachmentSave').disabled = true; modal.hidden = false;
+  }
+  function setAttachmentFile(file) {
+    if (!pendingAttachment || !file) return; const c = pendingAttachment.config, ext = file.name.split('.').pop().toLowerCase();
+    if (!c.allowedExtensions.includes(ext)) return showToast('Недопустимое расширение файла.', 'error');
+    if (file.size > c.maxSizeMb * 1024 * 1024) return showToast(`Размер файла превышает ${c.maxSizeMb} МБ.`, 'error');
+    pendingAttachment.file = file; document.getElementById('attachmentFileInfo').textContent = `Выбранный файл: ${file.name} (${(file.size / 1048576).toFixed(1)} МБ)`; document.getElementById('attachmentSave').disabled = false;
+  }
+  document.getElementById('attachmentFileInput').addEventListener('change', e => setAttachmentFile(e.target.files[0]));
+  const attachmentDropzone = document.getElementById('attachmentDropzone');
+  attachmentDropzone.addEventListener('dragover', e => { e.preventDefault(); attachmentDropzone.classList.add('is-dragover'); });
+  attachmentDropzone.addEventListener('dragleave', () => attachmentDropzone.classList.remove('is-dragover'));
+  attachmentDropzone.addEventListener('drop', e => { e.preventDefault(); attachmentDropzone.classList.remove('is-dragover'); setAttachmentFile(e.dataTransfer.files[0]); });
+  document.getElementById('attachmentCancel').addEventListener('click', () => { document.getElementById('attachmentModal').hidden = true; pendingAttachment = null; });
+  document.getElementById('attachmentSave').addEventListener('click', () => {
+    const p = pendingAttachment; if (!p?.file) return; const old = String(currentDocsRow.row[p.colIndex] || '');
+    if (old && !confirm('Заменить существующий документ новым файлом?')) return;
+    const reader = new FileReader(); reader.onload = () => google.script.run.withSuccessHandler(result => { currentDocsRow.row[p.colIndex] = result.url; renderCellDisplay(p.cell, p.colIndex, result.url); document.getElementById('attachmentModal').hidden = true; pendingAttachment = null; showToast('Документ успешно прикреплён.'); }).withFailureHandler(error => showToast(`Ошибка: ${error.message || error}`, 'error')).uploadAttachment(dom.login.value.trim(), dom.password.value.trim(), dom.snils.value.trim(), currentDocsRow.header[p.colIndex], p.rule.attachment, { name: p.file.name, mimeType: p.file.type, dataUrl: reader.result }); reader.readAsDataURL(p.file);
+  });
+
+  document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.attachment-title-button');
+    if (!btn) return;
+    const colIndex = Number(btn.dataset.colIndex);
+    if (Number.isNaN(colIndex)) return;
+    const rule = getFieldEditRule(currentDocsRow.header[colIndex]);
+    const cell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
+    if (cell) openAttachmentModal(colIndex, rule, cell);
+  });
 
   document.addEventListener('click', function(e) {
     const btn = e.target.closest('.cell-edit-btn');
@@ -1808,7 +1684,7 @@
       cell.dataset.originalValue = value;
       cell.innerHTML = `<div class="cell-edit-shell"><div class="cell-editor"><input class="cell-value-input" data-col-index="${colIndex}" value="${escapeHtmlAttr(value)}" /></div>${renderCellEditActions(colIndex)}</div>`;
       const input = cell.querySelector('input');
-      const suggestConfig = FIELD_SUGGEST_CONFIG[currentDocsRow.header[colIndex]];
+      const suggestConfig = rule.special === 'suggest' ? rule.suggestions : null;
       let suggestionOptions = [];
       let activeSuggestionIndex = -1;
       const dropSuggestionList = () => {
@@ -1904,7 +1780,7 @@
             renderSuggestionList();
           })
           .withFailureHandler(() => {})
-          .getFieldSuggestions(suggestConfig.sourceSheet, suggestConfig.sourceHeader, suggestConfig.startRow || 2);
+          .getFieldSuggestions(currentDocsRow.header[colIndex]);
       }
       return;
     }
