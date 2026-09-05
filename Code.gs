@@ -1070,6 +1070,7 @@ const EDIT_CONFIG = Object.freeze({
     'Электронная почта (П)': { editable: true, rule: 'EMAIL', required: false, isIdentityField: false },
     'Дата рождения (П)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false },
     'Паспорт: Серия, номер (П)': { editable: true, rule: 'PASSPORT_RU', required: false, isIdentityField: false },
+    'Паспорт: Кем выдан (С)': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false },
     'Паспорт: Кем выдан (П)': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false },
     'Паспорт: Когда выдан (П)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false },
     'Паспорт: Прописка (П)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false },
@@ -1193,13 +1194,34 @@ function prependSiteEditNote_(cell, historyTimestamp, newValue) {
   cell.setNote(note ? `${historyLine}\n${note}` : historyLine);
 }
 
+function parseRuDateToDate_(value) {
+  const match = String(value || '').match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (!match) return null;
+
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = Number(match[3]);
+
+  return new Date(year, month - 1, day);
+}
+
 function setValueWithSiteEditNote_(cell, newValue, historyTimestamp, options = {}) {
   const oldValue = formatCellValue(cell.getValue()).trim();
   if (oldValue === newValue) return false;
 
-  if (options.asPlainText) cell.setNumberFormat('@');
-  cell.setValue(newValue);
+  let valueToSet = newValue;
+
+  if (options.isDate) {
+    valueToSet = parseRuDateToDate_(newValue);
+
+    if (!valueToSet) {
+      throw new Error('Не удалось преобразовать дату.');
+    }
+  }
+
+  cell.setValue(valueToSet);
   prependSiteEditNote_(cell, historyTimestamp, newValue);
+
   return true;
 }
 
@@ -1257,8 +1279,8 @@ function updateResultCell(login, password, snils, columnName, value) {
     const identityChanged = Boolean(validation.fieldConfig.isIdentityField && oldValue !== validation.value);
     const historyTimestamp = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, `${CONFIG.DATE_FORMAT} HH:mm:ss`);
     const changed = setValueWithSiteEditNote_(cell, validation.value, historyTimestamp, {
-      asPlainText: validation.rule.special === 'date'
-    });
+  isDate: validation.rule.special === 'date'
+});
     const onSaveChanged = changed ? runFieldOnSaveAction_(validation.fieldConfig, sheet, header, rowIndex, historyTimestamp) : false;
     return { ok: true, identityChanged: changed && identityChanged, changed, onSaveChanged };
   }
