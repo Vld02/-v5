@@ -675,6 +675,8 @@
   .attachment-dropzone.is-dragover { background:#e9f3ff; }
   .attachment-actions { display:flex; justify-content:flex-end; gap:.75rem; }
   .attachment-open { display:inline-block; margin-top:.35rem; }
+  .attachment-title-button { margin:0 0 0 .5rem; padding:.25rem .5rem; font-size:.85em; }
+  .item-title { justify-content:space-between; }
 </style>
 </head>
 <body>
@@ -1530,7 +1532,7 @@
         const style = bg ? `background:${bg};` : '';
         const rule = getFieldEditRule(header[i]);
         const btnClass = rule.editable ? '' : 'non-editable';
-        html += `<div class="item"><div class="item-title">${escapeHtml(cleanedTitle)}</div><div class="item-value" style="${style}" data-col-index="${i}">${renderCellDisplayMarkup(i, row[i] ?? '', rule.editable, btnClass, rule)}</div></div>`;
+        html += `<div class="item"><div class="item-title"><span>${escapeHtml(cleanedTitle)}</span>${renderAttachmentTitleButton(i, rule)}</div><div class="item-value" style="${style}" data-col-index="${i}">${renderCellDisplayMarkup(i, row[i] ?? '', rule.editable, btnClass, rule)}</div></div>`;
       }
 
       if (isParentSection) html += '</div></div>';
@@ -1586,10 +1588,11 @@
   }
 
   function getAttachmentConfig(rule) { return rule.attachment && editConfig?.attachments?.[rule.attachment]?.enabled ? editConfig.attachments[rule.attachment] : null; }
+  function renderAttachmentTitleButton(colIndex, rule) {
+    return getAttachmentConfig(rule) ? `<button type="button" class="attachment-title-button" data-col-index="${colIndex}">Прикрепить</button>` : '';
+  }
   function renderCellViewActions(colIndex, editable = true, extraClass = '', rule = {}) {
-    const attachment = getAttachmentConfig(rule);
-    const attachButton = attachment ? `<button type="button" class="attendance-icon-btn cell-edit-btn" data-col-index="${colIndex}" data-mode="attachment" title="Прикрепить" aria-label="Прикрепить документ">${iconSvg('attach')}</button>` : '';
-    return `<div class="cell-edit-actions">${renderCellHelpButton(colIndex, rule)}${attachButton}${renderCellEditButton(colIndex, editable, extraClass)}</div>`;
+    return `<div class="cell-edit-actions">${renderCellHelpButton(colIndex, rule)}${renderCellEditButton(colIndex, editable, extraClass)}</div>`;
   }
 
   function renderCellEditActions(colIndex) {
@@ -1641,6 +1644,16 @@
   });
 
   document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.attachment-title-button');
+    if (!btn) return;
+    const colIndex = Number(btn.dataset.colIndex);
+    if (Number.isNaN(colIndex)) return;
+    const rule = getFieldEditRule(currentDocsRow.header[colIndex]);
+    const cell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
+    if (cell) openAttachmentModal(colIndex, rule, cell);
+  });
+
+  document.addEventListener('click', function(e) {
     const btn = e.target.closest('.cell-edit-btn');
     if (!btn) return;
     const colIndex = Number(btn.dataset.colIndex);
@@ -1664,7 +1677,6 @@
       btn.setAttribute('aria-expanded', nextPinned ? 'true' : 'false');
       return;
     }
-    if (mode === 'attachment') { openAttachmentModal(colIndex, rule, cell); return; }
     if (!rule.editable) return;
     if (mode === 'edit') {
       const textNode = cell.querySelector('.cell-value-text');

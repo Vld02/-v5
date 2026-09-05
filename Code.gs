@@ -13,8 +13,8 @@ const CONFIG = Object.freeze({
   NAMES_CACHE_KEY: 'dbv5_full_names_v1',
   NAMES_CACHE_TTL_SECONDS: 300,
   DRIVE_CONFIG: Object.freeze({
-    // Set the ID of the pre-created "Пользователи" folder before enabling uploads.
-    usersRootFolderId: '',
+    // ID of the pre-created "Пользователи" folder.
+    usersRootFolderId: '1AyjWNspWbBVswPdrSy0M-JEbvZBzsjq1',
     userFolderTemplate: '{Фамилия} {Имя} {Отчество} {Дата рождения (С)}'
   })
 });
