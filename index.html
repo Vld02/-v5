@@ -185,10 +185,10 @@
   .parent-section-toggle { margin-left:auto; font-weight:normal; opacity:0.75; }
   .parent-section-title { flex:1; }
   .parent-section-content[hidden] { display:none; }
-  .cell-edit-shell { position:relative; min-height:2rem; padding-right:calc(1.7rem + var(--space-xs)); }
-  .cell-edit-actions { position:absolute; top:calc(-1 * var(--space-sm)); right:calc(-1 * var(--space-sm)); bottom:calc(-1 * var(--space-sm)); width:1.7rem; display:flex; flex-direction:column; gap:0; }
-  .cell-edit-btn { width:1.7rem; min-height:0; flex:1 1 0; padding:0; display:inline-flex; align-items:center; justify-content:center; color:inherit; line-height:1; }
-  .cell-edit-btn svg { width:0.65rem; height:0.65rem; display:block; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; fill:none; flex:0 0 auto; }
+  .cell-edit-shell { position:relative; min-height:2rem; padding-right:calc(1.55rem + var(--space-xs)); }
+  .cell-edit-actions { position:absolute; top:50%; right:calc(-1 * var(--space-sm)); width:1.55rem; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0; transform:translateY(-50%); }
+  .cell-edit-btn { width:1.55rem; height:1.55rem; min-width:1.55rem; min-height:1.55rem; max-width:1.55rem; max-height:1.55rem; flex:0 0 1.55rem; padding:0; display:inline-flex; align-items:center; justify-content:center; overflow:visible; color:inherit; line-height:1; }
+  .cell-edit-btn svg { width:1.08rem; height:1.08rem; display:block; stroke:currentColor; stroke-width:2.35; stroke-linecap:round; stroke-linejoin:round; fill:none; flex:0 0 auto; pointer-events:none; }
   .cell-edit-btn.non-editable { opacity:0.45; cursor:not-allowed; }
   .cell-edit-btn.save-ready { background:#e9f3ff; border-color:#8ab4f8; }
   .cell-edit-btn.is-saving { cursor:progress; }
