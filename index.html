@@ -871,20 +871,6 @@
     return editConfigPromise;
   }
 
-  const FIELD_SUGGEST_CONFIG = Object.freeze({
-    'Школа': { sourceSheet: 'Списки данных', sourceHeader: 'Школы', startRow: 2 },
-    'Полис: Страховая компания': { sourceSheet: 'Результат', sourceHeader: 'Полис: Страховая компания', startRow: 2 },
-    'Тренировочная группа': { sourceSheet: 'Списки данных', sourceHeader: 'Группы тренировки', startRow: 5 },
-    'МГФСО группа': { sourceSheet: 'Списки данных', sourceHeader: 'Группы МГФСО', startRow: 2 },
-    'Тренер МГФСО': { sourceSheet: 'Списки данных', sourceHeader: 'Тренер МГФСО', startRow: 2 },
-    'Разряд': { sourceSheet: 'Списки данных', sourceHeader: 'Список разрядов', startRow: 2 },
-    'Свидетельство: Кем выдан (С)': { sourceSheet: 'Результат', sourceHeader: 'Свидетельство: Кем выдан (С)', startRow: 2 },
-    'Паспорт: Кем выдан': { sourceSheet: 'Результат', sourceHeader: 'Паспорт: Кем выдан', startRow: 2 },
-    'Паспорт: Кем выдан (П)': { sourceSheet: 'Результат', sourceHeader: 'Паспорт: Кем выдан (П)', startRow: 2 },
-    'Паспорт: Кем выдан (М)': { sourceSheet: 'Результат', sourceHeader: 'Паспорт: Кем выдан (М)', startRow: 2 },
-    'Паспорт: Кем выдан (Д)': { sourceSheet: 'Результат', sourceHeader: 'Паспорт: Кем выдан (Д)', startRow: 2 }
-  });
-
   let currentDocsRow = { header: [], row: [], colors: [] };
 
   loadEditConfig().catch(() => {});
@@ -1808,7 +1794,7 @@
       cell.dataset.originalValue = value;
       cell.innerHTML = `<div class="cell-edit-shell"><div class="cell-editor"><input class="cell-value-input" data-col-index="${colIndex}" value="${escapeHtmlAttr(value)}" /></div>${renderCellEditActions(colIndex)}</div>`;
       const input = cell.querySelector('input');
-      const suggestConfig = FIELD_SUGGEST_CONFIG[currentDocsRow.header[colIndex]];
+      const suggestConfig = rule.special === 'suggest' ? rule.suggestions : null;
       let suggestionOptions = [];
       let activeSuggestionIndex = -1;
       const dropSuggestionList = () => {
@@ -1904,7 +1890,7 @@
             renderSuggestionList();
           })
           .withFailureHandler(() => {})
-          .getFieldSuggestions(suggestConfig.sourceSheet, suggestConfig.sourceHeader, suggestConfig.startRow || 2);
+          .getFieldSuggestions(currentDocsRow.header[colIndex]);
       }
       return;
     }
