@@ -713,6 +713,7 @@
         <button type="button" class="attendance-icon-btn" title="Вставить" aria-label="Вставить" onclick="pasteAttendanceToLastCell()">📋</button>
         <button type="button" class="attendance-icon-btn" title="Очистить" aria-label="Очистить" onclick="clearAttendanceTable()">🗑️</button>
       </div>
+      <button onclick="openAttendanceForm()" title="Откроется гугл форма для заполнения тренировки">Заполнить тренировку</button>
       <div class="attendance-toolbar-group">
         <button type="button" class="attendance-icon-btn" title="Скопировать полное ФИО" aria-label="Скопировать полное ФИО" onclick="copyAttendanceFullFio()">📄</button>
       </div>
@@ -794,6 +795,8 @@
   };
   const ACTIVE_TAB_STORAGE_KEY = 'activeTab';
   const ATTENDANCE_ROWS_STORAGE_KEY = 'attendanceRowsDraftV1';
+  const ATTENDANCE_DRAFT_DELETE_AFTER_KEY = 'attendanceDraftDeleteAfterAtV1';
+  const ATTENDANCE_DRAFT_TTL_MS = 30 * 60 * 1000;
   const LAST_SILENT_SYNC_KEY = 'lastSilentSyncAt';
   const SILENT_SYNC_INTERVAL_MS = 15 * 60 * 1000;
   const TRAINING_HISTORY_STORAGE_KEY = 'trainingHistoryItemsV1';
@@ -1408,6 +1411,10 @@
     google.script.run.logSectionVisit(getSavedLoginForLog(), section);
   }
 
+  function logFillFormClickClient() {
+    google.script.run.logFillFormClick(getSavedLoginForLog());
+  }
+
   async function logInitialPageOpen() {
     const loginVal = dom.login.value.trim();
     const passwordForServer = toServerDate(formatDateInput(dom.password.value, { finalizeYear: true }));
@@ -1946,6 +1953,13 @@
   }
 
   function restoreAttendanceDraft() {
+    const deleteAfterAt = Number(localStorage.getItem(ATTENDANCE_DRAFT_DELETE_AFTER_KEY) || 0);
+    if (deleteAfterAt && Date.now() >= deleteAfterAt) {
+      localStorage.removeItem(ATTENDANCE_ROWS_STORAGE_KEY);
+      localStorage.removeItem(ATTENDANCE_DRAFT_DELETE_AFTER_KEY);
+      return false;
+    }
+
     let rows = [];
     try {
       rows = JSON.parse(localStorage.getItem(ATTENDANCE_ROWS_STORAGE_KEY) || '[]');
@@ -2178,6 +2192,7 @@
     tbody.innerHTML = '';
     tbody.appendChild(createRow());
     saveAttendanceDraft();
+    localStorage.removeItem(ATTENDANCE_DRAFT_DELETE_AFTER_KEY);
     showAttendanceNotice('Таблица очищена');
   }
 
@@ -3202,6 +3217,39 @@
   hydrateExistingRows();
   const hasCachedTrainingHistory = restoreTrainingHistoryCache();
   loadTrainingHistory(hasCachedTrainingHistory);
+  async function openAttendanceForm() {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+      latestMatchPromise = runMatch();
+    }
+
+    if (matchInFlight) {
+      await latestMatchPromise;
+    }
+
+    const rows = [...tbody.rows];
+    const hasUnselectedRows = rows.some(r => {
+      const options = r.querySelectorAll('.fio-option');
+      if (!options.length) return false;
+      return !r.querySelector('.fio-option.selected');
+    });
+
+    if (hasUnselectedRows) {
+      showAttendanceNotice('Выберите все ФИО');
+      return;
+    }
+
+    const values = getAttendanceSelectedValues();
+
+    localStorage.setItem(ATTENDANCE_DRAFT_DELETE_AFTER_KEY, String(Date.now() + ATTENDANCE_DRAFT_TTL_MS));
+
+    logFillFormClickClient();
+
+    const prefillValue = encodeURIComponent(values.join('\n'));
+    const url = 'https://docs.google.com/forms/d/e/1FAIpQLSdGwQQhPaY3wXjT90TX2daQx7U-mjnfkoL_7VZ9nJ8NUqbKtw/viewform?entry.286976530=' + prefillValue;
+    window.open(url, '_blank');
+  }
 </script>
 </body>
 </html>

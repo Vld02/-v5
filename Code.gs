@@ -354,6 +354,14 @@ function logSectionVisit(login, section) {
   logAccess({ login, status: `Перешёл в раздел ${sectionName}` });
 }
 
+/**
+ * Логирует клик по кнопке заполнения формы тренировки.
+ * @param {string} login Логин пользователя.
+ */
+function logFillFormClick(login) {
+  logAccess({ login, status: 'Нажал: Заполнить форму' });
+}
+
 /*************************************************
  * ДОКУМЕНТЫ: АВТОРИЗАЦИЯ И ПОДГОТОВКА ДАННЫХ
  *************************************************/
