@@ -11,7 +11,12 @@ const CONFIG = Object.freeze({
   TIMEZONE: 'GMT+3',
   DATE_FORMAT: 'dd.MM.yyyy',
   NAMES_CACHE_KEY: 'dbv5_full_names_v1',
-  NAMES_CACHE_TTL_SECONDS: 300
+  NAMES_CACHE_TTL_SECONDS: 300,
+  DRIVE_CONFIG: Object.freeze({
+    // Set the ID of the pre-created "Пользователи" folder before enabling uploads.
+    usersRootFolderId: '',
+    userFolderTemplate: '{Фамилия} {Имя} {Отчество} {Дата рождения (С)}'
+  })
 });
 
 /*************************************************
@@ -1105,7 +1110,27 @@ const EDIT_CONFIG = Object.freeze({
     'Номер и страховя компания': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, description: 'Произвольное текстовое значение.', example: 'Текст' },
     'ID номер МГФСО': { editable: true, rule: 'MGFSO_ID', required: false, isIdentityField: false, description: 'ID МГФСО из 7 цифр.', example: '1234567' },
     'Мед допуск до': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false, description: 'Дата ДД.ММ.ГГГГ.', example: '01.09.2010' },
-    'РУСАДА': { editable: true, rule: 'YEAR', required: false, isIdentityField: false, description: 'Год в динамическом диапазоне 1950 — текущий год + 1.', example: '2024' }
+    'РУСАДА': { editable: true, rule: 'YEAR', required: false, isIdentityField: false, description: 'Год в динамическом диапазоне 1950 — текущий год + 1.', example: '2024' },
+    'Свидетельство: скан (C)': { editable: false, attachment: 'CERTIFICATE_C' },
+    'Паспорт: скан (С)': { editable: false, attachment: 'PASSPORT_C' },
+    'Снилс: Скан (C)': { editable: false, attachment: 'SNILS_C' },
+    'Полис: Скан (C)': { editable: false, attachment: 'POLICY_C' },
+    'Мед допуск: Скан': { editable: false, attachment: 'MEDICAL_C' },
+    'Русада: Скан': { editable: false, attachment: 'RUSADA_C' },
+    'Паспорт: Скан (П)': { editable: false, attachment: 'PASSPORT_P' },
+    'Паспорт: Скан (М)': { editable: false, attachment: 'PASSPORT_M' },
+    'Паспорт: Скан (Д)': { editable: false, attachment: 'PASSPORT_D' }
+  }),
+  attachments: Object.freeze({
+    CERTIFICATE_C: { title: 'Свидетельство о рождении', enabled: true, linkColumn: 'Свидетельство: скан (C)', fileNameTemplate: '{Фамилия} {Имя} {Отчество} - Свидетельство о рождении', allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'], maxSizeMb: 20, replaceMode: 'replace' },
+    PASSPORT_C: { title: 'Паспорт', enabled: true, linkColumn: 'Паспорт: скан (С)', fileNameTemplate: '{Фамилия} {Имя} {Отчество} - Паспорт', allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'], maxSizeMb: 20, replaceMode: 'replace' },
+    SNILS_C: { title: 'СНИЛС', enabled: false, linkColumn: 'Снилс: Скан (C)', fileNameTemplate: '{Фамилия} {Имя} {Отчество} - СНИЛС', allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'], maxSizeMb: 20, replaceMode: 'replace' },
+    POLICY_C: { title: 'Полис', enabled: false, linkColumn: 'Полис: Скан (C)', fileNameTemplate: '{Фамилия} {Имя} {Отчество} - Полис', allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'], maxSizeMb: 20, replaceMode: 'replace' },
+    MEDICAL_C: { title: 'Медицинский допуск', enabled: true, linkColumn: 'Мед допуск: Скан', fileNameTemplate: '{Фамилия} {Имя} {Отчество} - Мед допуск', allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'], maxSizeMb: 20, replaceMode: 'replace' },
+    RUSADA_C: { title: 'РУСАДА', enabled: false, linkColumn: 'Русада: Скан', fileNameTemplate: '{Фамилия} {Имя} {Отчество} - РУСАДА', allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'], maxSizeMb: 20, replaceMode: 'replace' },
+    PASSPORT_P: { title: 'Паспорт отца', enabled: false, linkColumn: 'Паспорт: Скан (П)', fileNameTemplate: '{Фамилия Имя Отчество (П)} - Паспорт', allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'], maxSizeMb: 20, replaceMode: 'replace' },
+    PASSPORT_M: { title: 'Паспорт матери', enabled: false, linkColumn: 'Паспорт: Скан (М)', fileNameTemplate: '{Фамилия Имя Отчество (М)} - Паспорт', allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'], maxSizeMb: 20, replaceMode: 'replace' },
+    PASSPORT_D: { title: 'Паспорт представителя', enabled: false, linkColumn: 'Паспорт: Скан (Д)', fileNameTemplate: '{Фамилия Имя Отчество (Д)} - Паспорт', allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'], maxSizeMb: 20, replaceMode: 'replace' }
   })
 });
 
@@ -1316,4 +1341,78 @@ function getFieldSuggestions(columnName) {
   });
 
   return uniq;
+}
+
+/** Resolves configuration and user row for a protected attachment upload. */
+function getAttachmentUploadContext_(login, password, snils, columnName, attachmentKey) {
+  const fieldConfig = EDIT_CONFIG.fields[String(columnName || '')];
+  if (!fieldConfig || !fieldConfig.attachment || fieldConfig.attachment !== attachmentKey) throw new Error('Поле не настроено для прикрепления документа.');
+  const attachment = EDIT_CONFIG.attachments[attachmentKey];
+  if (!attachment || attachment.enabled !== true || attachment.linkColumn !== columnName) throw new Error('Прикрепление этого документа отключено.');
+  if (!CONFIG.DRIVE_CONFIG.usersRootFolderId) throw new Error('Не настроена папка Google Drive для документов.');
+  const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
+  if (!sheet) throw new Error('Лист с результатами не найден.');
+  const lastRow = sheet.getLastRow(), lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) throw new Error('Таблица пуста.');
+  const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+  const linkCol = header.indexOf(attachment.linkColumn);
+  if (linkCol === -1) throw new Error('Колонка ссылки для документа не найдена.');
+  const authCols = getAuthColumnIndexes(header), snilsCol = getSnilsColumnIndex(header);
+  const auth = loadAuthColumns(sheet, lastRow - 1, authCols, snilsCol);
+  const normalizedLogin = normalizeLogin(login), normalizedSnils = normalizeSnils(snils);
+  for (let i = 0; i < lastRow - 1; i++) {
+    if (normalizeLogin(auth.logins[i][0]) !== normalizedLogin || formatCellValue(auth.passwords[i][0]).trim() !== String(password || '').trim()) continue;
+    const expectedSnils = normalizeSnils(auth.snilsValues[i][0]);
+    if (expectedSnils && expectedSnils !== normalizedSnils) continue;
+    return { attachment, sheet, header, rowIndex: i + 2, row: sheet.getRange(i + 2, 1, 1, lastCol).getValues()[0], linkCol };
+  }
+  throw new Error('Не удалось подтвердить пользователя.');
+}
+
+function expandAttachmentTemplate_(template, header, row) {
+  const values = {};
+  header.forEach((title, index) => { values[title] = formatCellValue(row[index]).trim(); });
+  const fullName = values['Фамилия Имя Отчество (С)'] || '';
+  const parts = fullName.split(/\s+/).filter(Boolean);
+  values['Фамилия'] = parts[0] || '';
+  values['Имя'] = parts[1] || '';
+  values['Отчество'] = parts.slice(2).join(' ');
+  return String(template || '').replace(/\{([^}]+)\}/g, (_, key) => values[key] || '').replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function getOrCreateUserFolder_(context) {
+  const root = DriveApp.getFolderById(CONFIG.DRIVE_CONFIG.usersRootFolderId);
+  const name = expandAttachmentTemplate_(CONFIG.DRIVE_CONFIG.userFolderTemplate, context.header, context.row);
+  if (!name) throw new Error('Не удалось сформировать имя папки пользователя.');
+  const folders = root.getFoldersByName(name);
+  return folders.hasNext() ? folders.next() : root.createFolder(name);
+}
+
+/** Uploads a configured attachment. File data must be a data URL read by the browser. */
+function uploadAttachment(login, password, snils, columnName, attachmentKey, file) {
+  const context = getAttachmentUploadContext_(login, password, snils, columnName, attachmentKey);
+  if (!file || typeof file.dataUrl !== 'string' || !file.name) throw new Error('Выберите файл для загрузки.');
+  const extension = String(file.name).split('.').pop().toLowerCase();
+  if (!extension || context.attachment.allowedExtensions.indexOf(extension) === -1) throw new Error('Недопустимое расширение файла.');
+  const base64 = file.dataUrl.split(',')[1] || '';
+  const bytes = Utilities.base64Decode(base64);
+  if (!bytes.length || bytes.length > Number(context.attachment.maxSizeMb) * 1024 * 1024) throw new Error('Размер файла превышает допустимый.');
+  const folder = getOrCreateUserFolder_(context);
+  const name = `${expandAttachmentTemplate_(context.attachment.fileNameTemplate, context.header, context.row)}.${extension}`;
+  if (!name || name === `.${extension}`) throw new Error('Не удалось сформировать имя файла.');
+  const blob = Utilities.newBlob(bytes, String(file.mimeType || 'application/octet-stream'), name);
+  const oldUrl = formatCellValue(context.row[context.linkCol]).trim();
+  const newFile = folder.createFile(blob);
+  try {
+    const url = newFile.getUrl();
+    context.sheet.getRange(context.rowIndex, context.linkCol + 1).setValue(url);
+    const oldId = (oldUrl.match(/[-\w]{25,}/) || [])[0];
+    if (oldId && context.attachment.replaceMode === 'replace') {
+      try { DriveApp.getFileById(oldId).setTrashed(true); } catch (_) {}
+    }
+    return { ok: true, url, fileName: name, replaced: Boolean(oldUrl) };
+  } catch (error) {
+    newFile.setTrashed(true);
+    throw error;
+  }
 }

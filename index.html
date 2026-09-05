@@ -668,6 +668,13 @@
     box-shadow: 0 0.35rem 1rem rgba(0,0,0,.25);
   }
   .toast.error { background: rgba(176, 0, 32, 0.95); }
+  .attachment-modal[hidden] { display:none; }
+  .attachment-modal { position:fixed; inset:0; z-index:1100; display:grid; place-items:center; background:rgba(0,0,0,.45); padding:1rem; }
+  .attachment-dialog { width:min(32rem, 100%); background:#fff; border-radius:var(--radius-md); padding:1rem; box-shadow:0 .5rem 2rem rgba(0,0,0,.3); }
+  .attachment-dropzone { display:block; margin:1rem 0; padding:2rem 1rem; border:2px dashed #8ab4f8; border-radius:var(--radius-sm); text-align:center; cursor:pointer; }
+  .attachment-dropzone.is-dragover { background:#e9f3ff; }
+  .attachment-actions { display:flex; justify-content:flex-end; gap:.75rem; }
+  .attachment-open { display:inline-block; margin-top:.35rem; }
 </style>
 </head>
 <body>
@@ -680,6 +687,11 @@
 </header>
 
 <div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+<div id="attachmentModal" class="attachment-modal" hidden role="dialog" aria-modal="true" aria-labelledby="attachmentTitle">
+  <div class="attachment-dialog"><h3 id="attachmentTitle">Прикрепить документ</h3><p id="attachmentReplaceNotice" hidden></p>
+  <label id="attachmentDropzone" class="attachment-dropzone">Перетащите файл сюда или выберите файл<input id="attachmentFileInput" type="file" hidden></label>
+  <div id="attachmentFileInfo">Файл не выбран.</div><div class="attachment-actions"><button type="button" id="attachmentCancel">Отмена</button><button type="button" id="attachmentSave" disabled>Сохранить</button></div></div>
+</div>
 
 <div class="page">
   <section id="tab-docs" class="tab-panel active">
@@ -1550,7 +1562,8 @@
       edit: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>',
       save: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>',
       cancel: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>',
-      help: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9.1 9a3 3 0 1 1 5.8 1c-.7 1.2-2.4 1.7-2.4 3"/><path d="M12 17h.01"/><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>'
+      help: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9.1 9a3 3 0 1 1 5.8 1c-.7 1.2-2.4 1.7-2.4 3"/><path d="M12 17h.01"/><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>',
+      attach: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m21.4 11.6-8.5 8.5a6 6 0 0 1-8.5-8.5l8.2-8.2a4 4 0 1 1 5.7 5.7l-8.2 8.2a2 2 0 0 1-2.8-2.8l7.8-7.8"/></svg>'
     };
     return icons[name] || '';
   }
@@ -1572,8 +1585,11 @@
     return `<div class="cell-edit-help"><button type="button" class="attendance-icon-btn cell-edit-btn" data-col-index="${colIndex}" data-mode="help" title="Описание" aria-label="Описание поля" aria-expanded="false">${iconSvg('help')}</button><div class="cell-help-popover" role="note">${escapeHtml(description)}</div></div>`;
   }
 
+  function getAttachmentConfig(rule) { return rule.attachment && editConfig?.attachments?.[rule.attachment]?.enabled ? editConfig.attachments[rule.attachment] : null; }
   function renderCellViewActions(colIndex, editable = true, extraClass = '', rule = {}) {
-    return `<div class="cell-edit-actions">${renderCellHelpButton(colIndex, rule)}${renderCellEditButton(colIndex, editable, extraClass)}</div>`;
+    const attachment = getAttachmentConfig(rule);
+    const attachButton = attachment ? `<button type="button" class="attendance-icon-btn cell-edit-btn" data-col-index="${colIndex}" data-mode="attachment" title="Прикрепить" aria-label="Прикрепить документ">${iconSvg('attach')}</button>` : '';
+    return `<div class="cell-edit-actions">${renderCellHelpButton(colIndex, rule)}${attachButton}${renderCellEditButton(colIndex, editable, extraClass)}</div>`;
   }
 
   function renderCellEditActions(colIndex) {
@@ -1581,7 +1597,9 @@
   }
 
   function renderCellDisplayMarkup(colIndex, value, editable = true, extraClass = '', rule = {}) {
-    return `<div class="cell-edit-shell"><div class="cell-editor"><div class="cell-value-display"><div class="cell-value-text">${escapeHtml(value)}</div></div></div>${renderCellViewActions(colIndex, editable, extraClass, rule)}</div>`;
+    const attachment = getAttachmentConfig(rule);
+    const display = attachment && /^https:\/\//.test(String(value)) ? `<a class="attachment-open" href="${escapeHtmlAttr(value)}" target="_blank" rel="noopener">Открыть файл</a><div class="cell-value-text" hidden>${escapeHtml(value)}</div>` : `<div class="cell-value-text">${escapeHtml(value)}</div>`;
+    return `<div class="cell-edit-shell"><div class="cell-editor"><div class="cell-value-display">${display}</div></div>${renderCellViewActions(colIndex, editable, extraClass, rule)}</div>`;
   }
 
   function renderCellDisplay(cell, colIndex, value) {
@@ -1593,6 +1611,34 @@
     cell.setAttribute('style', style);
   }
 
+
+  let pendingAttachment = null;
+  function openAttachmentModal(colIndex, rule, cell) {
+    const config = getAttachmentConfig(rule); if (!config) return;
+    pendingAttachment = { colIndex, rule, cell, config, file: null };
+    const modal = document.getElementById('attachmentModal'), input = document.getElementById('attachmentFileInput');
+    document.getElementById('attachmentTitle').textContent = `Прикрепить: ${config.title}`;
+    const existing = String(currentDocsRow.row[colIndex] || ''); const notice = document.getElementById('attachmentReplaceNotice');
+    notice.hidden = !existing; notice.textContent = existing ? 'Текущий документ будет заменён после подтверждения сохранения.' : '';
+    input.value = ''; document.getElementById('attachmentFileInfo').textContent = 'Файл не выбран.'; document.getElementById('attachmentSave').disabled = true; modal.hidden = false;
+  }
+  function setAttachmentFile(file) {
+    if (!pendingAttachment || !file) return; const c = pendingAttachment.config, ext = file.name.split('.').pop().toLowerCase();
+    if (!c.allowedExtensions.includes(ext)) return showToast('Недопустимое расширение файла.', 'error');
+    if (file.size > c.maxSizeMb * 1024 * 1024) return showToast(`Размер файла превышает ${c.maxSizeMb} МБ.`, 'error');
+    pendingAttachment.file = file; document.getElementById('attachmentFileInfo').textContent = `Выбранный файл: ${file.name} (${(file.size / 1048576).toFixed(1)} МБ)`; document.getElementById('attachmentSave').disabled = false;
+  }
+  document.getElementById('attachmentFileInput').addEventListener('change', e => setAttachmentFile(e.target.files[0]));
+  const attachmentDropzone = document.getElementById('attachmentDropzone');
+  attachmentDropzone.addEventListener('dragover', e => { e.preventDefault(); attachmentDropzone.classList.add('is-dragover'); });
+  attachmentDropzone.addEventListener('dragleave', () => attachmentDropzone.classList.remove('is-dragover'));
+  attachmentDropzone.addEventListener('drop', e => { e.preventDefault(); attachmentDropzone.classList.remove('is-dragover'); setAttachmentFile(e.dataTransfer.files[0]); });
+  document.getElementById('attachmentCancel').addEventListener('click', () => { document.getElementById('attachmentModal').hidden = true; pendingAttachment = null; });
+  document.getElementById('attachmentSave').addEventListener('click', () => {
+    const p = pendingAttachment; if (!p?.file) return; const old = String(currentDocsRow.row[p.colIndex] || '');
+    if (old && !confirm('Заменить существующий документ новым файлом?')) return;
+    const reader = new FileReader(); reader.onload = () => google.script.run.withSuccessHandler(result => { currentDocsRow.row[p.colIndex] = result.url; renderCellDisplay(p.cell, p.colIndex, result.url); document.getElementById('attachmentModal').hidden = true; pendingAttachment = null; showToast('Документ успешно прикреплён.'); }).withFailureHandler(error => showToast(`Ошибка: ${error.message || error}`, 'error')).uploadAttachment(dom.login.value.trim(), dom.password.value.trim(), dom.snils.value.trim(), currentDocsRow.header[p.colIndex], p.rule.attachment, { name: p.file.name, mimeType: p.file.type, dataUrl: reader.result }); reader.readAsDataURL(p.file);
+  });
 
   document.addEventListener('click', function(e) {
     const btn = e.target.closest('.cell-edit-btn');
@@ -1618,6 +1664,7 @@
       btn.setAttribute('aria-expanded', nextPinned ? 'true' : 'false');
       return;
     }
+    if (mode === 'attachment') { openAttachmentModal(colIndex, rule, cell); return; }
     if (!rule.editable) return;
     if (mode === 'edit') {
       const textNode = cell.querySelector('.cell-value-text');
