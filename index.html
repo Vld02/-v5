@@ -128,7 +128,9 @@
   .item { display: flex; border: 0.05rem solid #d8d8d8; border-top: none; min-height: 2.2rem; }
   .item:first-of-type { border-top: 0.05rem solid #d8d8d8; }
   .item-title { font-weight: bold; width: 45%; padding: var(--space-sm); background:#f7f7f7; border-right:0.05rem solid #d8d8d8; display:flex; align-items:center; }
-  .item-title.has-attachment { position:relative; padding-right:calc(1.55rem + var(--space-sm) * 2); }
+  .item-title.has-attachment { position:relative; }
+  .item-title-text { max-width:100%; box-sizing:border-box; }
+  .item-title.has-attachment .item-title-text { padding-right:calc(1.55rem + var(--space-sm)); }
   .item-value { width: 55%; padding: var(--space-sm); position: relative; min-height: 2.2rem; }
   .parent-section { margin-top:1rem; }
   .parent-section-header {
@@ -1521,7 +1523,7 @@
         const rule = getFieldEditRule(header[i]);
         const btnClass = rule.editable ? '' : 'non-editable';
         const attachmentClass = rule.attachment ? ' has-attachment' : '';
-        html += `<div class="item"><div class="item-title${attachmentClass}">${escapeHtml(cleanedTitle)}${renderCellAttachmentButton(i, rule)}</div><div class="item-value" style="${style}" data-col-index="${i}">${renderCellDisplayMarkup(i, row[i] ?? '', rule.editable, btnClass, rule)}</div></div>`;
+        html += `<div class="item"><div class="item-title${attachmentClass}"><span class="item-title-text">${escapeHtml(cleanedTitle)}</span>${renderCellAttachmentButton(i, rule)}</div><div class="item-value" style="${style}" data-col-index="${i}">${renderCellDisplayMarkup(i, row[i] ?? '', rule.editable, btnClass, rule)}</div></div>`;
       }
 
       if (isParentSection) html += '</div></div>';
@@ -1602,8 +1604,49 @@
     cell.setAttribute('style', style);
   }
 
-  function handleAttachmentClick() {
-    showToast('Функция прикрепления документа будет реализована следующим этапом.');
+  function handleAttachmentClick(colIndex) {
+    const columnName = currentDocsRow.header[colIndex];
+    if (!columnName) return;
+
+    const form = document.createElement('form');
+    form.style.display = 'none';
+    const addHiddenField = (name, value) => {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = name;
+      input.value = value;
+      form.appendChild(input);
+    };
+    addHiddenField('login', dom.login.value.trim());
+    addHiddenField('password', toServerDate(dom.password.value));
+    addHiddenField('snils', dom.snils.value.trim());
+    addHiddenField('columnName', columnName);
+
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.name = 'attachmentFile';
+    form.appendChild(fileInput);
+    document.body.appendChild(form);
+
+    fileInput.addEventListener('change', () => {
+      if (!fileInput.files.length) {
+        form.remove();
+        return;
+      }
+      showToast('Загрузка файла…');
+      google.script.run
+        .withSuccessHandler(response => {
+          form.remove();
+          showToast(`Файл «${(response && response.fileName) || 'документ'}» загружен.`);
+        })
+        .withFailureHandler(error => {
+          form.remove();
+          const message = error && error.message ? error.message : 'Не удалось загрузить файл.';
+          showToast(`Ошибка: ${message}`, 'error');
+        })
+        .uploadDocumentAttachment(form);
+    }, { once: true });
+    fileInput.click();
   }
 
   document.addEventListener('click', function(e) {
@@ -1616,7 +1659,7 @@
     if (mode === 'attachment') {
       e.preventDefault();
       e.stopPropagation();
-      handleAttachmentClick();
+      handleAttachmentClick(colIndex);
       return;
     }
     const cell = btn.closest('.item-value');
