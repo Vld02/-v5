@@ -668,6 +668,18 @@
     box-shadow: 0 0.35rem 1rem rgba(0,0,0,.25);
   }
   .toast.error { background: rgba(176, 0, 32, 0.95); }
+  .attachment-btn { position:absolute; top:var(--space-xs); right:var(--space-xs); z-index:2; margin:0; padding:0.28em 0.5em; font-size:0.78rem; border:0.05rem solid #8ab4f8; border-radius:var(--radius-sm); background:#e9f3ff; color:#174ea6; }
+  .attachment-link { display:inline-block; padding-right:5.8rem; color:var(--primary); overflow-wrap:anywhere; }
+  .attachment-modal[hidden] { display:none; }
+  .attachment-modal { position:fixed; inset:0; z-index:11000; display:grid; place-items:center; padding:var(--space-lg); background:rgba(0,0,0,.45); }
+  .attachment-dialog { width:min(32rem, 100%); box-sizing:border-box; padding:var(--space-lg); border-radius:var(--radius-lg); background:#fff; box-shadow:0 .5rem 2rem rgba(0,0,0,.3); }
+  .attachment-dialog h3 { margin-top:0; }
+  .attachment-current { margin:0 0 var(--space-md); font-size:.9rem; }
+  .attachment-dropzone { display:grid; place-items:center; min-height:8rem; padding:var(--space-md); border:.12rem dashed #8ab4f8; border-radius:var(--radius-md); background:#f7fbff; text-align:center; cursor:pointer; }
+  .attachment-dropzone.is-dragover { background:#e7f0ff; border-color:var(--primary); }
+  .attachment-file-info, .attachment-error { min-height:1.4em; margin:var(--space-sm) 0 0; font-size:.9rem; }
+  .attachment-error { color:#b00020; }
+  .attachment-actions { display:flex; justify-content:flex-end; gap:var(--space-sm); margin-top:var(--space-md); }
 </style>
 </head>
 <body>
@@ -680,6 +692,17 @@
 </header>
 
 <div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+<div id="attachmentModal" class="attachment-modal" hidden aria-hidden="true">
+  <div class="attachment-dialog" role="dialog" aria-modal="true" aria-labelledby="attachmentModalTitle">
+    <h3 id="attachmentModalTitle">Прикрепить документ</h3>
+    <p id="attachmentCurrent" class="attachment-current" hidden></p>
+    <input id="attachmentFileInput" type="file" hidden />
+    <div id="attachmentDropzone" class="attachment-dropzone" role="button" tabindex="0">Перетащите файл сюда или нажмите для выбора</div>
+    <p id="attachmentFileInfo" class="attachment-file-info" aria-live="polite"></p>
+    <p id="attachmentError" class="attachment-error" role="alert"></p>
+    <div class="attachment-actions"><button id="attachmentCancel" type="button">Отмена</button><button id="attachmentUpload" type="button" disabled>Загрузить</button></div>
+  </div>
+</div>
 
 <div class="page">
   <section id="tab-docs" class="tab-panel active">
@@ -783,7 +806,16 @@
     password: document.getElementById('password'),
     snils: document.getElementById('snils'),
     snilsWrap: document.getElementById('snilsWrap'),
-    toastContainer: document.getElementById('toastContainer')
+    toastContainer: document.getElementById('toastContainer'),
+    attachmentModal: document.getElementById('attachmentModal'),
+    attachmentModalTitle: document.getElementById('attachmentModalTitle'),
+    attachmentCurrent: document.getElementById('attachmentCurrent'),
+    attachmentFileInput: document.getElementById('attachmentFileInput'),
+    attachmentDropzone: document.getElementById('attachmentDropzone'),
+    attachmentFileInfo: document.getElementById('attachmentFileInfo'),
+    attachmentError: document.getElementById('attachmentError'),
+    attachmentCancel: document.getElementById('attachmentCancel'),
+    attachmentUpload: document.getElementById('attachmentUpload')
   };
 
   const topbarTabs = [...document.querySelectorAll('.topbar-tab')];
@@ -824,7 +856,7 @@
     editConfigPromise = new Promise((resolve, reject) => {
       google.script.run
         .withSuccessHandler(config => {
-          editConfig = config || { rules: {}, fields: {} };
+          editConfig = config || { rules: {}, fields: {}, attachments: {} };
           resolve(editConfig);
         })
         .withFailureHandler(error => {
@@ -1517,8 +1549,11 @@
         const bg = colors[i] || '';
         const style = bg ? `background:${bg};` : '';
         const rule = getFieldEditRule(header[i]);
-        const btnClass = rule.editable ? '' : 'non-editable';
-        html += `<div class="item"><div class="item-title">${escapeHtml(cleanedTitle)}</div><div class="item-value" style="${style}" data-col-index="${i}">${renderCellDisplayMarkup(i, row[i] ?? '', rule.editable, btnClass, rule)}</div></div>`;
+        const attachment = getFieldAttachment(header[i]);
+        const content = attachment
+          ? renderAttachmentCellMarkup(i, row[i] ?? '', attachment)
+          : renderCellDisplayMarkup(i, row[i] ?? '', rule.editable, rule.editable ? '' : 'non-editable', rule);
+        html += `<div class="item"><div class="item-title">${escapeHtml(cleanedTitle)}</div><div class="item-value" style="${style}" data-col-index="${i}">${content}</div></div>`;
       }
 
       if (isParentSection) html += '</div></div>';
@@ -1544,6 +1579,128 @@
     const toggle = headerBtn.querySelector('.parent-section-toggle');
     if (toggle) toggle.textContent = nextExpanded ? '−' : '＋';
   });
+
+  let attachmentState = { colIndex: -1, attachmentId: '', config: null, file: null, confirmReplace: false };
+
+  function getFieldAttachment(headerTitle) {
+    const field = editConfig?.fields?.[headerTitle];
+    const attachment = field?.attachment ? editConfig?.attachments?.[field.attachment] : null;
+    return attachment && attachment.enabled === true ? { ...attachment, id: field.attachment } : null;
+  }
+
+  function safeAttachmentUrl(value) {
+    const url = String(value || '').trim();
+    return /^https:\/\//i.test(url) ? url : '';
+  }
+
+  function renderAttachmentCellMarkup(colIndex, value, attachment) {
+    const safeValue = safeAttachmentUrl(value);
+    const link = safeValue ? `<a class="attachment-link" href="${escapeHtmlAttr(safeValue)}" target="_blank" rel="noopener">Открыть файл</a>` : '<span class="cell-value-text">Файл не прикреплён</span>';
+    return `<div class="cell-edit-shell">${link}<button type="button" class="attachment-btn" data-col-index="${colIndex}" data-attachment-id="${escapeHtmlAttr(attachment.id)}">Прикрепить</button></div>`;
+  }
+
+  function bytesToLabel(bytes) { return `${(bytes / 1024 / 1024).toFixed(bytes >= 1024 * 1024 ? 1 : 2)} МБ`; }
+
+  function openAttachmentModal(colIndex, attachmentId) {
+    const config = getFieldAttachment(currentDocsRow.header[colIndex]);
+    if (!config || config.id !== attachmentId) return;
+    attachmentState = { colIndex, attachmentId, config, file: null, confirmReplace: false };
+    dom.attachmentModalTitle.textContent = `Прикрепить: ${config.title}`;
+    const current = safeAttachmentUrl(currentDocsRow.row[colIndex]);
+    dom.attachmentCurrent.hidden = !current;
+    dom.attachmentCurrent.innerHTML = current ? `Текущий файл: <a href="${escapeHtmlAttr(current)}" target="_blank" rel="noopener">открыть</a>. При загрузке нового файла потребуется подтверждение.` : '';
+    dom.attachmentFileInput.value = '';
+    dom.attachmentFileInfo.textContent = '';
+    dom.attachmentError.textContent = '';
+    dom.attachmentUpload.disabled = true;
+    dom.attachmentModal.hidden = false;
+    dom.attachmentModal.setAttribute('aria-hidden', 'false');
+  }
+
+  function closeAttachmentModal() {
+    dom.attachmentModal.hidden = true;
+    dom.attachmentModal.setAttribute('aria-hidden', 'true');
+    attachmentState.file = null;
+  }
+
+  function selectAttachmentFile(file) {
+    const config = attachmentState.config;
+    attachmentState.file = null;
+    if (!file || !config) return;
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    const maxBytes = Number(config.maxSizeMb) * 1024 * 1024;
+    if (!config.allowedExtensions.includes(ext)) {
+      dom.attachmentError.textContent = `Разрешены файлы: ${config.allowedExtensions.join(', ')}.`;
+      dom.attachmentUpload.disabled = true;
+      return;
+    }
+    if (!file.size || file.size > maxBytes) {
+      dom.attachmentError.textContent = `Размер файла не должен превышать ${config.maxSizeMb} МБ.`;
+      dom.attachmentUpload.disabled = true;
+      return;
+    }
+    attachmentState.file = file;
+    dom.attachmentError.textContent = '';
+    dom.attachmentFileInfo.textContent = `${file.name} — ${bytesToLabel(file.size)}`;
+    dom.attachmentUpload.disabled = false;
+  }
+
+  function uploadSelectedAttachment() {
+    const { file, attachmentId, colIndex } = attachmentState;
+    if (!file || !attachmentId) return;
+    const reader = new FileReader();
+    dom.attachmentUpload.disabled = true;
+    reader.onerror = () => { dom.attachmentError.textContent = 'Не удалось прочитать выбранный файл.'; dom.attachmentUpload.disabled = false; };
+    reader.onload = () => {
+      const base64 = String(reader.result || '').split(',')[1] || '';
+      google.script.run
+        .withSuccessHandler(response => {
+          if (response?.requiresConfirmation) {
+            const title = response.currentFileName || 'текущий файл';
+            if (!confirm(`Документ уже прикреплён (${title}). Заменить его новым файлом?`)) { closeAttachmentModal(); return; }
+            attachmentState.confirmReplace = true;
+            sendAttachmentUpload(base64);
+            return;
+          }
+          currentDocsRow.row[colIndex] = response.url;
+          const cell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
+          const config = getFieldAttachment(currentDocsRow.header[colIndex]);
+          if (cell && config) cell.innerHTML = renderAttachmentCellMarkup(colIndex, response.url, config);
+          closeAttachmentModal();
+          showToast('Документ успешно прикреплён.');
+        })
+        .withFailureHandler(error => { dom.attachmentError.textContent = error?.message || 'Не удалось загрузить документ.'; dom.attachmentUpload.disabled = false; })
+        .uploadAttachment(dom.login.value.trim(), dom.password.value.trim(), dom.snils.value.trim(), attachmentId, { name: file.name, mimeType: file.type, base64, confirmReplace: false });
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function sendAttachmentUpload(base64) {
+    const { file, attachmentId, colIndex } = attachmentState;
+    google.script.run
+      .withSuccessHandler(response => {
+        currentDocsRow.row[colIndex] = response.url;
+        const cell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
+        const config = getFieldAttachment(currentDocsRow.header[colIndex]);
+        if (cell && config) cell.innerHTML = renderAttachmentCellMarkup(colIndex, response.url, config);
+        closeAttachmentModal(); showToast('Документ успешно заменён.');
+      })
+      .withFailureHandler(error => { dom.attachmentError.textContent = error?.message || 'Не удалось заменить документ.'; dom.attachmentUpload.disabled = false; })
+      .uploadAttachment(dom.login.value.trim(), dom.password.value.trim(), dom.snils.value.trim(), attachmentId, { name: file.name, mimeType: file.type, base64, confirmReplace: true });
+  }
+
+  document.addEventListener('click', event => {
+    const button = event.target.closest('.attachment-btn');
+    if (button) openAttachmentModal(Number(button.dataset.colIndex), button.dataset.attachmentId);
+  });
+  dom.attachmentCancel.addEventListener('click', closeAttachmentModal);
+  dom.attachmentDropzone.addEventListener('click', () => dom.attachmentFileInput.click());
+  dom.attachmentDropzone.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); dom.attachmentFileInput.click(); } });
+  dom.attachmentFileInput.addEventListener('change', () => selectAttachmentFile(dom.attachmentFileInput.files[0]));
+  ['dragenter', 'dragover'].forEach(type => dom.attachmentDropzone.addEventListener(type, event => { event.preventDefault(); dom.attachmentDropzone.classList.add('is-dragover'); }));
+  ['dragleave', 'drop'].forEach(type => dom.attachmentDropzone.addEventListener(type, event => { event.preventDefault(); dom.attachmentDropzone.classList.remove('is-dragover'); }));
+  dom.attachmentDropzone.addEventListener('drop', event => selectAttachmentFile(event.dataTransfer.files[0]));
+  dom.attachmentUpload.addEventListener('click', uploadSelectedAttachment);
 
   function iconSvg(name) {
     const icons = {
