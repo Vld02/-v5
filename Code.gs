@@ -11,7 +11,8 @@ const CONFIG = Object.freeze({
   TIMEZONE: 'GMT+3',
   DATE_FORMAT: 'dd.MM.yyyy',
   NAMES_CACHE_KEY: 'dbv5_full_names_v1',
-  NAMES_CACHE_TTL_SECONDS: 300
+  NAMES_CACHE_TTL_SECONDS: 300,
+  ATTACHMENTS_FOLDER_ID: '1AyjWNspWbBVswPdrSy0M-JEbvZBzsjq1'
 });
 
 /*************************************************
@@ -1084,7 +1085,9 @@ const EDIT_CONFIG = Object.freeze({
     'Марка автомобиля (Д)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, description: 'Произвольное текстовое значение.', example: 'Текст' },
     'гос. номер автомобиля (Д)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, description: 'Произвольное текстовое значение.', example: 'Текст' },
     'Свидетельство: Серия, номер (С)': { editable: true, rule: 'CERTIFICATE_RU', required: false, isIdentityField: false, description: 'Серия и номер свидетельства.', example: 'IV-АБ № 123456' },
-    'Паспорт: Серия, номер (С)': { editable: true, rule: 'PASSPORT_RU', required: false, isIdentityField: false, description: 'Серия и номер паспорта в формате 12 34 567890.', example: '12 34 567890' },
+    // attachment используется браузером только для отображения кнопки на этапе 1.
+    // Загрузка и обработка файлов будут добавлены отдельным этапом.
+    'Паспорт: Серия, номер (С)': { editable: true, rule: 'PASSPORT_RU', required: false, isIdentityField: false, attachment: 'PASSPORT_C', description: 'Серия и номер паспорта в формате 12 34 567890.', example: '12 34 567890' },
     'Свидетельство: Кем выдан (С)': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false, description: 'Произвольный текст с подсказками.', example: 'Значение из списка', suggestions: { sourceSheet: 'Результат', sourceHeader: 'Свидетельство: Кем выдан (С)', startRow: 2 } },
     'Паспорт: Кем выдан': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false, description: 'Произвольный текст с подсказками.', example: 'Значение из списка', suggestions: { sourceSheet: 'Результат', sourceHeader: 'Паспорт: Кем выдан', startRow: 2 } },
     'Паспорт или Свидетельство: Кем выдан (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, description: 'Произвольное текстовое значение.', example: 'Текст' },
@@ -1270,6 +1273,55 @@ function updateResultCell(login, password, snils, columnName, value) {
   }
 
   throw new Error('Строка для обновления не найдена.');
+}
+
+/**
+ * Загружает файл в общую папку вложений для разрешенного документного поля.
+ * URL файла в таблицу пока не записывается: это будет отдельным этапом.
+ * @param {{login:string,password:string,snils:string,columnName:string,attachmentFile:GoogleAppsScript.Base.Blob}} formData
+ * @returns {{ok:boolean,fileName:string,fileUrl:string}}
+ */
+function uploadDocumentAttachment(formData) {
+  const payload = formData || {};
+  const columnName = String(payload.columnName || '');
+  const fieldConfig = EDIT_CONFIG.fields[columnName];
+  if (!fieldConfig || !fieldConfig.attachment) {
+    throw new Error('Для этого поля прикрепление файла не настроено.');
+  }
+
+  const file = payload.attachmentFile;
+  if (!file || typeof file.getBytes !== 'function' || !file.getBytes().length) {
+    throw new Error('Выберите файл для загрузки.');
+  }
+
+  const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
+  if (!sheet) throw new Error('Лист с результатами не найден.');
+
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) throw new Error('Таблица пуста.');
+
+  const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+  if (header.indexOf(columnName) === -1) throw new Error('Колонка не найдена.');
+
+  const authCols = getAuthColumnIndexes(header);
+  const snilsCol = getSnilsColumnIndex(header);
+  const rowCount = lastRow - 1;
+  const { logins, passwords, snilsValues } = loadAuthColumns(sheet, rowCount, authCols, snilsCol);
+  const normalizedLogin = normalizeLogin(payload.login);
+  const password = String(payload.password || '').trim();
+  const normalizedSnils = normalizeSnils(payload.snils);
+
+  const isAuthorized = logins.some((row, index) => {
+    if (normalizeLogin(row[0]) !== normalizedLogin || formatCellValue(passwords[index][0]).trim() !== password) return false;
+    const rowSnils = snilsValues ? normalizeSnils(snilsValues[index][0]) : '';
+    return !rowSnils || rowSnils === normalizedSnils;
+  });
+  if (!isAuthorized) throw new Error('Не удалось подтвердить пользователя для загрузки файла.');
+
+  const folder = DriveApp.getFolderById(CONFIG.ATTACHMENTS_FOLDER_ID);
+  const uploadedFile = folder.createFile(file);
+  return { ok: true, fileName: uploadedFile.getName(), fileUrl: uploadedFile.getUrl() };
 }
 
 /**
