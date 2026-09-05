@@ -153,8 +153,10 @@
   .parent-section-title { flex:1; }
   .parent-section-content[hidden] { display:none; }
   .cell-edit-shell { position:relative; min-height:2rem; padding-right:calc(1.55rem + var(--space-xs)); }
+  .cell-edit-shell.has-attachment { padding-top:1.9rem; }
   .cell-edit-actions { position:absolute; top:50%; right:calc(-1 * var(--space-sm)); width:1.55rem; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0; transform:translateY(-50%); }
   .cell-edit-btn { width:1.55rem; height:1.55rem; min-width:1.55rem; min-height:1.55rem; max-width:1.55rem; max-height:1.55rem; flex:0 0 1.55rem; padding:0; display:inline-flex; align-items:center; justify-content:center; overflow:visible; color:inherit; line-height:1; }
+  .cell-attachment-btn { position:absolute; top:0; right:0; margin:0; padding:0.3em 0.55em; font-size:0.8rem; line-height:1.1; }
   .cell-edit-btn svg { width:1.08rem; height:1.08rem; display:block; stroke:currentColor; stroke-width:2.35; stroke-linecap:round; stroke-linejoin:round; fill:none; flex:0 0 auto; pointer-events:none; }
   .cell-edit-btn.non-editable { opacity:0.45; cursor:not-allowed; }
   .cell-edit-btn.save-ready { background:#e9f3ff; border-color:#8ab4f8; }
@@ -1576,12 +1578,18 @@
     return `<div class="cell-edit-actions">${renderCellHelpButton(colIndex, rule)}${renderCellEditButton(colIndex, editable, extraClass)}</div>`;
   }
 
-  function renderCellEditActions(colIndex) {
-    return `<div class="cell-edit-actions"><button type="button" class="attendance-icon-btn cell-edit-btn" data-col-index="${colIndex}" data-mode="save" title="Сохранить" aria-label="Сохранить" disabled>${iconSvg('save')}</button><button type="button" class="attendance-icon-btn cell-edit-btn" data-col-index="${colIndex}" data-mode="cancel" title="Отмена" aria-label="Отмена">${iconSvg('cancel')}</button></div>`;
+  function renderCellAttachmentButton(colIndex, rule = {}) {
+    if (!rule.attachment) return '';
+    return `<button type="button" class="attendance-icon-btn cell-attachment-btn" data-col-index="${colIndex}" data-attachment="${escapeHtmlAttr(rule.attachment)}">Прикрепить</button>`;
+  }
+
+  function renderCellEditActions(colIndex, rule = {}) {
+    return `${renderCellAttachmentButton(colIndex, rule)}<div class="cell-edit-actions"><button type="button" class="attendance-icon-btn cell-edit-btn" data-col-index="${colIndex}" data-mode="save" title="Сохранить" aria-label="Сохранить" disabled>${iconSvg('save')}</button><button type="button" class="attendance-icon-btn cell-edit-btn" data-col-index="${colIndex}" data-mode="cancel" title="Отмена" aria-label="Отмена">${iconSvg('cancel')}</button></div>`;
   }
 
   function renderCellDisplayMarkup(colIndex, value, editable = true, extraClass = '', rule = {}) {
-    return `<div class="cell-edit-shell"><div class="cell-editor"><div class="cell-value-display"><div class="cell-value-text">${escapeHtml(value)}</div></div></div>${renderCellViewActions(colIndex, editable, extraClass, rule)}</div>`;
+    const attachmentClass = rule.attachment ? ' has-attachment' : '';
+    return `<div class="cell-edit-shell${attachmentClass}"><div class="cell-editor"><div class="cell-value-display"><div class="cell-value-text">${escapeHtml(value)}</div></div></div>${renderCellAttachmentButton(colIndex, rule)}${renderCellViewActions(colIndex, editable, extraClass, rule)}</div>`;
   }
 
   function renderCellDisplay(cell, colIndex, value) {
@@ -1592,6 +1600,18 @@
     cell.innerHTML = renderCellDisplayMarkup(colIndex, value, rule.editable, btnClass, rule);
     cell.setAttribute('style', style);
   }
+
+  function handleAttachmentClick() {
+    showToast('Функция прикрепления документа будет реализована следующим этапом.');
+  }
+
+  document.addEventListener('click', function(e) {
+    const attachmentBtn = e.target.closest('.cell-attachment-btn');
+    if (!attachmentBtn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    handleAttachmentClick();
+  });
 
 
   document.addEventListener('click', function(e) {
@@ -1623,7 +1643,8 @@
       const textNode = cell.querySelector('.cell-value-text');
       const value = textNode ? textNode.textContent : '';
       cell.dataset.originalValue = value;
-      cell.innerHTML = `<div class="cell-edit-shell"><div class="cell-editor"><input class="cell-value-input" data-col-index="${colIndex}" value="${escapeHtmlAttr(value)}" /></div>${renderCellEditActions(colIndex)}</div>`;
+      const attachmentClass = rule.attachment ? ' has-attachment' : '';
+      cell.innerHTML = `<div class="cell-edit-shell${attachmentClass}"><div class="cell-editor"><input class="cell-value-input" data-col-index="${colIndex}" value="${escapeHtmlAttr(value)}" /></div>${renderCellEditActions(colIndex, rule)}</div>`;
       const input = cell.querySelector('input');
       const suggestConfig = rule.special === 'suggest' ? rule.suggestions : null;
       let suggestionOptions = [];

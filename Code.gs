@@ -1105,7 +1105,10 @@ const EDIT_CONFIG = Object.freeze({
     'Страховка: Номер и компаия': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, description: 'Произвольное текстовое значение.', example: 'Текст' },
     'ID номер МГФСО': { editable: true, rule: 'MGFSO_ID', required: false, isIdentityField: false, description: 'ID МГФСО из 7 цифр.', example: '1234567' },
     'Мед допуск до': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false, description: 'Дата ДД.ММ.ГГГГ.', example: '01.09.2010' },
-    'РУСАДА': { editable: true, rule: 'YEAR', required: false, isIdentityField: false, description: 'Год в динамическом диапазоне 1950 — текущий год + 1.', example: '2024' }
+    'РУСАДА': { editable: true, rule: 'YEAR', required: false, isIdentityField: false, description: 'Год в динамическом диапазоне 1950 — текущий год + 1.', example: '2024' },
+    // attachment используется браузером только для отображения кнопки на этапе 1.
+    // Загрузка и обработка файлов будут добавлены отдельным этапом.
+    'Паспорт: скан (С)': { editable: false, rule: 'TEXT', required: false, isIdentityField: false, attachment: 'PASSPORT_C' }
   })
 });
 
