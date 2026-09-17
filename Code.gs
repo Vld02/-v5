@@ -294,7 +294,9 @@ function logPageOpen({ login = '', password = '', snils = '', clientInfo = {} } 
  */
 function logAccess({ login = '', password = '', snils = '', clientInfo = {}, status }) {
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  // Журнал не должен задерживать аутентификацию: при конкурентной записи
+  // пропускаем только эту запись журнала, а не весь запрос пользователя.
+  if (!lock.tryLock(1000)) return;
   try {
     const sheet = getLogSheet();
     if (!sheet) return;
@@ -474,7 +476,15 @@ function prepareRowForClient(row, header, backgrounds, allowedCols) {
   return {
     header: allowedCols.map(i => header[i]),
     row: allowedCols.map(i => formatCellValue(row[i])),
-    colors: allowedCols.map(i => backgrounds[i])
+    colors: allowedCols.map(i => backgrounds[i]),
+    // FILE-поля хранят ссылку на загруженный файл в своей ячейке. Клиент
+    // получает только признак состояния, а не использует текст ячейки как значение.
+    fileStates: allowedCols.map(i => {
+      const fieldConfig = EDIT_CONFIG.fields[header[i]];
+      return fieldConfig && fieldConfig.rule === 'FILE'
+        ? { hasFile: Boolean(formatCellValue(row[i]).trim()) }
+        : null;
+    })
   };
 }
 
@@ -1027,7 +1037,8 @@ const EDIT_CONFIG = Object.freeze({
     PASSPORT_RU: { title: 'Паспорт РФ', placeholder: '12 34 567890', regex: '^\\d{2}\\s\\d{2}\\s\\d{6}$', special: 'passportRu' },
     PASSPORT_DIVISION_CODE: { title: 'Код подразделения', placeholder: '123-456', regex: '^\\d{3}-\\d{3}$', special: 'passportDivisionCode' },
     MED_POLICY_NUMBER: { title: 'Номер медполиса', placeholder: '1234 5678 9012 3456', regex: '^\\d{4}\\s\\d{4}\\s\\d{4}\\s\\d{4}$', special: 'medPolicyNumber' },
-    MGFSO_ID: { title: 'ID МГФСО', placeholder: '1234567', regex: '^\\d{7}$', special: 'mgfsoId' }
+    MGFSO_ID: { title: 'ID МГФСО', placeholder: '1234567', regex: '^\\d{7}$', special: 'mgfsoId' },
+    FILE: { title: 'Файл', placeholder: '', regex: '^$', special: 'file' }
   }),
 
   /* ============================================================
@@ -1085,9 +1096,17 @@ const EDIT_CONFIG = Object.freeze({
     'Марка автомобиля (Д)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, description: 'Произвольное текстовое значение.', example: 'Текст' },
     'гос. номер автомобиля (Д)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, description: 'Произвольное текстовое значение.', example: 'Текст' },
     'Свидетельство: Серия, номер (С)': { editable: true, rule: 'CERTIFICATE_RU', required: false, isIdentityField: false, description: 'Серия и номер свидетельства.', example: 'IV-АБ № 123456' },
-    // attachment используется браузером только для отображения кнопки на этапе 1.
-    // Загрузка и обработка файлов будут добавлены отдельным этапом.
-    'Паспорт: Серия, номер (С)': { editable: true, rule: 'PASSPORT_RU', required: false, isIdentityField: false, attachment: 'PASSPORT_C', description: 'Серия и номер паспорта в формате 12 34 567890.', example: '12 34 567890' },
+    'Паспорт: Серия, номер (С)': { editable: true, rule: 'PASSPORT_RU', required: false, isIdentityField: false, description: 'Серия и номер паспорта в формате 12 34 567890.', example: '12 34 567890' },
+    'Свидетельство: скан (С)': { editable: true, rule: 'FILE', required: false, isIdentityField: false, description: 'Скан свидетельства о рождении.' },
+    'Паспорт: скан (С)': { editable: true, rule: 'FILE', required: false, isIdentityField: false, description: 'Скан паспорта спортсмена.' },
+    'Снилс: Скан': { editable: true, rule: 'FILE', required: false, isIdentityField: false, description: 'Скан СНИЛС.' },
+    'Полис: Скан': { editable: true, rule: 'FILE', required: false, isIdentityField: false, description: 'Скан медицинского полиса.' },
+    'Страховка: Скан': { editable: true, rule: 'FILE', required: false, isIdentityField: false, description: 'Скан страховки.' },
+    'Мед допуск: Скан': { editable: true, rule: 'FILE', required: false, isIdentityField: false, description: 'Скан медицинского допуска.' },
+    'Русада: Скан': { editable: true, rule: 'FILE', required: false, isIdentityField: false, description: 'Скан документа РУСАДА.' },
+    'Паспорт: Скан (П)': { editable: true, rule: 'FILE', required: false, isIdentityField: false, description: 'Скан паспорта отца.' },
+    'Паспорт: Скан (М)': { editable: true, rule: 'FILE', required: false, isIdentityField: false, description: 'Скан паспорта матери.' },
+    'Паспорт: Скан (Д)': { editable: true, rule: 'FILE', required: false, isIdentityField: false, description: 'Скан паспорта другого законного представителя.' },
     'Свидетельство: Кем выдан (С)': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false, description: 'Произвольный текст с подсказками.', example: 'Значение из списка', suggestions: { sourceSheet: 'Результат', sourceHeader: 'Свидетельство: Кем выдан (С)', startRow: 2 } },
     'Паспорт: Кем выдан': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false, description: 'Произвольный текст с подсказками.', example: 'Значение из списка', suggestions: { sourceSheet: 'Результат', sourceHeader: 'Паспорт: Кем выдан', startRow: 2 } },
     'Паспорт или Свидетельство: Кем выдан (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, description: 'Произвольное текстовое значение.', example: 'Текст' },
@@ -1153,6 +1172,10 @@ function validateEditableFieldValue_(columnName, value) {
 
   const rule = EDIT_CONFIG.rules[fieldConfig.rule];
   if (!rule) throw new Error('Для поля не найдено правило проверки.');
+
+  if (rule.special === 'file') {
+    throw new Error('Файл можно изменить только через прикрепление.');
+  }
 
   const normalizedValue = String(value ?? '').trim();
   if (normalizedValue === '') {
@@ -1276,16 +1299,17 @@ function updateResultCell(login, password, snils, columnName, value) {
 }
 
 /**
- * Загружает файл в общую папку вложений для разрешенного документного поля.
- * URL файла в таблицу пока не записывается: это будет отдельным этапом.
+ * Загружает файл для FILE-поля и сохраняет его URL в той же ячейке.
+ * Это делает состояние файла частью данных строки; обычное текстовое
+ * сохранение после загрузки не требуется.
  * @param {{login:string,password:string,snils:string,columnName:string,attachmentFile:GoogleAppsScript.Base.Blob}} formData
- * @returns {{ok:boolean,fileName:string,fileUrl:string}}
+ * @returns {{ok:boolean,fileName:string,fileUrl:string,fileState:{hasFile:boolean}}}
  */
 function uploadDocumentAttachment(formData) {
   const payload = formData || {};
   const columnName = String(payload.columnName || '');
   const fieldConfig = EDIT_CONFIG.fields[columnName];
-  if (!fieldConfig || !fieldConfig.attachment) {
+  if (!fieldConfig || fieldConfig.rule !== 'FILE' || fieldConfig.editable !== true) {
     throw new Error('Для этого поля прикрепление файла не настроено.');
   }
 
@@ -1296,13 +1320,13 @@ function uploadDocumentAttachment(formData) {
 
   const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
   if (!sheet) throw new Error('Лист с результатами не найден.');
-
   const lastRow = sheet.getLastRow();
   const lastCol = sheet.getLastColumn();
   if (lastRow < 2 || lastCol < 1) throw new Error('Таблица пуста.');
 
   const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
-  if (header.indexOf(columnName) === -1) throw new Error('Колонка не найдена.');
+  const targetCol = header.indexOf(columnName);
+  if (targetCol === -1) throw new Error('Колонка не найдена.');
 
   const authCols = getAuthColumnIndexes(header);
   const snilsCol = getSnilsColumnIndex(header);
@@ -1312,16 +1336,18 @@ function uploadDocumentAttachment(formData) {
   const password = String(payload.password || '').trim();
   const normalizedSnils = normalizeSnils(payload.snils);
 
-  const isAuthorized = logins.some((row, index) => {
-    if (normalizeLogin(row[0]) !== normalizedLogin || formatCellValue(passwords[index][0]).trim() !== password) return false;
-    const rowSnils = snilsValues ? normalizeSnils(snilsValues[index][0]) : '';
-    return !rowSnils || rowSnils === normalizedSnils;
-  });
-  if (!isAuthorized) throw new Error('Не удалось подтвердить пользователя для загрузки файла.');
+  for (let i = 0; i < rowCount; i++) {
+    if (normalizeLogin(logins[i][0]) !== normalizedLogin || formatCellValue(passwords[i][0]).trim() !== password) continue;
+    const rowSnils = snilsValues ? normalizeSnils(snilsValues[i][0]) : '';
+    if (rowSnils && rowSnils !== normalizedSnils) continue;
 
-  const folder = DriveApp.getFolderById(CONFIG.ATTACHMENTS_FOLDER_ID);
-  const uploadedFile = folder.createFile(file);
-  return { ok: true, fileName: uploadedFile.getName(), fileUrl: uploadedFile.getUrl() };
+    const uploadedFile = DriveApp.getFolderById(CONFIG.ATTACHMENTS_FOLDER_ID).createFile(file);
+    const historyTimestamp = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, `${CONFIG.DATE_FORMAT} HH:mm:ss`);
+    setValueWithSiteEditNote_(sheet.getRange(i + 2, targetCol + 1), uploadedFile.getUrl(), historyTimestamp);
+    return { ok: true, fileName: uploadedFile.getName(), fileUrl: uploadedFile.getUrl(), fileState: { hasFile: true } };
+  }
+
+  throw new Error('Не удалось подтвердить пользователя для загрузки файла.');
 }
 
 /**
