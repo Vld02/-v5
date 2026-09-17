@@ -132,6 +132,12 @@
   .item-title-text { max-width:100%; box-sizing:border-box; }
   .item-title.has-attachment .item-title-text { padding-right:calc(1.55rem + var(--space-sm)); }
   .item-value { width: 55%; padding: var(--space-sm); position: relative; min-height: 2.2rem; }
+  .item.file-item { display:block; margin-top:var(--space-md); border-top:0.05rem solid #d8d8d8; }
+  .file-item .item-title { width:auto; border-right:0; border-bottom:0.05rem solid #d8d8d8; }
+  .file-item .item-value { width:auto; }
+  .file-status { display:flex; align-items:center; gap:var(--space-sm); min-height:2rem; color:#666; }
+  .file-status.is-attached { color:#137333; }
+  .file-status svg { width:1.35rem; height:1.35rem; stroke:currentColor; stroke-width:2.1; stroke-linecap:round; stroke-linejoin:round; fill:none; flex:0 0 auto; }
   .parent-section { margin-top:1rem; }
   .parent-section-header {
     width:100%;
@@ -1522,8 +1528,9 @@
         const style = bg ? `background:${bg};` : '';
         const rule = getFieldEditRule(header[i]);
         const btnClass = rule.editable ? '' : 'non-editable';
-        const attachmentClass = rule.attachment ? ' has-attachment' : '';
-        html += `<div class="item"><div class="item-title${attachmentClass}"><span class="item-title-text">${escapeHtml(cleanedTitle)}</span>${renderCellAttachmentButton(i, rule)}</div><div class="item-value" style="${style}" data-col-index="${i}">${renderCellDisplayMarkup(i, row[i] ?? '', rule.editable, btnClass, rule)}</div></div>`;
+        const isFile = rule.special === 'file';
+        const attachmentClass = rule.attachment && !isFile ? ' has-attachment' : '';
+        html += `<div class="item${isFile ? ' file-item' : ''}"><div class="item-title${attachmentClass}"><span class="item-title-text">${escapeHtml(cleanedTitle)}</span>${isFile ? '' : renderCellAttachmentButton(i, rule)}</div><div class="item-value" style="${style}" data-col-index="${i}">${renderCellDisplayMarkup(i, row[i] ?? '', rule.editable, btnClass, rule)}</div></div>`;
       }
 
       if (isParentSection) html += '</div></div>';
@@ -1556,7 +1563,9 @@
       save: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>',
       cancel: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>',
       help: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9.1 9a3 3 0 1 1 5.8 1c-.7 1.2-2.4 1.7-2.4 3"/><path d="M12 17h.01"/><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>',
-      attach: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m21.4 11.6-8.9 8.9a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>'
+      attach: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m21.4 11.6-8.9 8.9a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>',
+      file: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>',
+      fileAttached: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="m8 16 2.2 2.2L16 12.5"/></svg>'
     };
     return icons[name] || '';
   }
@@ -1579,7 +1588,14 @@
   }
 
   function renderCellViewActions(colIndex, editable = true, extraClass = '', rule = {}) {
+    if (rule.special === 'file') {
+      return `<div class="cell-edit-actions">${renderFileAttachmentButton(colIndex, editable)}</div>`;
+    }
     return `<div class="cell-edit-actions">${renderCellHelpButton(colIndex, rule)}${renderCellEditButton(colIndex, editable, extraClass)}</div>`;
+  }
+
+  function renderFileAttachmentButton(colIndex, editable = true) {
+    return `<button type="button" class="attendance-icon-btn cell-edit-btn" data-col-index="${colIndex}" data-mode="attachment" title="Прикрепить файл" aria-label="Прикрепить файл" ${editable ? '' : 'disabled'}>${iconSvg('attach')}</button>`;
   }
 
   function renderCellAttachmentButton(colIndex, rule = {}) {
@@ -1592,6 +1608,13 @@
   }
 
   function renderCellDisplayMarkup(colIndex, value, editable = true, extraClass = '', rule = {}) {
+    if (rule.special === 'file') {
+      const isAttached = String(value ?? '').trim() !== '';
+      const statusClass = isAttached ? ' is-attached' : '';
+      const statusText = isAttached ? 'Файл прикреплён' : 'Файл не прикреплён';
+      const statusIcon = isAttached ? 'fileAttached' : 'file';
+      return `<div class="cell-edit-shell"><div class="cell-editor"><div class="file-status${statusClass}" role="status">${iconSvg(statusIcon)}<span>${statusText}</span></div></div>${renderCellViewActions(colIndex, editable, extraClass, rule)}</div>`;
+    }
     return `<div class="cell-edit-shell"><div class="cell-editor"><div class="cell-value-display"><div class="cell-value-text">${escapeHtml(value)}</div></div></div>${renderCellViewActions(colIndex, editable, extraClass, rule)}</div>`;
   }
 
@@ -1637,7 +1660,13 @@
       google.script.run
         .withSuccessHandler(response => {
           form.remove();
-          showToast(`Файл «${(response && response.fileName) || 'документ'}» загружен.`);
+          if (response && response.attached && response.fileUrl) {
+            currentDocsRow.row[colIndex] = response.fileUrl;
+            const cell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
+            if (cell) renderCellDisplay(cell, colIndex, response.fileUrl);
+          }
+          const resultText = response && response.attached ? 'прикреплён и сохранён' : 'загружен';
+          showToast(`Файл «${(response && response.fileName) || 'документ'}» ${resultText}.`);
         })
         .withFailureHandler(error => {
           form.remove();
