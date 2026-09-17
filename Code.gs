@@ -12,7 +12,28 @@ const CONFIG = Object.freeze({
   DATE_FORMAT: 'dd.MM.yyyy',
   NAMES_CACHE_KEY: 'dbv5_full_names_v1',
   NAMES_CACHE_TTL_SECONDS: 300,
-  ATTACHMENTS_FOLDER_ID: '1AyjWNspWbBVswPdrSy0M-JEbvZBzsjq1'
+  // Корневая папка «Пользователи». Внутри неё создаётся папка для каждой строки.
+  ATTACHMENTS_FOLDER_ID: '1AyjWNspWbBVswPdrSy0M-JEbvZBzsjq1',
+  // Шаблоны используют значения столбцов листа «Результат». Меняйте только
+  // template/headers: это не требует изменений в функции загрузки.
+  ATTACHMENT_NAMING: Object.freeze({
+    USER_FOLDER: Object.freeze({
+      template: 'Фамилия Имя Отчество (С) - Дата рождения (С) - Год набора',
+      headers: Object.freeze(['Фамилия Имя Отчество (С)', 'Дата рождения (С)', 'Год набора'])
+    }),
+    FILES: Object.freeze({
+      'Свидетельство: скан (С)': Object.freeze({ template: 'Свидетельство: скан (С) - Фамилия Имя Отчество (С)', headers: Object.freeze(['Фамилия Имя Отчество (С)']) }),
+      'Паспорт: скан (С)': Object.freeze({ template: 'Паспорт: скан (С) - Фамилия Имя Отчество (С)', headers: Object.freeze(['Фамилия Имя Отчество (С)']) }),
+      'Снилс: Скан': Object.freeze({ template: 'Снилс: Скан - Фамилия Имя Отчество (С)', headers: Object.freeze(['Фамилия Имя Отчество (С)']) }),
+      'Полис: Скан': Object.freeze({ template: 'Полис: Скан - Фамилия Имя Отчество (С)', headers: Object.freeze(['Фамилия Имя Отчество (С)']) }),
+      'Страховка: Скан': Object.freeze({ template: 'Страховка: Скан - Фамилия Имя Отчество (С)', headers: Object.freeze(['Фамилия Имя Отчество (С)']) }),
+      'Мед допуск: Скан': Object.freeze({ template: 'Мед допуск: Скан - Фамилия Имя Отчество (С)', headers: Object.freeze(['Фамилия Имя Отчество (С)']) }),
+      'Русада: Скан': Object.freeze({ template: 'Русада: Скан - Фамилия Имя Отчество (С)', headers: Object.freeze(['Фамилия Имя Отчество (С)']) }),
+      'Паспорт: Скан (П)': Object.freeze({ template: 'Паспорт: Скан (П) - Фамилия Имя Отчество (П)', headers: Object.freeze(['Фамилия Имя Отчество (П)']) }),
+      'Паспорт: Скан (М)': Object.freeze({ template: 'Паспорт: Скан (М) - Фамилия Имя Отчество (М)', headers: Object.freeze(['Фамилия Имя Отчество (М)']) }),
+      'Паспорт: Скан (Д)': Object.freeze({ template: 'Паспорт: Скан (Д) - Фамилия Имя Отчество (Д)', headers: Object.freeze(['Фамилия Имя Отчество (Д)']) })
+    })
+  })
 });
 
 /*************************************************
@@ -477,8 +498,8 @@ function prepareRowForClient(row, header, backgrounds, allowedCols) {
     header: allowedCols.map(i => header[i]),
     row: allowedCols.map(i => formatCellValue(row[i])),
     colors: allowedCols.map(i => backgrounds[i]),
-    // FILE-поля хранят ссылку на загруженный файл в своей ячейке. Клиент
-    // получает только признак состояния, а не использует текст ячейки как значение.
+    // FILE-поля хранят URL только на сервере. Клиент получает признак наличия,
+    // а содержимое файла выдаётся отдельным авторизованным запросом.
     fileStates: allowedCols.map(i => {
       const fieldConfig = EDIT_CONFIG.fields[header[i]];
       return fieldConfig && fieldConfig.rule === 'FILE'
@@ -1299,11 +1320,93 @@ function updateResultCell(login, password, snils, columnName, value) {
 }
 
 /**
+ * Подставляет значения указанной строки в шаблон имени.
+ * `headers` задаёт именно те части шаблона, которые являются заголовками, поэтому
+ * совпадающий с заголовком текст (например, название FILE-поля) можно оставить
+ * неизменяемой подписью в шаблоне.
+ * @param {{template:string,headers:string[]}} namingConfig Конфигурация шаблона.
+ * @param {string[]} header Заголовки листа «Результат».
+ * @param {Array<*>} row Значения строки пользователя.
+ * @returns {string}
+ */
+function renderAttachmentTemplate_(namingConfig, header, row) {
+  if (!namingConfig || !String(namingConfig.template || '').trim()) {
+    throw new Error('Шаблон имени вложения не настроен.');
+  }
+
+  let result = String(namingConfig.template);
+  const valueHeaders = Array.isArray(namingConfig.headers) ? namingConfig.headers : [];
+  valueHeaders.forEach(columnName => {
+    const columnIndex = header.indexOf(columnName);
+    if (columnIndex === -1) {
+      throw new Error(`В листе «${CONFIG.RESULT_SHEET_NAME}» нет столбца «${columnName}» из шаблона.`);
+    }
+    const value = formatCellValue(row[columnIndex]).trim();
+    if (!value) {
+      throw new Error(`Нельзя сформировать имя: в столбце «${columnName}» нет значения.`);
+    }
+    // split/join заменяет текст буквально, не интерпретируя спецсимволы RegExp.
+    result = result.split(columnName).join(value);
+  });
+
+  return sanitizeDriveName_(result);
+}
+
+/**
+ * Удаляет символы, недопустимые в имени объекта Google Drive, и лишние пробелы.
+ * @param {string} value Исходное имя.
+ * @returns {string}
+ */
+function sanitizeDriveName_(value) {
+  const name = String(value || '').replace(/[\\/\u0000]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!name) throw new Error('После обработки шаблона получилось пустое имя.');
+  return name;
+}
+
+/**
+ * Возвращает расширение исходного файла, включая точку, либо пустую строку.
+ * @param {string} fileName Имя исходного файла.
+ * @returns {string}
+ */
+function getFileExtension_(fileName) {
+  const baseName = String(fileName || '').trim();
+  const dotIndex = baseName.lastIndexOf('.');
+  return dotIndex > 0 && dotIndex < baseName.length - 1 ? baseName.slice(dotIndex) : '';
+}
+
+/**
+ * Находит или создаёт папку пользователя в корневой папке вложений.
+ * @param {GoogleAppsScript.Drive.Folder} rootFolder Корневая папка «Пользователи».
+ * @param {string} folderName Имя папки пользователя.
+ * @returns {GoogleAppsScript.Drive.Folder}
+ */
+function getOrCreateUserAttachmentsFolder_(rootFolder, folderName) {
+  const folders = rootFolder.getFoldersByName(folderName);
+  return folders.hasNext() ? folders.next() : rootFolder.createFolder(folderName);
+}
+
+/**
+ * Перемещает заменяемый файл приложения в корзину, если в ячейке есть ссылка Drive.
+ * @param {*} value URL прежнего файла.
+ */
+function movePreviousAttachmentToTrash_(value) {
+  const url = String(value || '');
+  const match = url.match(/(?:\/d\/|[?&]id=)([-\w]{20,})/);
+  if (!match) return;
+  try {
+    DriveApp.getFileById(match[1]).setTrashed(true);
+  } catch (error) {
+    // Старый файл уже мог быть удалён или быть недоступным; новый файл остаётся валидным.
+    Logger.log(`Не удалось переместить прежнее вложение в корзину: ${error.message}`);
+  }
+}
+
+/**
  * Загружает файл для FILE-поля и сохраняет его URL в той же ячейке.
  * Это делает состояние файла частью данных строки; обычное текстовое
  * сохранение после загрузки не требуется.
  * @param {{login:string,password:string,snils:string,columnName:string,attachmentFile:GoogleAppsScript.Base.Blob}} formData
- * @returns {{ok:boolean,fileName:string,fileUrl:string,fileState:{hasFile:boolean}}}
+ * @returns {{ok:boolean,fileName:string,fileState:{hasFile:boolean}}}
  */
 function uploadDocumentAttachment(formData) {
   const payload = formData || {};
@@ -1341,13 +1444,93 @@ function uploadDocumentAttachment(formData) {
     const rowSnils = snilsValues ? normalizeSnils(snilsValues[i][0]) : '';
     if (rowSnils && rowSnils !== normalizedSnils) continue;
 
-    const uploadedFile = DriveApp.getFolderById(CONFIG.ATTACHMENTS_FOLDER_ID).createFile(file);
+    const row = sheet.getRange(i + 2, 1, 1, lastCol).getValues()[0];
+    const namingConfig = CONFIG.ATTACHMENT_NAMING;
+    const folderName = renderAttachmentTemplate_(namingConfig.USER_FOLDER, header, row);
+    const fileTemplate = namingConfig.FILES[columnName];
+    if (!fileTemplate) throw new Error(`Для FILE-поля «${columnName}» не настроен шаблон имени.`);
+
+    const fileBaseName = renderAttachmentTemplate_(fileTemplate, header, row);
+    const extension = getFileExtension_(file.getName());
+    const destinationFolder = getOrCreateUserAttachmentsFolder_(
+      DriveApp.getFolderById(CONFIG.ATTACHMENTS_FOLDER_ID),
+      folderName
+    );
+    const uploadedFile = destinationFolder.createFile(file).setName(`${fileBaseName}${extension}`);
+    movePreviousAttachmentToTrash_(row[targetCol]);
     const historyTimestamp = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, `${CONFIG.DATE_FORMAT} HH:mm:ss`);
     setValueWithSiteEditNote_(sheet.getRange(i + 2, targetCol + 1), uploadedFile.getUrl(), historyTimestamp);
-    return { ok: true, fileName: uploadedFile.getName(), fileUrl: uploadedFile.getUrl(), fileState: { hasFile: true } };
+    return { ok: true, fileName: uploadedFile.getName(), fileState: { hasFile: true } };
   }
 
   throw new Error('Не удалось подтвердить пользователя для загрузки файла.');
+}
+
+/**
+ * Однократно отзывает общий доступ по ссылке у уже загруженных FILE-вложений.
+ * Запустите вручную из редактора Apps Script после развёртывания изменения.
+ * @returns {{checked:number,revoked:number,errors:number}}
+ */
+function revokeExistingAttachmentLinkSharing() {
+  const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
+  if (!sheet || sheet.getLastRow() < 2 || sheet.getLastColumn() < 1) return { checked: 0, revoked: 0, errors: 0 };
+  const lastCol = sheet.getLastColumn();
+  const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+  const fileColumns = header.map((name, index) => EDIT_CONFIG.fields[name]?.rule === 'FILE' ? index : -1).filter(index => index >= 0);
+  const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, lastCol).getValues();
+  const result = { checked: 0, revoked: 0, errors: 0 };
+  values.forEach(row => fileColumns.forEach(columnIndex => {
+    const match = formatCellValue(row[columnIndex]).match(/(?:\/d\/|[?&]id=)([-\w]{20,})/);
+    if (!match) return;
+    result.checked++;
+    try {
+      DriveApp.getFileById(match[1]).setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE);
+      result.revoked++;
+    } catch (error) {
+      result.errors++;
+      Logger.log(`Не удалось отозвать доступ по ссылке к вложению: ${error.message}`);
+    }
+  }));
+  return result;
+}
+
+/**
+ * Возвращает содержимое прикреплённого файла только после проверки пользователя.
+ * URL Drive не передаётся браузеру, поэтому доступ по ссылке не требуется.
+ * @param {string} login
+ * @param {string} password
+ * @param {string} snils
+ * @param {string} columnName
+ * @returns {{fileName:string,mimeType:string,base64:string}}
+ */
+function getDocumentAttachmentContent(login, password, snils, columnName) {
+  const fieldConfig = EDIT_CONFIG.fields[String(columnName || '')];
+  if (!fieldConfig || fieldConfig.rule !== 'FILE') throw new Error('Для этого поля нет прикреплённого файла.');
+  const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
+  if (!sheet) throw new Error('Лист с результатами не найден.');
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) throw new Error('Таблица пуста.');
+  const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+  const targetCol = header.indexOf(String(columnName));
+  if (targetCol === -1) throw new Error('Колонка не найдена.');
+  const authCols = getAuthColumnIndexes(header);
+  const snilsCol = getSnilsColumnIndex(header);
+  const { logins, passwords, snilsValues } = loadAuthColumns(sheet, lastRow - 1, authCols, snilsCol);
+  const normalizedLogin = normalizeLogin(login);
+  const normalizedSnils = normalizeSnils(snils);
+  for (let i = 0; i < lastRow - 1; i++) {
+    if (normalizeLogin(logins[i][0]) !== normalizedLogin || formatCellValue(passwords[i][0]).trim() !== String(password || '').trim()) continue;
+    const rowSnils = snilsValues ? normalizeSnils(snilsValues[i][0]) : '';
+    if (rowSnils && rowSnils !== normalizedSnils) continue;
+    const fileUrl = formatCellValue(sheet.getRange(i + 2, targetCol + 1).getValue()).trim();
+    const match = fileUrl.match(/(?:\/d\/|[?&]id=)([-\w]{20,})/);
+    if (!match) throw new Error('Прикреплённый файл не найден.');
+    const file = DriveApp.getFileById(match[1]);
+    const blob = file.getBlob();
+    return { fileName: file.getName(), mimeType: blob.getContentType(), base64: Utilities.base64Encode(blob.getBytes()) };
+  }
+  throw new Error('Не удалось подтвердить пользователя для открытия файла.');
 }
 
 /**
