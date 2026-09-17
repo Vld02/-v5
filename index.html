@@ -828,7 +828,14 @@
     editConfigPromise = new Promise((resolve, reject) => {
       google.script.run
         .withSuccessHandler(config => {
-          editConfig = config || { rules: {}, fields: {} };
+          // Не фиксируем пустой/неполный ответ как загруженную конфигурацию:
+          // иначе FILE-поля навсегда превратятся в неактивные TEXT-поля.
+          if (!config || !config.rules || !config.fields || !config.rules.FILE) {
+            editConfigPromise = null;
+            reject(new Error('Сервер вернул неполную конфигурацию редактирования.'));
+            return;
+          }
+          editConfig = config;
           resolve(editConfig);
         })
         .withFailureHandler(error => {
@@ -846,9 +853,9 @@
   loadEditConfig().catch(() => {});
 
   function getFieldEditRule(headerTitle) {
-    if (!editConfig) {
-      return { editable: false, rule: 'TEXT', required: false, isIdentityField: false, regex: '^.*$', special: '', placeholder: '', ruleKey: 'TEXT' };
-    }
+    // showDocsResult() ожидает loadEditConfig(), поэтому отсутствие конфигурации
+    // здесь — ошибка порядка выполнения, а не повод подменять FILE на TEXT.
+    if (!editConfig) throw new Error('Конфигурация редактирования ещё не загружена.');
 
     const fieldConfig = editConfig.fields[headerTitle] || { editable: false, rule: 'TEXT', required: false, isIdentityField: false };
     const editRule = editConfig.rules[fieldConfig.rule] || editConfig.rules.TEXT || { regex: '^.*$', special: '', placeholder: '' };
@@ -1308,12 +1315,7 @@
 
         localStorage.setItem('isLoggedIn', '1');
         hideSnilsStep();
-        loadEditConfig()
-          .then(() => showDocsResult(response))
-          .catch(() => {
-            dom.error.textContent = 'Не удалось загрузить правила редактирования.';
-            stopAuthLoading();
-          });
+        showDocsResult(response);
       })
       .checkLogin(loginVal, passwordForServer, clientInfo, snilsFormatted);
   }
@@ -1362,12 +1364,7 @@
         authState.login = '';
         authState.password = '';
         dom.snilsWrap.style.display = 'block';
-        loadEditConfig()
-          .then(() => showDocsResult(response))
-          .catch(() => {
-            dom.error.textContent = 'Не удалось загрузить правила редактирования.';
-            stopAuthLoading();
-          });
+        showDocsResult(response);
       })
       .verifySnils(authState.login, authState.password, snilsFormatted, clientInfo);
   }
@@ -1467,9 +1464,19 @@
     });
   }
 
-  function showDocsResult(response) {
+  async function showDocsResult(response) {
     if (response.error) {
       dom.error.textContent = response.error;
+      stopAuthLoading();
+      return;
+    }
+
+    // Нельзя строить строку по запасному TEXT-правилу: FILE-кнопка
+    // определяется только после получения полной серверной конфигурации.
+    try {
+      await loadEditConfig();
+    } catch (_error) {
+      dom.error.textContent = 'Не удалось загрузить правила редактирования.';
       stopAuthLoading();
       return;
     }
