@@ -158,7 +158,7 @@
   .cell-edit-btn { width:1.55rem; height:1.55rem; min-width:1.55rem; min-height:1.55rem; max-width:1.55rem; max-height:1.55rem; flex:0 0 1.55rem; padding:0; display:inline-flex; align-items:center; justify-content:center; overflow:visible; color:inherit; line-height:1; }
   .file-status { display:inline-flex; align-items:center; gap:0.35rem; color:#5f6368; }
   .file-status.has-file { color:#137333; }
-  .file-status-link { display:inline-flex; align-items:center; gap:0.35rem; color:inherit; text-decoration:underline; text-underline-offset:0.14em; }
+  .file-status-link { display:inline-flex; align-items:center; gap:0.35rem; padding:0; border:0; background:transparent; color:inherit; font:inherit; text-decoration:underline; text-underline-offset:0.14em; cursor:pointer; }
   .file-status-link:hover, .file-status-link:focus-visible { color:#0b5d2e; }
   .file-status svg { width:1.15rem; height:1.15rem; stroke:currentColor; stroke-width:2.1; fill:none; }
   .cell-edit-btn svg { width:1.08rem; height:1.08rem; display:block; stroke:currentColor; stroke-width:2.35; stroke-linecap:round; stroke-linejoin:round; fill:none; flex:0 0 auto; pointer-events:none; }
@@ -1621,19 +1621,13 @@
     return `<div class="cell-edit-actions"><button type="button" class="attendance-icon-btn cell-edit-btn" data-col-index="${colIndex}" data-mode="save" title="Сохранить" aria-label="Сохранить" disabled>${iconSvg('save')}</button><button type="button" class="attendance-icon-btn cell-edit-btn" data-col-index="${colIndex}" data-mode="cancel" title="Отмена" aria-label="Отмена">${iconSvg('cancel')}</button></div>`;
   }
 
-  function getSafeFileUrl(value) {
-    const url = String(value || '').trim();
-    return /^https:\/\//i.test(url) ? url : '';
-  }
-
   function renderCellDisplayMarkup(colIndex, value, editable = true, extraClass = '', rule = {}) {
     const fileState = currentDocsRow.fileStates && currentDocsRow.fileStates[colIndex];
-    const fileUrl = getSafeFileUrl(fileState && fileState.fileUrl);
-    const hasFile = Boolean(fileState && fileState.hasFile && fileUrl);
+    const hasFile = Boolean(fileState && fileState.hasFile);
     const fileLabel = hasFile ? 'Файл прикреплён' : 'Нет файла';
     const fileContent = `${iconSvg(hasFile ? 'file' : 'attach')}<span>${fileLabel}</span>`;
     const display = rule.special === 'file'
-      ? `<div class="file-status${hasFile ? ' has-file' : ''}" title="${fileLabel}">${hasFile ? `<a class="file-status-link" href="${escapeHtmlAttr(fileUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Открыть прикреплённый файл">${fileContent}</a>` : fileContent}</div>`
+      ? `<div class="file-status${hasFile ? ' has-file' : ''}" title="${fileLabel}">${hasFile ? `<button type="button" class="file-status-link file-open-btn" data-col-index="${colIndex}" aria-label="Открыть прикреплённый файл">${fileContent}</button>` : fileContent}</div>`
       : `<div class="cell-value-text">${escapeHtml(value)}</div>`;
     return `<div class="cell-edit-shell"><div class="cell-editor"><div class="cell-value-display">${display}</div></div>${renderCellViewActions(colIndex, editable, extraClass, rule)}</div>`;
   }
@@ -1645,6 +1639,35 @@
     const btnClass = rule.editable ? '' : 'non-editable';
     cell.innerHTML = renderCellDisplayMarkup(colIndex, value, rule.editable, btnClass, rule);
     cell.setAttribute('style', style);
+  }
+
+  function openAttachmentFile(colIndex) {
+    const columnName = currentDocsRow.header[colIndex];
+    const openedWindow = window.open('', '_blank');
+    if (!openedWindow) {
+      showToast('Браузер заблокировал открытие файла. Разрешите всплывающие окна для сайта.', 'error');
+      return;
+    }
+    openedWindow.document.title = 'Загрузка файла…';
+    google.script.run
+      .withSuccessHandler(file => {
+        try {
+          const binary = atob(file.base64);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          const objectUrl = URL.createObjectURL(new Blob([bytes], { type: file.mimeType || 'application/octet-stream' }));
+          openedWindow.location.replace(objectUrl);
+          setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+        } catch (error) {
+          openedWindow.close();
+          showToast(`Ошибка: ${error.message || 'Не удалось открыть файл.'}`, 'error');
+        }
+      })
+      .withFailureHandler(error => {
+        openedWindow.close();
+        showToast(`Ошибка: ${(error && error.message) || 'Не удалось открыть файл.'}`, 'error');
+      })
+      .getDocumentAttachmentContent(dom.login.value.trim(), toServerDate(dom.password.value), dom.snils.value.trim(), columnName);
   }
 
   function showAttachmentReplacementDialog(onConfirm) {
@@ -1707,7 +1730,6 @@
             const cell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
             if (cell) renderCellDisplay(cell, colIndex, currentDocsRow.row[colIndex] ?? '');
             showToast(`Файл «${(response && response.fileName) || 'документ'}» загружен.`);
-            if (response && response.sharingWarning) showToast(response.sharingWarning, 'error');
           })
           .withFailureHandler(error => {
             closeToast(progressToast);
@@ -1729,6 +1751,12 @@
   }
 
   document.addEventListener('click', function(e) {
+    const fileOpenButton = e.target.closest('.file-open-btn');
+    if (fileOpenButton) {
+      e.preventDefault();
+      openAttachmentFile(Number(fileOpenButton.dataset.colIndex));
+      return;
+    }
     const btn = e.target.closest('.cell-edit-btn');
     if (!btn) return;
     const colIndex = Number(btn.dataset.colIndex);

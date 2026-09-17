@@ -498,13 +498,12 @@ function prepareRowForClient(row, header, backgrounds, allowedCols) {
     header: allowedCols.map(i => header[i]),
     row: allowedCols.map(i => formatCellValue(row[i])),
     colors: allowedCols.map(i => backgrounds[i]),
-    // FILE-поля хранят ссылку на загруженный файл в своей ячейке. Клиент
-    // показывает только состояние и ссылку для открытия файла, а не текст ячейки.
+    // FILE-поля хранят URL только на сервере. Клиент получает признак наличия,
+    // а содержимое файла выдаётся отдельным авторизованным запросом.
     fileStates: allowedCols.map(i => {
       const fieldConfig = EDIT_CONFIG.fields[header[i]];
-      const fileUrl = formatCellValue(row[i]).trim();
       return fieldConfig && fieldConfig.rule === 'FILE'
-        ? { hasFile: Boolean(fileUrl), fileUrl }
+        ? { hasFile: Boolean(formatCellValue(row[i]).trim()) }
         : null;
     })
   };
@@ -1387,22 +1386,6 @@ function getOrCreateUserAttachmentsFolder_(rootFolder, folderName) {
 }
 
 /**
- * Открывает просмотр файла всем, у кого есть ссылка. Политика Google Workspace
- * может запретить такой доступ; в этом случае загрузка всё равно завершается.
- * @param {GoogleAppsScript.Drive.File} file Загруженный файл.
- * @returns {string} Пустая строка или текст предупреждения.
- */
-function enableAttachmentLinkViewing_(file) {
-  try {
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    return '';
-  } catch (error) {
-    Logger.log(`Не удалось включить доступ к вложению по ссылке: ${error.message}`);
-    return 'Файл загружен, но общий просмотр по ссылке запрещён политикой Google Drive.';
-  }
-}
-
-/**
  * Перемещает заменяемый файл приложения в корзину, если в ячейке есть ссылка Drive.
  * @param {*} value URL прежнего файла.
  */
@@ -1423,7 +1406,7 @@ function movePreviousAttachmentToTrash_(value) {
  * Это делает состояние файла частью данных строки; обычное текстовое
  * сохранение после загрузки не требуется.
  * @param {{login:string,password:string,snils:string,columnName:string,attachmentFile:GoogleAppsScript.Base.Blob}} formData
- * @returns {{ok:boolean,fileName:string,fileUrl:string,fileState:{hasFile:boolean}}}
+ * @returns {{ok:boolean,fileName:string,fileState:{hasFile:boolean}}}
  */
 function uploadDocumentAttachment(formData) {
   const payload = formData || {};
@@ -1474,14 +1457,80 @@ function uploadDocumentAttachment(formData) {
       folderName
     );
     const uploadedFile = destinationFolder.createFile(file).setName(`${fileBaseName}${extension}`);
-    const sharingWarning = enableAttachmentLinkViewing_(uploadedFile);
     movePreviousAttachmentToTrash_(row[targetCol]);
     const historyTimestamp = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, `${CONFIG.DATE_FORMAT} HH:mm:ss`);
     setValueWithSiteEditNote_(sheet.getRange(i + 2, targetCol + 1), uploadedFile.getUrl(), historyTimestamp);
-    return { ok: true, fileName: uploadedFile.getName(), fileUrl: uploadedFile.getUrl(), sharingWarning, fileState: { hasFile: true, fileUrl: uploadedFile.getUrl() } };
+    return { ok: true, fileName: uploadedFile.getName(), fileState: { hasFile: true } };
   }
 
   throw new Error('Не удалось подтвердить пользователя для загрузки файла.');
+}
+
+/**
+ * Однократно отзывает общий доступ по ссылке у уже загруженных FILE-вложений.
+ * Запустите вручную из редактора Apps Script после развёртывания изменения.
+ * @returns {{checked:number,revoked:number,errors:number}}
+ */
+function revokeExistingAttachmentLinkSharing() {
+  const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
+  if (!sheet || sheet.getLastRow() < 2 || sheet.getLastColumn() < 1) return { checked: 0, revoked: 0, errors: 0 };
+  const lastCol = sheet.getLastColumn();
+  const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+  const fileColumns = header.map((name, index) => EDIT_CONFIG.fields[name]?.rule === 'FILE' ? index : -1).filter(index => index >= 0);
+  const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, lastCol).getValues();
+  const result = { checked: 0, revoked: 0, errors: 0 };
+  values.forEach(row => fileColumns.forEach(columnIndex => {
+    const match = formatCellValue(row[columnIndex]).match(/(?:\/d\/|[?&]id=)([-\w]{20,})/);
+    if (!match) return;
+    result.checked++;
+    try {
+      DriveApp.getFileById(match[1]).setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE);
+      result.revoked++;
+    } catch (error) {
+      result.errors++;
+      Logger.log(`Не удалось отозвать доступ по ссылке к вложению: ${error.message}`);
+    }
+  }));
+  return result;
+}
+
+/**
+ * Возвращает содержимое прикреплённого файла только после проверки пользователя.
+ * URL Drive не передаётся браузеру, поэтому доступ по ссылке не требуется.
+ * @param {string} login
+ * @param {string} password
+ * @param {string} snils
+ * @param {string} columnName
+ * @returns {{fileName:string,mimeType:string,base64:string}}
+ */
+function getDocumentAttachmentContent(login, password, snils, columnName) {
+  const fieldConfig = EDIT_CONFIG.fields[String(columnName || '')];
+  if (!fieldConfig || fieldConfig.rule !== 'FILE') throw new Error('Для этого поля нет прикреплённого файла.');
+  const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
+  if (!sheet) throw new Error('Лист с результатами не найден.');
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) throw new Error('Таблица пуста.');
+  const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+  const targetCol = header.indexOf(String(columnName));
+  if (targetCol === -1) throw new Error('Колонка не найдена.');
+  const authCols = getAuthColumnIndexes(header);
+  const snilsCol = getSnilsColumnIndex(header);
+  const { logins, passwords, snilsValues } = loadAuthColumns(sheet, lastRow - 1, authCols, snilsCol);
+  const normalizedLogin = normalizeLogin(login);
+  const normalizedSnils = normalizeSnils(snils);
+  for (let i = 0; i < lastRow - 1; i++) {
+    if (normalizeLogin(logins[i][0]) !== normalizedLogin || formatCellValue(passwords[i][0]).trim() !== String(password || '').trim()) continue;
+    const rowSnils = snilsValues ? normalizeSnils(snilsValues[i][0]) : '';
+    if (rowSnils && rowSnils !== normalizedSnils) continue;
+    const fileUrl = formatCellValue(sheet.getRange(i + 2, targetCol + 1).getValue()).trim();
+    const match = fileUrl.match(/(?:\/d\/|[?&]id=)([-\w]{20,})/);
+    if (!match) throw new Error('Прикреплённый файл не найден.');
+    const file = DriveApp.getFileById(match[1]);
+    const blob = file.getBlob();
+    return { fileName: file.getName(), mimeType: blob.getContentType(), base64: Utilities.base64Encode(blob.getBytes()) };
+  }
+  throw new Error('Не удалось подтвердить пользователя для открытия файла.');
 }
 
 /**
