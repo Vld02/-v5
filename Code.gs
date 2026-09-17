@@ -1387,6 +1387,22 @@ function getOrCreateUserAttachmentsFolder_(rootFolder, folderName) {
 }
 
 /**
+ * Открывает просмотр файла всем, у кого есть ссылка. Политика Google Workspace
+ * может запретить такой доступ; в этом случае загрузка всё равно завершается.
+ * @param {GoogleAppsScript.Drive.File} file Загруженный файл.
+ * @returns {string} Пустая строка или текст предупреждения.
+ */
+function enableAttachmentLinkViewing_(file) {
+  try {
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return '';
+  } catch (error) {
+    Logger.log(`Не удалось включить доступ к вложению по ссылке: ${error.message}`);
+    return 'Файл загружен, но общий просмотр по ссылке запрещён политикой Google Drive.';
+  }
+}
+
+/**
  * Перемещает заменяемый файл приложения в корзину, если в ячейке есть ссылка Drive.
  * @param {*} value URL прежнего файла.
  */
@@ -1458,10 +1474,11 @@ function uploadDocumentAttachment(formData) {
       folderName
     );
     const uploadedFile = destinationFolder.createFile(file).setName(`${fileBaseName}${extension}`);
+    const sharingWarning = enableAttachmentLinkViewing_(uploadedFile);
     movePreviousAttachmentToTrash_(row[targetCol]);
     const historyTimestamp = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, `${CONFIG.DATE_FORMAT} HH:mm:ss`);
     setValueWithSiteEditNote_(sheet.getRange(i + 2, targetCol + 1), uploadedFile.getUrl(), historyTimestamp);
-    return { ok: true, fileName: uploadedFile.getName(), fileUrl: uploadedFile.getUrl(), fileState: { hasFile: true, fileUrl: uploadedFile.getUrl() } };
+    return { ok: true, fileName: uploadedFile.getName(), fileUrl: uploadedFile.getUrl(), sharingWarning, fileState: { hasFile: true, fileUrl: uploadedFile.getUrl() } };
   }
 
   throw new Error('Не удалось подтвердить пользователя для загрузки файла.');

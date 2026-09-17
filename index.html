@@ -1707,6 +1707,7 @@
             const cell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
             if (cell) renderCellDisplay(cell, colIndex, currentDocsRow.row[colIndex] ?? '');
             showToast(`Файл «${(response && response.fileName) || 'документ'}» загружен.`);
+            if (response && response.sharingWarning) showToast(response.sharingWarning, 'error');
           })
           .withFailureHandler(error => {
             closeToast(progressToast);
