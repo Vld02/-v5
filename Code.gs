@@ -499,11 +499,12 @@ function prepareRowForClient(row, header, backgrounds, allowedCols) {
     row: allowedCols.map(i => formatCellValue(row[i])),
     colors: allowedCols.map(i => backgrounds[i]),
     // FILE-поля хранят ссылку на загруженный файл в своей ячейке. Клиент
-    // получает только признак состояния, а не использует текст ячейки как значение.
+    // показывает только состояние и ссылку для открытия файла, а не текст ячейки.
     fileStates: allowedCols.map(i => {
       const fieldConfig = EDIT_CONFIG.fields[header[i]];
+      const fileUrl = formatCellValue(row[i]).trim();
       return fieldConfig && fieldConfig.rule === 'FILE'
-        ? { hasFile: Boolean(formatCellValue(row[i]).trim()) }
+        ? { hasFile: Boolean(fileUrl), fileUrl }
         : null;
     })
   };
@@ -1443,7 +1444,7 @@ function uploadDocumentAttachment(formData) {
     const uploadedFile = destinationFolder.createFile(file).setName(`${fileBaseName}${extension}`);
     const historyTimestamp = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, `${CONFIG.DATE_FORMAT} HH:mm:ss`);
     setValueWithSiteEditNote_(sheet.getRange(i + 2, targetCol + 1), uploadedFile.getUrl(), historyTimestamp);
-    return { ok: true, fileName: uploadedFile.getName(), fileUrl: uploadedFile.getUrl(), fileState: { hasFile: true } };
+    return { ok: true, fileName: uploadedFile.getName(), fileUrl: uploadedFile.getUrl(), fileState: { hasFile: true, fileUrl: uploadedFile.getUrl() } };
   }
 
   throw new Error('Не удалось подтвердить пользователя для загрузки файла.');

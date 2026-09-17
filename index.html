@@ -158,6 +158,8 @@
   .cell-edit-btn { width:1.55rem; height:1.55rem; min-width:1.55rem; min-height:1.55rem; max-width:1.55rem; max-height:1.55rem; flex:0 0 1.55rem; padding:0; display:inline-flex; align-items:center; justify-content:center; overflow:visible; color:inherit; line-height:1; }
   .file-status { display:inline-flex; align-items:center; gap:0.35rem; color:#5f6368; }
   .file-status.has-file { color:#137333; }
+  .file-status-link { display:inline-flex; align-items:center; gap:0.35rem; color:inherit; text-decoration:underline; text-underline-offset:0.14em; }
+  .file-status-link:hover, .file-status-link:focus-visible { color:#0b5d2e; }
   .file-status svg { width:1.15rem; height:1.15rem; stroke:currentColor; stroke-width:2.1; fill:none; }
   .cell-edit-btn svg { width:1.08rem; height:1.08rem; display:block; stroke:currentColor; stroke-width:2.35; stroke-linecap:round; stroke-linejoin:round; fill:none; flex:0 0 auto; pointer-events:none; }
   .cell-edit-btn.non-editable { opacity:0.45; cursor:not-allowed; }
@@ -1604,10 +1606,19 @@
     return `<div class="cell-edit-actions"><button type="button" class="attendance-icon-btn cell-edit-btn" data-col-index="${colIndex}" data-mode="save" title="Сохранить" aria-label="Сохранить" disabled>${iconSvg('save')}</button><button type="button" class="attendance-icon-btn cell-edit-btn" data-col-index="${colIndex}" data-mode="cancel" title="Отмена" aria-label="Отмена">${iconSvg('cancel')}</button></div>`;
   }
 
+  function getSafeFileUrl(value) {
+    const url = String(value || '').trim();
+    return /^https:\/\//i.test(url) ? url : '';
+  }
+
   function renderCellDisplayMarkup(colIndex, value, editable = true, extraClass = '', rule = {}) {
     const fileState = currentDocsRow.fileStates && currentDocsRow.fileStates[colIndex];
+    const fileUrl = getSafeFileUrl(fileState && fileState.fileUrl);
+    const hasFile = Boolean(fileState && fileState.hasFile && fileUrl);
+    const fileLabel = hasFile ? 'Файл прикреплён' : 'Нет файла';
+    const fileContent = `${iconSvg(hasFile ? 'file' : 'attach')}<span>${fileLabel}</span>`;
     const display = rule.special === 'file'
-      ? `<div class="file-status${fileState && fileState.hasFile ? ' has-file' : ''}" title="${fileState && fileState.hasFile ? 'Файл прикреплён' : 'Файл не прикреплён'}">${iconSvg(fileState && fileState.hasFile ? 'file' : 'attach')}<span>${fileState && fileState.hasFile ? 'Файл прикреплён' : 'Нет файла'}</span></div>`
+      ? `<div class="file-status${hasFile ? ' has-file' : ''}" title="${fileLabel}">${hasFile ? `<a class="file-status-link" href="${escapeHtmlAttr(fileUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Открыть прикреплённый файл">${fileContent}</a>` : fileContent}</div>`
       : `<div class="cell-value-text">${escapeHtml(value)}</div>`;
     return `<div class="cell-edit-shell"><div class="cell-editor"><div class="cell-value-display">${display}</div></div>${renderCellViewActions(colIndex, editable, extraClass, rule)}</div>`;
   }
