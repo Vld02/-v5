@@ -1399,7 +1399,15 @@ function getOrCreateUserAttachmentsFolder_(rootFolder, folderName) {
 function getAttachmentFiles_(payload) {
   const candidate = payload.attachmentFiles || payload.attachmentFile;
   const files = Array.isArray(candidate) ? candidate : [candidate];
-  return files.filter(file => file && typeof file.getBytes === 'function' && file.getBytes().length);
+  return files.map(file => {
+    if (file && typeof file.getBytes === 'function') return file;
+    if (!file || !file.base64) return null;
+    return Utilities.newBlob(
+      Utilities.base64Decode(String(file.base64)),
+      String(file.mimeType || 'application/octet-stream'),
+      String(file.name || 'document')
+    );
+  }).filter(file => file && file.getBytes().length);
 }
 
 /**
@@ -1437,7 +1445,7 @@ function convertAndMergeAttachmentsToPdf_(files) {
  * Загружает файл для FILE-поля и сохраняет его URL в той же ячейке.
  * Это делает состояние файла частью данных строки; обычное текстовое
  * сохранение после загрузки не требуется.
- * @param {{login:string,password:string,snils:string,columnName:string,attachmentFile:GoogleAppsScript.Base.Blob}} formData
+ * @param {{login:string,password:string,snils:string,columnName:string,attachmentFiles:Array}} formData
  * @returns {{ok:boolean,fileName:string,fileUrl:string,fileState:{hasFile:boolean}}}
  */
 function uploadDocumentAttachment(formData) {
@@ -1450,7 +1458,9 @@ function uploadDocumentAttachment(formData) {
 
   const files = getAttachmentFiles_(payload);
   if (!files.length) throw new Error('Выберите хотя бы один файл для загрузки.');
-  const file = files.length === 1 ? files[0] : convertAndMergeAttachmentsToPdf_(files);
+  // Даже один исходный документ проходит через тот же сервис, поэтому в Drive
+  // всегда сохраняется PDF, а не исходный JPG/PNG/PDF-файл.
+  const file = convertAndMergeAttachmentsToPdf_(files);
 
   const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
   if (!sheet) throw new Error('Лист с результатами не найден.');
