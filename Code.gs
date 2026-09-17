@@ -1037,6 +1037,21 @@ const EDIT_CONFIG = Object.freeze({
    менять. Если заголовка здесь нет или editable: false, сервер
    откажет даже при ручном вызове updateResultCell() из DevTools.
    ============================================================ */
+  // Документные строки задаются отдельно от обычных полей. Добавьте сюда
+  // новый заголовок или регулярное выражение — клиент и сервер сразу получат
+  // одинаковые права на прикрепление и хранение файла.
+  documentFields: Object.freeze({
+    SCAN: Object.freeze({
+      headerPattern: '^\\s*Скан\\b',
+      editable: false,
+      required: false,
+      isIdentityField: false,
+      attachment: true,
+      storeFileUrl: true,
+      description: 'Скан документа. Значок показывает, прикреплён ли файл.'
+    })
+  }),
+
   fields: Object.freeze({
     'Фамилия Имя Отчество (С)': { editable: true, rule: 'FULL_NAME_RU', required: true, isIdentityField: true, description: 'Фамилия, имя и отчество.', example: 'Иванов Иван Иванович' },
     'Дата рождения (С)': { editable: true, rule: 'DATE_RU', required: true, isIdentityField: true, description: 'Дата рождения в формате ДД.ММ.ГГГГ.', example: '01.09.2010' },
@@ -1085,9 +1100,7 @@ const EDIT_CONFIG = Object.freeze({
     'Марка автомобиля (Д)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, description: 'Произвольное текстовое значение.', example: 'Текст' },
     'гос. номер автомобиля (Д)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, description: 'Произвольное текстовое значение.', example: 'Текст' },
     'Свидетельство: Серия, номер (С)': { editable: true, rule: 'CERTIFICATE_RU', required: false, isIdentityField: false, description: 'Серия и номер свидетельства.', example: 'IV-АБ № 123456' },
-    // attachment используется браузером только для отображения кнопки на этапе 1.
-    // Загрузка и обработка файлов будут добавлены отдельным этапом.
-    'Паспорт: Серия, номер (С)': { editable: true, rule: 'PASSPORT_RU', required: false, isIdentityField: false, attachment: 'PASSPORT_C', description: 'Серия и номер паспорта в формате 12 34 567890.', example: '12 34 567890' },
+    'Паспорт: Серия, номер (С)': { editable: true, rule: 'PASSPORT_RU', required: false, isIdentityField: false, description: 'Серия и номер паспорта в формате 12 34 567890.', example: '12 34 567890' },
     'Свидетельство: Кем выдан (С)': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false, description: 'Произвольный текст с подсказками.', example: 'Значение из списка', suggestions: { sourceSheet: 'Результат', sourceHeader: 'Свидетельство: Кем выдан (С)', startRow: 2 } },
     'Паспорт: Кем выдан': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false, description: 'Произвольный текст с подсказками.', example: 'Значение из списка', suggestions: { sourceSheet: 'Результат', sourceHeader: 'Паспорт: Кем выдан', startRow: 2 } },
     'Паспорт или Свидетельство: Кем выдан (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, description: 'Произвольное текстовое значение.', example: 'Текст' },
@@ -1122,6 +1135,25 @@ function getEditConfig() {
   return EDIT_CONFIG;
 }
 
+/**
+ * Ищет настройки поля, включая отдельно настроенные строки сканов.
+ * @param {string} columnName Заголовок таблицы.
+ * @returns {Object|null}
+ */
+function getFieldConfig_(columnName) {
+  const normalizedName = String(columnName || '');
+  if (EDIT_CONFIG.fields[normalizedName]) return EDIT_CONFIG.fields[normalizedName];
+
+  const documentFields = EDIT_CONFIG.documentFields || {};
+  for (const key in documentFields) {
+    const config = documentFields[key];
+    if (config && config.headerPattern && new RegExp(config.headerPattern, 'i').test(normalizedName)) {
+      return config;
+    }
+  }
+  return null;
+}
+
 function getMaxEnrollmentYear_() {
   return new Date().getFullYear() + 1;
 }
@@ -1147,7 +1179,7 @@ function isValidRuDate_(value) {
 }
 
 function validateEditableFieldValue_(columnName, value) {
-  const fieldConfig = EDIT_CONFIG.fields[String(columnName || '')];
+  const fieldConfig = getFieldConfig_(columnName);
   if (!fieldConfig) throw new Error('Поле не настроено для редактирования.');
   if (fieldConfig.editable !== true) throw new Error('Изменение этого поля запрещено.');
 
@@ -1277,14 +1309,14 @@ function updateResultCell(login, password, snils, columnName, value) {
 
 /**
  * Загружает файл в общую папку вложений для разрешенного документного поля.
- * URL файла в таблицу пока не записывается: это будет отдельным этапом.
+ * Для настроенных строк сканов URL сохраняется в ячейке как признак вложения.
  * @param {{login:string,password:string,snils:string,columnName:string,attachmentFile:GoogleAppsScript.Base.Blob}} formData
  * @returns {{ok:boolean,fileName:string,fileUrl:string}}
  */
 function uploadDocumentAttachment(formData) {
   const payload = formData || {};
   const columnName = String(payload.columnName || '');
-  const fieldConfig = EDIT_CONFIG.fields[columnName];
+  const fieldConfig = getFieldConfig_(columnName);
   if (!fieldConfig || !fieldConfig.attachment) {
     throw new Error('Для этого поля прикрепление файла не настроено.');
   }
@@ -1319,9 +1351,26 @@ function uploadDocumentAttachment(formData) {
   });
   if (!isAuthorized) throw new Error('Не удалось подтвердить пользователя для загрузки файла.');
 
+  const authorizedRowIndex = logins.findIndex((row, index) => {
+    if (normalizeLogin(row[0]) !== normalizedLogin || formatCellValue(passwords[index][0]).trim() !== password) return false;
+    const rowSnils = snilsValues ? normalizeSnils(snilsValues[index][0]) : '';
+    return !rowSnils || rowSnils === normalizedSnils;
+  });
+
   const folder = DriveApp.getFolderById(CONFIG.ATTACHMENTS_FOLDER_ID);
   const uploadedFile = folder.createFile(file);
-  return { ok: true, fileName: uploadedFile.getName(), fileUrl: uploadedFile.getUrl() };
+  const fileUrl = uploadedFile.getUrl();
+
+  // В строках «Скан …» ссылка является серверным признаком прикреплённого файла.
+  // Браузер показывает только значок, не раскрывая URL пользователю.
+  if (fieldConfig.storeFileUrl) {
+    const targetCol = header.indexOf(columnName);
+    const cell = sheet.getRange(authorizedRowIndex + 2, targetCol + 1);
+    const timestamp = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, `${CONFIG.DATE_FORMAT} HH:mm:ss`);
+    setValueWithSiteEditNote_(cell, fileUrl, timestamp);
+  }
+
+  return { ok: true, fileName: uploadedFile.getName(), fileUrl, attached: Boolean(fieldConfig.storeFileUrl) };
 }
 
 /**
@@ -1331,7 +1380,7 @@ function uploadDocumentAttachment(formData) {
  * @returns {string[]}
  */
 function getFieldSuggestions(columnName) {
-  const fieldConfig = EDIT_CONFIG.fields[String(columnName || '')];
+  const fieldConfig = getFieldConfig_(columnName);
   if (!fieldConfig || fieldConfig.rule !== 'SUGGEST_TEXT') return [];
 
   const suggestions = fieldConfig.suggestions;
