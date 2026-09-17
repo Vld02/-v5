@@ -16,6 +16,10 @@ const CONFIG = Object.freeze({
   ATTACHMENTS_FOLDER_ID: '1AyjWNspWbBVswPdrSy0M-JEbvZBzsjq1',
   // Шаблоны используют значения столбцов листа «Результат». Меняйте только
   // template/headers: это не требует изменений в функции загрузки.
+  // Сервис конвертации/объединения PDF. Он должен принимать POST JSON
+  // {files:[{name,mimeType,base64}]} и возвращать {pdfBase64}. Пустой URL
+  // запрещает загрузку нескольких файлов, чтобы они не сохранились раздельно.
+  PDF_PROCESSOR: Object.freeze({ URL: '', API_KEY: '' }),
   ATTACHMENT_NAMING: Object.freeze({
     USER_FOLDER: Object.freeze({
       template: 'Фамилия Имя Отчество (С) - Дата рождения (С) - Год набора',
@@ -1387,6 +1391,49 @@ function getOrCreateUserAttachmentsFolder_(rootFolder, folderName) {
 }
 
 /**
+ * Возвращает переданные из HTML-формы Blob-файлы. Apps Script отдаёт один Blob
+ * для обычного input и массив Blob для input[type=file][multiple].
+ * @param {Object} payload Данные формы.
+ * @returns {GoogleAppsScript.Base.Blob[]}
+ */
+function getAttachmentFiles_(payload) {
+  const candidate = payload.attachmentFiles || payload.attachmentFile;
+  const files = Array.isArray(candidate) ? candidate : [candidate];
+  return files.filter(file => file && typeof file.getBytes === 'function' && file.getBytes().length);
+}
+
+/**
+ * Передаёт несколько файлов настроенному PDF-сервису, который конвертирует
+ * каждый файл в PDF и объединяет результат в один документ.
+ * @param {GoogleAppsScript.Base.Blob[]} files Исходные файлы.
+ * @returns {GoogleAppsScript.Base.Blob} Итоговый PDF.
+ */
+function convertAndMergeAttachmentsToPdf_(files) {
+  const processor = CONFIG.PDF_PROCESSOR;
+  if (!processor.URL) {
+    throw new Error('Для загрузки нескольких файлов настройте CONFIG.PDF_PROCESSOR.URL.');
+  }
+  const requestFiles = files.map(file => ({
+    name: file.getName(),
+    mimeType: file.getContentType(),
+    base64: Utilities.base64Encode(file.getBytes())
+  }));
+  const headers = { 'Content-Type': 'application/json' };
+  if (processor.API_KEY) headers.Authorization = `Bearer ${processor.API_KEY}`;
+  const response = UrlFetchApp.fetch(processor.URL, {
+    method: 'post', contentType: 'application/json', headers,
+    payload: JSON.stringify({ files: requestFiles }), muteHttpExceptions: true
+  });
+  const status = response.getResponseCode();
+  if (status < 200 || status >= 300) {
+    throw new Error(`Сервис обработки PDF вернул ошибку ${status}.`);
+  }
+  const result = JSON.parse(response.getContentText());
+  if (!result || !result.pdfBase64) throw new Error('Сервис обработки PDF не вернул итоговый PDF.');
+  return Utilities.newBlob(Utilities.base64Decode(result.pdfBase64), MimeType.PDF, 'documents.pdf');
+}
+
+/**
  * Загружает файл для FILE-поля и сохраняет его URL в той же ячейке.
  * Это делает состояние файла частью данных строки; обычное текстовое
  * сохранение после загрузки не требуется.
@@ -1401,10 +1448,9 @@ function uploadDocumentAttachment(formData) {
     throw new Error('Для этого поля прикрепление файла не настроено.');
   }
 
-  const file = payload.attachmentFile;
-  if (!file || typeof file.getBytes !== 'function' || !file.getBytes().length) {
-    throw new Error('Выберите файл для загрузки.');
-  }
+  const files = getAttachmentFiles_(payload);
+  if (!files.length) throw new Error('Выберите хотя бы один файл для загрузки.');
+  const file = files.length === 1 ? files[0] : convertAndMergeAttachmentsToPdf_(files);
 
   const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
   if (!sheet) throw new Error('Лист с результатами не найден.');

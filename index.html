@@ -1652,7 +1652,9 @@
 
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
-    fileInput.name = 'attachmentFile';
+    fileInput.name = 'attachmentFiles';
+    fileInput.multiple = true;
+    fileInput.accept = '.pdf,image/jpeg,image/png';
     form.appendChild(fileInput);
     document.body.appendChild(form);
 
@@ -1661,7 +1663,8 @@
         form.remove();
         return;
       }
-      showToast('Загрузка файла…');
+      const filesCount = fileInput.files.length;
+      showToast(filesCount > 1 ? 'Конвертация и объединение файлов в PDF…' : 'Загрузка файла…');
       google.script.run
         .withSuccessHandler(response => {
           form.remove();
