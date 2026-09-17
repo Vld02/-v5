@@ -674,6 +674,9 @@
     box-shadow: 0 0.35rem 1rem rgba(0,0,0,.25);
   }
   .toast.error { background: rgba(176, 0, 32, 0.95); }
+  .toast.loading { display:flex; align-items:center; gap:0.55rem; background:rgba(25, 103, 210, 0.96); }
+  .toast.loading::before { content:''; width:0.9rem; height:0.9rem; flex:0 0 auto; border:0.14rem solid rgba(255,255,255,0.45); border-top-color:#fff; border-radius:50%; animation:toast-spin 0.8s linear infinite; }
+  @keyframes toast-spin { to { transform:rotate(360deg); } }
 </style>
 </head>
 <body>
@@ -974,12 +977,17 @@
     return true;
   }
 
-  function showToast(message, type = 'success') {
+  function showToast(message, type = 'success', autoHide = true) {
     const toast = document.createElement('div');
-    toast.className = `toast ${type === 'error' ? 'error' : 'success'}`;
+    toast.className = `toast ${type === 'error' ? 'error' : type === 'loading' ? 'loading' : 'success'}`;
     toast.textContent = message;
     dom.toastContainer.appendChild(toast);
-    setTimeout(() => toast.remove(), 3500);
+    if (autoHide) setTimeout(() => toast.remove(), 3500);
+    return toast;
+  }
+
+  function closeToast(toast) {
+    if (toast && toast.isConnected) toast.remove();
   }
 
   function updateCurrentIdentityAfterSave(columnName, value) {
@@ -1677,7 +1685,11 @@
         return;
       }
       const filesCount = fileInput.files.length;
-      showToast(filesCount > 1 ? 'Конвертация и объединение файлов в PDF…' : 'Конвертация файла в PDF…');
+      const progressToast = showToast(
+        filesCount > 1 ? 'Конвертация и объединение файлов в PDF…' : 'Конвертация файла в PDF…',
+        'loading',
+        false
+      );
       // Apps Script не передаёт FileList из HTML-формы как массив Blob. Поэтому
       // сериализуем каждый выбранный файл явно — так ни один файл не теряется.
       readSelectedFilesAsPayload(fileInput.files)
@@ -1691,6 +1703,7 @@
           };
           google.script.run
             .withSuccessHandler(response => {
+              closeToast(progressToast);
               form.remove();
               if (currentDocsRow.fileStates) currentDocsRow.fileStates[colIndex] = (response && response.fileState) || { hasFile: true };
               const cell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
@@ -1698,6 +1711,7 @@
               showToast(`Файл «${(response && response.fileName) || 'документ'}» загружен.`);
             })
             .withFailureHandler(error => {
+              closeToast(progressToast);
               form.remove();
               const message = error && error.message ? error.message : 'Не удалось загрузить файл.';
               showToast(`Ошибка: ${message}`, 'error');
@@ -1705,6 +1719,7 @@
             .uploadDocumentAttachment(payload);
         })
         .catch(error => {
+          closeToast(progressToast);
           form.remove();
           showToast(`Ошибка: ${error.message || 'Не удалось прочитать файл.'}`, 'error');
         });
