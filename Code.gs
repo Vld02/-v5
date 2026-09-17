@@ -294,7 +294,9 @@ function logPageOpen({ login = '', password = '', snils = '', clientInfo = {} } 
  */
 function logAccess({ login = '', password = '', snils = '', clientInfo = {}, status }) {
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  // Журнал не должен задерживать аутентификацию: при конкурентной записи
+  // пропускаем только эту запись журнала, а не весь запрос пользователя.
+  if (!lock.tryLock(1000)) return;
   try {
     const sheet = getLogSheet();
     if (!sheet) return;

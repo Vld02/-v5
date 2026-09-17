@@ -1273,6 +1273,12 @@
     return `${day}.${month}.${parsed.year}`;
   }
 
+  function handleDocsRequestFailure(error) {
+    const message = error && error.message ? error.message : 'Не удалось выполнить аутентификацию.';
+    dom.error.textContent = `Ошибка: ${message}`;
+    stopAuthLoading();
+  }
+
   async function loginDocs() {
     dom.error.textContent = '';
     stopAuthLoading();
@@ -1317,6 +1323,7 @@
         hideSnilsStep();
         showDocsResult(response);
       })
+      .withFailureHandler(handleDocsRequestFailure)
       .checkLogin(loginVal, passwordForServer, clientInfo, snilsFormatted);
   }
 
@@ -1366,6 +1373,7 @@
         dom.snilsWrap.style.display = 'block';
         showDocsResult(response);
       })
+      .withFailureHandler(handleDocsRequestFailure)
       .verifySnils(authState.login, authState.password, snilsFormatted, clientInfo);
   }
 
