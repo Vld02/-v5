@@ -674,9 +674,16 @@
     box-shadow: 0 0.35rem 1rem rgba(0,0,0,.25);
   }
   .toast.error { background: rgba(176, 0, 32, 0.95); }
-  .toast.loading { display:flex; align-items:center; gap:0.55rem; background:rgba(25, 103, 210, 0.96); }
+  .toast.loading { display:flex; align-items:center; gap:0.55rem; background:rgba(32, 33, 36, 0.95); }
   .toast.loading::before { content:''; width:0.9rem; height:0.9rem; flex:0 0 auto; border:0.14rem solid rgba(255,255,255,0.45); border-top-color:#fff; border-radius:50%; animation:toast-spin 0.8s linear infinite; }
   @keyframes toast-spin { to { transform:rotate(360deg); } }
+  .attachment-confirm-backdrop { position:fixed; inset:0; z-index:1100; display:grid; place-items:center; padding:1rem; background:rgba(0,0,0,0.4); }
+  .attachment-confirm-dialog { width:min(27rem, 100%); padding:1.2rem; border:0; border-radius:var(--radius-md); background:#fff; color:var(--text); box-shadow:0 0.5rem 1.5rem rgba(0,0,0,0.3); }
+  .attachment-confirm-dialog h2 { margin:0 0 0.65rem; font-size:1.05rem; }
+  .attachment-confirm-dialog p { margin:0; line-height:1.45; }
+  .attachment-confirm-actions { display:flex; justify-content:flex-end; gap:var(--space-sm); margin-top:1rem; }
+  .attachment-confirm-actions button { padding:0.5rem 0.85rem; border:0.05rem solid var(--border); border-radius:var(--radius-sm); background:#fff; color:inherit; font:inherit; cursor:pointer; }
+  .attachment-confirm-actions .attachment-confirm-primary { border-color:#137333; background:#137333; color:#fff; }
 </style>
 </head>
 <body>
@@ -1640,57 +1647,84 @@
     cell.setAttribute('style', style);
   }
 
+  function showAttachmentReplacementDialog(onConfirm) {
+    const backdrop = document.createElement('div');
+    backdrop.className = 'attachment-confirm-backdrop';
+    backdrop.innerHTML = `<section class="attachment-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="attachmentConfirmTitle"><h2 id="attachmentConfirmTitle">Заменить прикреплённый файл?</h2><p>При загрузке нового файла предыдущий будет перемещён в корзину.</p><div class="attachment-confirm-actions"><button type="button" data-action="cancel">Отмена</button><button type="button" class="attachment-confirm-primary" data-action="confirm">Продолжить</button></div></section>`;
+    const close = () => backdrop.remove();
+    backdrop.addEventListener('click', event => {
+      if (event.target === backdrop || event.target.closest('[data-action="cancel"]')) {
+        close();
+        return;
+      }
+      if (event.target.closest('[data-action="confirm"]')) {
+        close();
+        // Нажатие этой кнопки — пользовательский жест, поэтому браузер разрешит
+        // сразу открыть системный выбор файла даже после долгого ожидания.
+        onConfirm();
+      }
+    });
+    document.body.appendChild(backdrop);
+    backdrop.querySelector('[data-action="confirm"]').focus();
+  }
+
   function handleAttachmentClick(colIndex) {
     const columnName = currentDocsRow.header[colIndex];
     if (!columnName) return;
 
-    const fileState = currentDocsRow.fileStates && currentDocsRow.fileStates[colIndex];
-    if (fileState && fileState.hasFile && !window.confirm('Файл уже прикреплён. При загрузке нового файла предыдущий будет удалён. Продолжить?')) return;
+    const openFileSelector = () => {
+      const form = document.createElement('form');
+      form.style.display = 'none';
+      const addHiddenField = (name, value) => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = name;
+        input.value = value;
+        form.appendChild(input);
+      };
+      addHiddenField('login', dom.login.value.trim());
+      addHiddenField('password', toServerDate(dom.password.value));
+      addHiddenField('snils', dom.snils.value.trim());
+      addHiddenField('columnName', columnName);
 
-    const form = document.createElement('form');
-    form.style.display = 'none';
-    const addHiddenField = (name, value) => {
-      const input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = name;
-      input.value = value;
-      form.appendChild(input);
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.name = 'attachmentFile';
+      form.appendChild(fileInput);
+      document.body.appendChild(form);
+
+      fileInput.addEventListener('change', () => {
+        if (!fileInput.files.length) {
+          form.remove();
+          return;
+        }
+        const progressToast = showToast('Загрузка файла…', 'loading', false);
+        google.script.run
+          .withSuccessHandler(response => {
+            closeToast(progressToast);
+            form.remove();
+            if (currentDocsRow.fileStates) currentDocsRow.fileStates[colIndex] = (response && response.fileState) || { hasFile: true };
+            const cell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
+            if (cell) renderCellDisplay(cell, colIndex, currentDocsRow.row[colIndex] ?? '');
+            showToast(`Файл «${(response && response.fileName) || 'документ'}» загружен.`);
+          })
+          .withFailureHandler(error => {
+            closeToast(progressToast);
+            form.remove();
+            const message = error && error.message ? error.message : 'Не удалось загрузить файл.';
+            showToast(`Ошибка: ${message}`, 'error');
+          })
+          .uploadDocumentAttachment(form);
+      }, { once: true });
+      fileInput.click();
     };
-    addHiddenField('login', dom.login.value.trim());
-    addHiddenField('password', toServerDate(dom.password.value));
-    addHiddenField('snils', dom.snils.value.trim());
-    addHiddenField('columnName', columnName);
 
-    const fileInput = document.createElement('input');
-    fileInput.type = 'file';
-    fileInput.name = 'attachmentFile';
-    form.appendChild(fileInput);
-    document.body.appendChild(form);
-
-    fileInput.addEventListener('change', () => {
-      if (!fileInput.files.length) {
-        form.remove();
-        return;
-      }
-      const progressToast = showToast('Загрузка файла…', 'loading', false);
-      google.script.run
-        .withSuccessHandler(response => {
-          closeToast(progressToast);
-          form.remove();
-          if (currentDocsRow.fileStates) currentDocsRow.fileStates[colIndex] = (response && response.fileState) || { hasFile: true };
-          const cell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
-          if (cell) renderCellDisplay(cell, colIndex, currentDocsRow.row[colIndex] ?? '');
-          showToast(`Файл «${(response && response.fileName) || 'документ'}» загружен.`);
-        })
-        .withFailureHandler(error => {
-          closeToast(progressToast);
-          form.remove();
-          const message = error && error.message ? error.message : 'Не удалось загрузить файл.';
-          showToast(`Ошибка: ${message}`, 'error');
-        })
-        .uploadDocumentAttachment(form);
-    }, { once: true });
-    fileInput.click();
+    const fileState = currentDocsRow.fileStates && currentDocsRow.fileStates[colIndex];
+    if (fileState && fileState.hasFile) {
+      showAttachmentReplacementDialog(openFileSelector);
+    } else {
+      openFileSelector();
+    }
   }
 
   document.addEventListener('click', function(e) {
