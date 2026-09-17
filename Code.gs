@@ -16,10 +16,6 @@ const CONFIG = Object.freeze({
   ATTACHMENTS_FOLDER_ID: '1AyjWNspWbBVswPdrSy0M-JEbvZBzsjq1',
   // Шаблоны используют значения столбцов листа «Результат». Меняйте только
   // template/headers: это не требует изменений в функции загрузки.
-  // Сервис конвертации/объединения PDF. Он должен принимать POST JSON
-  // {files:[{name,mimeType,base64}]} и возвращать {pdfBase64}. Пустой URL
-  // запрещает загрузку нескольких файлов, чтобы они не сохранились раздельно.
-  PDF_PROCESSOR: Object.freeze({ URL: '', API_KEY: '' }),
   ATTACHMENT_NAMING: Object.freeze({
     USER_FOLDER: Object.freeze({
       template: 'Фамилия Имя Отчество (С) - Дата рождения (С) - Год набора',
@@ -1391,61 +1387,26 @@ function getOrCreateUserAttachmentsFolder_(rootFolder, folderName) {
 }
 
 /**
- * Возвращает переданные из HTML-формы Blob-файлы. Apps Script отдаёт один Blob
- * для обычного input и массив Blob для input[type=file][multiple].
- * @param {Object} payload Данные формы.
- * @returns {GoogleAppsScript.Base.Blob[]}
+ * Перемещает заменяемый файл приложения в корзину, если в ячейке есть ссылка Drive.
+ * @param {*} value URL прежнего файла.
  */
-function getAttachmentFiles_(payload) {
-  const candidate = payload.attachmentFiles || payload.attachmentFile;
-  const files = Array.isArray(candidate) ? candidate : [candidate];
-  return files.map(file => {
-    if (file && typeof file.getBytes === 'function') return file;
-    if (!file || !file.base64) return null;
-    return Utilities.newBlob(
-      Utilities.base64Decode(String(file.base64)),
-      String(file.mimeType || 'application/octet-stream'),
-      String(file.name || 'document')
-    );
-  }).filter(file => file && file.getBytes().length);
-}
-
-/**
- * Передаёт несколько файлов настроенному PDF-сервису, который конвертирует
- * каждый файл в PDF и объединяет результат в один документ.
- * @param {GoogleAppsScript.Base.Blob[]} files Исходные файлы.
- * @returns {GoogleAppsScript.Base.Blob} Итоговый PDF.
- */
-function convertAndMergeAttachmentsToPdf_(files) {
-  const processor = CONFIG.PDF_PROCESSOR;
-  if (!processor.URL) {
-    throw new Error('Для загрузки нескольких файлов настройте CONFIG.PDF_PROCESSOR.URL.');
+function movePreviousAttachmentToTrash_(value) {
+  const url = String(value || '');
+  const match = url.match(/(?:\/d\/|[?&]id=)([-\w]{20,})/);
+  if (!match) return;
+  try {
+    DriveApp.getFileById(match[1]).setTrashed(true);
+  } catch (error) {
+    // Старый файл уже мог быть удалён или быть недоступным; новый файл остаётся валидным.
+    Logger.log(`Не удалось переместить прежнее вложение в корзину: ${error.message}`);
   }
-  const requestFiles = files.map(file => ({
-    name: file.getName(),
-    mimeType: file.getContentType(),
-    base64: Utilities.base64Encode(file.getBytes())
-  }));
-  const headers = { 'Content-Type': 'application/json' };
-  if (processor.API_KEY) headers.Authorization = `Bearer ${processor.API_KEY}`;
-  const response = UrlFetchApp.fetch(processor.URL, {
-    method: 'post', contentType: 'application/json', headers,
-    payload: JSON.stringify({ files: requestFiles }), muteHttpExceptions: true
-  });
-  const status = response.getResponseCode();
-  if (status < 200 || status >= 300) {
-    throw new Error(`Сервис обработки PDF вернул ошибку ${status}.`);
-  }
-  const result = JSON.parse(response.getContentText());
-  if (!result || !result.pdfBase64) throw new Error('Сервис обработки PDF не вернул итоговый PDF.');
-  return Utilities.newBlob(Utilities.base64Decode(result.pdfBase64), MimeType.PDF, 'documents.pdf');
 }
 
 /**
  * Загружает файл для FILE-поля и сохраняет его URL в той же ячейке.
  * Это делает состояние файла частью данных строки; обычное текстовое
  * сохранение после загрузки не требуется.
- * @param {{login:string,password:string,snils:string,columnName:string,attachmentFiles:Array}} formData
+ * @param {{login:string,password:string,snils:string,columnName:string,attachmentFile:GoogleAppsScript.Base.Blob}} formData
  * @returns {{ok:boolean,fileName:string,fileUrl:string,fileState:{hasFile:boolean}}}
  */
 function uploadDocumentAttachment(formData) {
@@ -1456,11 +1417,10 @@ function uploadDocumentAttachment(formData) {
     throw new Error('Для этого поля прикрепление файла не настроено.');
   }
 
-  const files = getAttachmentFiles_(payload);
-  if (!files.length) throw new Error('Выберите хотя бы один файл для загрузки.');
-  // Даже один исходный документ проходит через тот же сервис, поэтому в Drive
-  // всегда сохраняется PDF, а не исходный JPG/PNG/PDF-файл.
-  const file = convertAndMergeAttachmentsToPdf_(files);
+  const file = payload.attachmentFile;
+  if (!file || typeof file.getBytes !== 'function' || !file.getBytes().length) {
+    throw new Error('Выберите файл для загрузки.');
+  }
 
   const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
   if (!sheet) throw new Error('Лист с результатами не найден.');
@@ -1498,6 +1458,7 @@ function uploadDocumentAttachment(formData) {
       folderName
     );
     const uploadedFile = destinationFolder.createFile(file).setName(`${fileBaseName}${extension}`);
+    movePreviousAttachmentToTrash_(row[targetCol]);
     const historyTimestamp = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, `${CONFIG.DATE_FORMAT} HH:mm:ss`);
     setValueWithSiteEditNote_(sheet.getRange(i + 2, targetCol + 1), uploadedFile.getUrl(), historyTimestamp);
     return { ok: true, fileName: uploadedFile.getName(), fileUrl: uploadedFile.getUrl(), fileState: { hasFile: true, fileUrl: uploadedFile.getUrl() } };

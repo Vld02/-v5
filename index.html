@@ -1640,22 +1640,12 @@
     cell.setAttribute('style', style);
   }
 
-  function readSelectedFilesAsPayload(fileList) {
-    return Promise.all(Array.from(fileList).map(file => new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error(`Не удалось прочитать файл «${file.name}».`));
-      reader.onload = () => {
-        const dataUrl = String(reader.result || '');
-        const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
-        resolve({ name: file.name, mimeType: file.type || 'application/octet-stream', base64 });
-      };
-      reader.readAsDataURL(file);
-    })));
-  }
-
   function handleAttachmentClick(colIndex) {
     const columnName = currentDocsRow.header[colIndex];
     if (!columnName) return;
+
+    const fileState = currentDocsRow.fileStates && currentDocsRow.fileStates[colIndex];
+    if (fileState && fileState.hasFile && !window.confirm('Файл уже прикреплён. При загрузке нового файла предыдущий будет удалён. Продолжить?')) return;
 
     const form = document.createElement('form');
     form.style.display = 'none';
@@ -1673,9 +1663,7 @@
 
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
-    fileInput.name = 'attachmentFiles';
-    fileInput.multiple = true;
-    fileInput.accept = '.pdf,image/jpeg,image/png';
+    fileInput.name = 'attachmentFile';
     form.appendChild(fileInput);
     document.body.appendChild(form);
 
@@ -1684,45 +1672,23 @@
         form.remove();
         return;
       }
-      const filesCount = fileInput.files.length;
-      const progressToast = showToast(
-        filesCount > 1 ? 'Конвертация и объединение файлов в PDF…' : 'Конвертация файла в PDF…',
-        'loading',
-        false
-      );
-      // Apps Script не передаёт FileList из HTML-формы как массив Blob. Поэтому
-      // сериализуем каждый выбранный файл явно — так ни один файл не теряется.
-      readSelectedFilesAsPayload(fileInput.files)
-        .then(attachmentFiles => {
-          const payload = {
-            login: dom.login.value.trim(),
-            password: toServerDate(dom.password.value),
-            snils: dom.snils.value.trim(),
-            columnName,
-            attachmentFiles
-          };
-          google.script.run
-            .withSuccessHandler(response => {
-              closeToast(progressToast);
-              form.remove();
-              if (currentDocsRow.fileStates) currentDocsRow.fileStates[colIndex] = (response && response.fileState) || { hasFile: true };
-              const cell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
-              if (cell) renderCellDisplay(cell, colIndex, currentDocsRow.row[colIndex] ?? '');
-              showToast(`Файл «${(response && response.fileName) || 'документ'}» загружен.`);
-            })
-            .withFailureHandler(error => {
-              closeToast(progressToast);
-              form.remove();
-              const message = error && error.message ? error.message : 'Не удалось загрузить файл.';
-              showToast(`Ошибка: ${message}`, 'error');
-            })
-            .uploadDocumentAttachment(payload);
-        })
-        .catch(error => {
+      const progressToast = showToast('Загрузка файла…', 'loading', false);
+      google.script.run
+        .withSuccessHandler(response => {
           closeToast(progressToast);
           form.remove();
-          showToast(`Ошибка: ${error.message || 'Не удалось прочитать файл.'}`, 'error');
-        });
+          if (currentDocsRow.fileStates) currentDocsRow.fileStates[colIndex] = (response && response.fileState) || { hasFile: true };
+          const cell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
+          if (cell) renderCellDisplay(cell, colIndex, currentDocsRow.row[colIndex] ?? '');
+          showToast(`Файл «${(response && response.fileName) || 'документ'}» загружен.`);
+        })
+        .withFailureHandler(error => {
+          closeToast(progressToast);
+          form.remove();
+          const message = error && error.message ? error.message : 'Не удалось загрузить файл.';
+          showToast(`Ошибка: ${message}`, 'error');
+        })
+        .uploadDocumentAttachment(form);
     }, { once: true });
     fileInput.click();
   }
