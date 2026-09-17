@@ -128,9 +128,7 @@
   .item { display: flex; border: 0.05rem solid #d8d8d8; border-top: none; min-height: 2.2rem; }
   .item:first-of-type { border-top: 0.05rem solid #d8d8d8; }
   .item-title { font-weight: bold; width: 45%; padding: var(--space-sm); background:#f7f7f7; border-right:0.05rem solid #d8d8d8; display:flex; align-items:center; }
-  .item-title.has-attachment { position:relative; }
   .item-title-text { max-width:100%; box-sizing:border-box; }
-  .item-title.has-attachment .item-title-text { padding-right:calc(1.55rem + var(--space-sm)); }
   .item-value { width: 55%; padding: var(--space-sm); position: relative; min-height: 2.2rem; }
   .parent-section { margin-top:1rem; }
   .parent-section-header {
@@ -158,7 +156,9 @@
   .cell-edit-shell { position:relative; min-height:2rem; padding-right:calc(1.55rem + var(--space-xs)); }
   .cell-edit-actions { position:absolute; top:50%; right:calc(-1 * var(--space-sm)); width:1.55rem; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0; transform:translateY(-50%); }
   .cell-edit-btn { width:1.55rem; height:1.55rem; min-width:1.55rem; min-height:1.55rem; max-width:1.55rem; max-height:1.55rem; flex:0 0 1.55rem; padding:0; display:inline-flex; align-items:center; justify-content:center; overflow:visible; color:inherit; line-height:1; }
-  .cell-attachment-btn { position:absolute; top:var(--space-xs); right:var(--space-xs); }
+  .file-status { display:inline-flex; align-items:center; gap:0.35rem; color:#5f6368; }
+  .file-status.has-file { color:#137333; }
+  .file-status svg { width:1.15rem; height:1.15rem; stroke:currentColor; stroke-width:2.1; fill:none; }
   .cell-edit-btn svg { width:1.08rem; height:1.08rem; display:block; stroke:currentColor; stroke-width:2.35; stroke-linecap:round; stroke-linejoin:round; fill:none; flex:0 0 auto; pointer-events:none; }
   .cell-edit-btn.non-editable { opacity:0.45; cursor:not-allowed; }
   .cell-edit-btn.save-ready { background:#e9f3ff; border-color:#8ab4f8; }
@@ -828,7 +828,14 @@
     editConfigPromise = new Promise((resolve, reject) => {
       google.script.run
         .withSuccessHandler(config => {
-          editConfig = config || { rules: {}, fields: {} };
+          // Не фиксируем пустой/неполный ответ как загруженную конфигурацию:
+          // иначе FILE-поля навсегда превратятся в неактивные TEXT-поля.
+          if (!config || !config.rules || !config.fields || !config.rules.FILE) {
+            editConfigPromise = null;
+            reject(new Error('Сервер вернул неполную конфигурацию редактирования.'));
+            return;
+          }
+          editConfig = config;
           resolve(editConfig);
         })
         .withFailureHandler(error => {
@@ -841,14 +848,14 @@
     return editConfigPromise;
   }
 
-  let currentDocsRow = { header: [], row: [], colors: [] };
+  let currentDocsRow = { header: [], row: [], colors: [], fileStates: [] };
 
   loadEditConfig().catch(() => {});
 
   function getFieldEditRule(headerTitle) {
-    if (!editConfig) {
-      return { editable: false, rule: 'TEXT', required: false, isIdentityField: false, regex: '^.*$', special: '', placeholder: '', ruleKey: 'TEXT' };
-    }
+    // showDocsResult() ожидает loadEditConfig(), поэтому отсутствие конфигурации
+    // здесь — ошибка порядка выполнения, а не повод подменять FILE на TEXT.
+    if (!editConfig) throw new Error('Конфигурация редактирования ещё не загружена.');
 
     const fieldConfig = editConfig.fields[headerTitle] || { editable: false, rule: 'TEXT', required: false, isIdentityField: false };
     const editRule = editConfig.rules[fieldConfig.rule] || editConfig.rules.TEXT || { regex: '^.*$', special: '', placeholder: '' };
@@ -1266,6 +1273,12 @@
     return `${day}.${month}.${parsed.year}`;
   }
 
+  function handleDocsRequestFailure(error) {
+    const message = error && error.message ? error.message : 'Не удалось выполнить аутентификацию.';
+    dom.error.textContent = `Ошибка: ${message}`;
+    stopAuthLoading();
+  }
+
   async function loginDocs() {
     dom.error.textContent = '';
     stopAuthLoading();
@@ -1308,13 +1321,9 @@
 
         localStorage.setItem('isLoggedIn', '1');
         hideSnilsStep();
-        loadEditConfig()
-          .then(() => showDocsResult(response))
-          .catch(() => {
-            dom.error.textContent = 'Не удалось загрузить правила редактирования.';
-            stopAuthLoading();
-          });
+        showDocsResult(response);
       })
+      .withFailureHandler(handleDocsRequestFailure)
       .checkLogin(loginVal, passwordForServer, clientInfo, snilsFormatted);
   }
 
@@ -1362,13 +1371,9 @@
         authState.login = '';
         authState.password = '';
         dom.snilsWrap.style.display = 'block';
-        loadEditConfig()
-          .then(() => showDocsResult(response))
-          .catch(() => {
-            dom.error.textContent = 'Не удалось загрузить правила редактирования.';
-            stopAuthLoading();
-          });
+        showDocsResult(response);
       })
+      .withFailureHandler(handleDocsRequestFailure)
       .verifySnils(authState.login, authState.password, snilsFormatted, clientInfo);
   }
 
@@ -1467,9 +1472,19 @@
     });
   }
 
-  function showDocsResult(response) {
+  async function showDocsResult(response) {
     if (response.error) {
       dom.error.textContent = response.error;
+      stopAuthLoading();
+      return;
+    }
+
+    // Нельзя строить строку по запасному TEXT-правилу: FILE-кнопка
+    // определяется только после получения полной серверной конфигурации.
+    try {
+      await loadEditConfig();
+    } catch (_error) {
+      dom.error.textContent = 'Не удалось загрузить правила редактирования.';
       stopAuthLoading();
       return;
     }
@@ -1477,7 +1492,7 @@
     const header = response.header;
     const row = response.row;
     const colors = response.colors || [];
-    currentDocsRow = { header: [...header], row: [...row], colors: [...colors] };
+    currentDocsRow = { header: [...header], row: [...row], colors: [...colors], fileStates: [...(response.fileStates || [])] };
 
     let html = '';
 
@@ -1522,8 +1537,7 @@
         const style = bg ? `background:${bg};` : '';
         const rule = getFieldEditRule(header[i]);
         const btnClass = rule.editable ? '' : 'non-editable';
-        const attachmentClass = rule.attachment ? ' has-attachment' : '';
-        html += `<div class="item"><div class="item-title${attachmentClass}"><span class="item-title-text">${escapeHtml(cleanedTitle)}</span>${renderCellAttachmentButton(i, rule)}</div><div class="item-value" style="${style}" data-col-index="${i}">${renderCellDisplayMarkup(i, row[i] ?? '', rule.editable, btnClass, rule)}</div></div>`;
+        html += `<div class="item"><div class="item-title"><span class="item-title-text">${escapeHtml(cleanedTitle)}</span></div><div class="item-value" style="${style}" data-col-index="${i}">${renderCellDisplayMarkup(i, row[i] ?? '', rule.editable, btnClass, rule)}</div></div>`;
       }
 
       if (isParentSection) html += '</div></div>';
@@ -1556,13 +1570,17 @@
       save: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>',
       cancel: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>',
       help: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9.1 9a3 3 0 1 1 5.8 1c-.7 1.2-2.4 1.7-2.4 3"/><path d="M12 17h.01"/><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>',
-      attach: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m21.4 11.6-8.9 8.9a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>'
+      attach: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m21.4 11.6-8.9 8.9a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>',
+      file: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>'
     };
     return icons[name] || '';
   }
 
-  function renderCellEditButton(colIndex, editable = true, extraClass = '') {
-    return `<button type="button" class="attendance-icon-btn cell-edit-btn ${extraClass}" data-col-index="${colIndex}" data-mode="edit" title="Редактировать" aria-label="Редактировать" ${editable ? '' : 'disabled'}>${iconSvg('edit')}</button>`;
+  function renderCellEditButton(colIndex, editable = true, extraClass = '', rule = {}) {
+    const isFile = rule.special === 'file';
+    const mode = isFile ? 'attachment' : 'edit';
+    const label = isFile ? 'Прикрепить файл' : 'Редактировать';
+    return `<button type="button" class="attendance-icon-btn cell-edit-btn ${extraClass}" data-col-index="${colIndex}" data-mode="${mode}" title="${label}" aria-label="${label}" ${editable ? '' : 'disabled'}>${iconSvg(isFile ? 'attach' : 'edit')}</button>`;
   }
 
   function getFieldDescription(rule) {
@@ -1579,12 +1597,7 @@
   }
 
   function renderCellViewActions(colIndex, editable = true, extraClass = '', rule = {}) {
-    return `<div class="cell-edit-actions">${renderCellHelpButton(colIndex, rule)}${renderCellEditButton(colIndex, editable, extraClass)}</div>`;
-  }
-
-  function renderCellAttachmentButton(colIndex, rule = {}) {
-    if (!rule.attachment) return '';
-    return `<button type="button" class="attendance-icon-btn cell-edit-btn cell-attachment-btn" data-col-index="${colIndex}" data-attachment="${escapeHtmlAttr(rule.attachment)}" data-mode="attachment" title="Прикрепить" aria-label="Прикрепить">${iconSvg('attach')}</button>`;
+    return `<div class="cell-edit-actions">${renderCellHelpButton(colIndex, rule)}${renderCellEditButton(colIndex, editable, extraClass, rule)}</div>`;
   }
 
   function renderCellEditActions(colIndex) {
@@ -1592,7 +1605,11 @@
   }
 
   function renderCellDisplayMarkup(colIndex, value, editable = true, extraClass = '', rule = {}) {
-    return `<div class="cell-edit-shell"><div class="cell-editor"><div class="cell-value-display"><div class="cell-value-text">${escapeHtml(value)}</div></div></div>${renderCellViewActions(colIndex, editable, extraClass, rule)}</div>`;
+    const fileState = currentDocsRow.fileStates && currentDocsRow.fileStates[colIndex];
+    const display = rule.special === 'file'
+      ? `<div class="file-status${fileState && fileState.hasFile ? ' has-file' : ''}" title="${fileState && fileState.hasFile ? 'Файл прикреплён' : 'Файл не прикреплён'}">${iconSvg(fileState && fileState.hasFile ? 'file' : 'attach')}<span>${fileState && fileState.hasFile ? 'Файл прикреплён' : 'Нет файла'}</span></div>`
+      : `<div class="cell-value-text">${escapeHtml(value)}</div>`;
+    return `<div class="cell-edit-shell"><div class="cell-editor"><div class="cell-value-display">${display}</div></div>${renderCellViewActions(colIndex, editable, extraClass, rule)}</div>`;
   }
 
   function renderCellDisplay(cell, colIndex, value) {
@@ -1637,6 +1654,9 @@
       google.script.run
         .withSuccessHandler(response => {
           form.remove();
+          if (currentDocsRow.fileStates) currentDocsRow.fileStates[colIndex] = (response && response.fileState) || { hasFile: true };
+          const cell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
+          if (cell) renderCellDisplay(cell, colIndex, currentDocsRow.row[colIndex] ?? '');
           showToast(`Файл «${(response && response.fileName) || 'документ'}» загружен.`);
         })
         .withFailureHandler(error => {
