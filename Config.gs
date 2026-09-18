@@ -34,6 +34,21 @@
 // Пустая строка отключит отдельную иконку именно в обёртке Apps Script.
 const WEBAPP_FAVICON_URL = 'https://raw.githubusercontent.com/Vld02/-v5/refs/heads/main/512.ico';
 
+/*
+ * ЕДИНЫЙ СПРАВОЧНИК ОБЩИХ ЗАГОЛОВКОВ ТАБЛИЦЫ «Результат».
+ * Меняйте здесь название столбца, если оно используется одновременно в
+ * авторизации, карточке, истории тренировок или имени вложения. Значение
+ * должно в точности совпадать с первой строкой листа (включая пробелы и (С)).
+ */
+const FIELD_HEADERS = Object.freeze({
+  athleteFullName: 'Фамилия Имя Отчество (С)',
+  athleteBirthDate: 'Дата рождения (С)',
+  athleteSnils: 'Снилс: номер',
+  enrollmentYear: 'Год набора',
+  trainingGroup: 'Тренировочная группа',
+  schoolInfoUpdated: 'Дата обн. инф. о школе (С)'
+});
+
 // Серверные параметры. Object.freeze защищает их от случайного изменения кодом.
 const CONFIG = Object.freeze({
   // ID находится между /d/ и /edit в URL таблицы Google Sheets. Вставьте только ID.
@@ -58,9 +73,9 @@ const CONFIG = Object.freeze({
   // Настройка входа. Значения — точные заголовки столбцов листа RESULT_SHEET_NAME.
   // loginHeader — ФИО для входа, passwordHeader — дата рождения, snilsHeader — СНИЛС.
   AUTH: Object.freeze({
-    loginHeader: 'Фамилия Имя Отчество (С)',
-    passwordHeader: 'Дата рождения (С)',
-    snilsHeader: 'Снилс: номер'
+    loginHeader: FIELD_HEADERS.athleteFullName,
+    passwordHeader: FIELD_HEADERS.athleteBirthDate,
+    snilsHeader: FIELD_HEADERS.athleteSnils
   }),
   // Источник истории тренировок. responseFioStartColumn/endColumn — индексы с нуля:
   // 12 = столбец M, 32 = AG. Из этого диапазона читаются выбранные ФИО формы.
@@ -70,15 +85,15 @@ const CONFIG = Object.freeze({
     headers: Object.freeze({ timestamp: 'Отметка времени', date: 'Дата тренировки', coach: 'Тренер присутствовал:', place: 'Место проведения занятия' }),
     responseFioStartColumn: 12,
     responseFioEndColumn: 32,
-    athleteNameHeader: 'Фамилия Имя Отчество (С)',
-    athleteGroupHeader: 'Тренировочная группа',
+    athleteNameHeader: FIELD_HEADERS.athleteFullName,
+    athleteGroupHeader: FIELD_HEADERS.trainingGroup,
     noGroupLabel: 'Без группы'
   }),
   // Небольшие серверные интервалы/лимиты. lockWaitMs — ожидание записи в журнал;
   // maxNameMatchErrors — допустимые опечатки в сокращённом ФИО; nameMatchOptionsLimit — число вариантов.
   OPERATIONS: Object.freeze({ lockWaitMs: 1000, maxNameMatchErrors: 2, nameMatchOptionsLimit: 3 }),
   // Служебные заголовки, используемые автоматическими действиями после сохранения.
-  FIELDS: Object.freeze({ schoolInfoUpdatedHeader: 'Дата обн. инф. о школе (С)' }),
+  FIELDS: Object.freeze({ schoolInfoUpdatedHeader: FIELD_HEADERS.schoolInfoUpdated }),
   // Допустимые автоматические действия поля. Значение ACTIONS.updateSchoolDate
   // разрешено у onSave в карте доступа; другое значение сервер игнорирует.
   ACTIONS: Object.freeze({ updateSchoolDate: 'UPDATE_SCHOOL_DATE' }),
@@ -92,17 +107,17 @@ const CONFIG = Object.freeze({
   // заголовок FILE-столбца из EDIT_CONFIG.fields.
   ATTACHMENT_NAMING: Object.freeze({
     USER_FOLDER: Object.freeze({
-      template: 'Фамилия Имя Отчество (С) - Дата рождения (С) - Год набора',
-      headers: Object.freeze(['Фамилия Имя Отчество (С)', 'Дата рождения (С)', 'Год набора'])
+      template: `${FIELD_HEADERS.athleteFullName} - ${FIELD_HEADERS.athleteBirthDate} - ${FIELD_HEADERS.enrollmentYear}`,
+      headers: Object.freeze([FIELD_HEADERS.athleteFullName, FIELD_HEADERS.athleteBirthDate, FIELD_HEADERS.enrollmentYear])
     }),
     FILES: Object.freeze({
-      'Свидетельство: скан (С)': Object.freeze({ template: 'Свидетельство: скан (С) - Фамилия Имя Отчество (С)', headers: Object.freeze(['Фамилия Имя Отчество (С)']) }),
-      'Паспорт: скан (С)': Object.freeze({ template: 'Паспорт: скан (С) - Фамилия Имя Отчество (С)', headers: Object.freeze(['Фамилия Имя Отчество (С)']) }),
-      'Снилс: Скан': Object.freeze({ template: 'Снилс: Скан - Фамилия Имя Отчество (С)', headers: Object.freeze(['Фамилия Имя Отчество (С)']) }),
-      'Полис: Скан': Object.freeze({ template: 'Полис: Скан - Фамилия Имя Отчество (С)', headers: Object.freeze(['Фамилия Имя Отчество (С)']) }),
-      'Страховка: Скан': Object.freeze({ template: 'Страховка: Скан - Фамилия Имя Отчество (С)', headers: Object.freeze(['Фамилия Имя Отчество (С)']) }),
-      'Мед допуск: Скан': Object.freeze({ template: 'Мед допуск: Скан - Фамилия Имя Отчество (С)', headers: Object.freeze(['Фамилия Имя Отчество (С)']) }),
-      'Русада: Скан': Object.freeze({ template: 'Русада: Скан - Фамилия Имя Отчество (С)', headers: Object.freeze(['Фамилия Имя Отчество (С)']) }),
+      'Свидетельство: скан (С)': Object.freeze({ template: `Свидетельство: скан (С) - ${FIELD_HEADERS.athleteFullName}`, headers: Object.freeze([FIELD_HEADERS.athleteFullName]) }),
+      'Паспорт: скан (С)': Object.freeze({ template: `Паспорт: скан (С) - ${FIELD_HEADERS.athleteFullName}`, headers: Object.freeze([FIELD_HEADERS.athleteFullName]) }),
+      'Снилс: Скан': Object.freeze({ template: `Снилс: Скан - ${FIELD_HEADERS.athleteFullName}`, headers: Object.freeze([FIELD_HEADERS.athleteFullName]) }),
+      'Полис: Скан': Object.freeze({ template: `Полис: Скан - ${FIELD_HEADERS.athleteFullName}`, headers: Object.freeze([FIELD_HEADERS.athleteFullName]) }),
+      'Страховка: Скан': Object.freeze({ template: `Страховка: Скан - ${FIELD_HEADERS.athleteFullName}`, headers: Object.freeze([FIELD_HEADERS.athleteFullName]) }),
+      'Мед допуск: Скан': Object.freeze({ template: `Мед допуск: Скан - ${FIELD_HEADERS.athleteFullName}`, headers: Object.freeze([FIELD_HEADERS.athleteFullName]) }),
+      'Русада: Скан': Object.freeze({ template: `Русада: Скан - ${FIELD_HEADERS.athleteFullName}`, headers: Object.freeze([FIELD_HEADERS.athleteFullName]) }),
       'Паспорт: Скан (П)': Object.freeze({ template: 'Паспорт: Скан (П) - Фамилия Имя Отчество (П)', headers: Object.freeze(['Фамилия Имя Отчество (П)']) }),
       'Паспорт: Скан (М)': Object.freeze({ template: 'Паспорт: Скан (М) - Фамилия Имя Отчество (М)', headers: Object.freeze(['Фамилия Имя Отчество (М)']) }),
       'Паспорт: Скан (Д)': Object.freeze({ template: 'Паспорт: Скан (Д) - Фамилия Имя Отчество (Д)', headers: Object.freeze(['Фамилия Имя Отчество (Д)']) })
@@ -269,10 +284,10 @@ const EDIT_CONFIG = Object.freeze({
    для полного запрета удалите строку из карты.
    ============================================================ */
   fields: Object.freeze({
-    'Фамилия Имя Отчество (С)': { editable: true, rule: 'FULL_NAME_RU', required: true, isIdentityField: true, description: 'Фамилия, имя и отчество.', example: 'Иванов Иван Иванович' },
-    'Дата рождения (С)': { editable: true, rule: 'DATE_RU', required: true, isIdentityField: true, description: 'Дата рождения в формате ДД.ММ.ГГГГ.', example: '01.09.2010' },
+    [FIELD_HEADERS.athleteFullName]: { editable: true, rule: 'FULL_NAME_RU', required: true, isIdentityField: true, description: 'Фамилия, имя и отчество.', example: 'Иванов Иван Иванович' },
+    [FIELD_HEADERS.athleteBirthDate]: { editable: true, rule: 'DATE_RU', required: true, isIdentityField: true, description: 'Дата рождения в формате ДД.ММ.ГГГГ.', example: '01.09.2010' },
     'Месяц рождения (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, description: 'Произвольное текстовое значение.', example: 'Текст' },
-    'Год набора': { editable: true, rule: 'YEAR', required: false, isIdentityField: false, description: 'Год в динамическом диапазоне 1950 — текущий год + 1.', example: '2024' },
+    [FIELD_HEADERS.enrollmentYear]: { editable: true, rule: 'YEAR', required: false, isIdentityField: false, description: 'Год в динамическом диапазоне 1950 — текущий год + 1.', example: '2024' },
     'Пол (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, description: 'Произвольное текстовое значение.', example: 'Текст' },
     'Школа': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false, onSave: CONFIG.ACTIONS.updateSchoolDate, description: 'Произвольный текст с подсказками.', example: 'Значение из списка', suggestions: { sourceSheet: 'Списки данных', sourceHeader: 'Школы', startRow: 2 } },
     'Класс / курс': { editable: true, rule: 'CLASS_COURSE', required: false, isIdentityField: false, description: '0-11 или I-VI.', example: '7' },
@@ -334,9 +349,9 @@ const EDIT_CONFIG = Object.freeze({
     'Паспорт: Когда выдан (С)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false, description: 'Дата ДД.ММ.ГГГГ.', example: '01.09.2010' },
     'Паспорт или Свидетельство: Когда выдан (С)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false, description: 'Дата ДД.ММ.ГГГГ.', example: '01.09.2010' },
     'Паспорт: Код подразделения (С)': { editable: true, rule: 'PASSPORT_DIVISION_CODE', required: false, isIdentityField: false, description: 'Код подразделения в формате 123-456.', example: '123-456' },
-    'Снилс: номер': { editable: true, rule: 'SNILS', required: false, isIdentityField: true, description: 'СНИЛС из 11 цифр.', example: '000-000-000-00' },
+    [FIELD_HEADERS.athleteSnils]: { editable: true, rule: 'SNILS', required: false, isIdentityField: true, description: 'СНИЛС из 11 цифр.', example: '000-000-000-00' },
     'Полис: Страховая компания': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false, description: 'Произвольный текст с подсказками.', example: 'Значение из списка', suggestions: { sourceSheet: 'Результат', sourceHeader: 'Полис: Страховая компания', startRow: 2 } },
-    'Тренировочная группа': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false, description: 'Произвольный текст с подсказками.', example: 'Значение из списка', suggestions: { sourceSheet: 'Списки данных', sourceHeader: 'Группы тренировки', startRow: 5 } },
+    [FIELD_HEADERS.trainingGroup]: { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false, description: 'Произвольный текст с подсказками.', example: 'Значение из списка', suggestions: { sourceSheet: 'Списки данных', sourceHeader: 'Группы тренировки', startRow: 5 } },
     'МГФСО группа': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false, description: 'Произвольный текст с подсказками.', example: 'Значение из списка', suggestions: { sourceSheet: 'Списки данных', sourceHeader: 'Группы МГФСО', startRow: 2 } },
     'Тренер МГФСО': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false, description: 'Произвольный текст с подсказками.', example: 'Значение из списка', suggestions: { sourceSheet: 'Списки данных', sourceHeader: 'Тренер МГФСО', startRow: 2 } },
     'Разряд': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false, description: 'Произвольный текст с подсказками.', example: 'Значение из списка', suggestions: { sourceSheet: 'Списки данных', sourceHeader: 'Список разрядов', startRow: 2 } },
@@ -435,7 +450,7 @@ const CLIENT_CONFIG = Object.freeze({
     ]),
     // Заголовок первого поля раздела => видимое название этого раздела на карточке.
     starts: Object.freeze({
-      'Фамилия Имя Отчество (С)': 'Спортсмен',
+      [FIELD_HEADERS.athleteFullName]: 'Спортсмен',
       'Фамилия Имя Отчество (П)': 'Отец',
       'Фамилия Имя Отчество (М)': 'Мать',
       'Фамилия Имя Отчество (Д)': 'Другой законный представитель'
