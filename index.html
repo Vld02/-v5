@@ -789,6 +789,8 @@
 </div>
 
 <script>
+  <?!= getClientConfigScript(); ?>
+
   /*************************************************
    * ОБЩИЕ DOM-ССЫЛКИ И НАВИГАЦИЯ ПО ВКЛАДКАМ
    *************************************************/
@@ -809,14 +811,14 @@
     attendance: document.getElementById('tab-attendance'),
     gear: document.getElementById('tab-gear')
   };
-  const ACTIVE_TAB_STORAGE_KEY = 'activeTab';
-  const ATTENDANCE_ROWS_STORAGE_KEY = 'attendanceRowsDraftV1';
-  const ATTENDANCE_DRAFT_DELETE_AFTER_KEY = 'attendanceDraftDeleteAfterAtV1';
-  const ATTENDANCE_DRAFT_TTL_MS = 30 * 60 * 1000;
-  const LAST_SILENT_SYNC_KEY = 'lastSilentSyncAt';
-  const SILENT_SYNC_INTERVAL_MS = 15 * 60 * 1000;
-  const TRAINING_HISTORY_STORAGE_KEY = 'trainingHistoryItemsV1';
-  const TRAINING_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1K1TtjIL2retzFoXBlQaePKbeKIEkMZZedZX-Ans4VjY/edit?usp=sharing';
+  const ACTIVE_TAB_STORAGE_KEY = CLIENT_CONFIG.storageKeys.activeTab;
+  const ATTENDANCE_ROWS_STORAGE_KEY = CLIENT_CONFIG.storageKeys.attendanceRows;
+  const ATTENDANCE_DRAFT_DELETE_AFTER_KEY = CLIENT_CONFIG.storageKeys.attendanceDraftDeleteAfter;
+  const ATTENDANCE_DRAFT_TTL_MS = CLIENT_CONFIG.timings.attendanceDraftTtlMs;
+  const LAST_SILENT_SYNC_KEY = CLIENT_CONFIG.storageKeys.lastSilentSync;
+  const SILENT_SYNC_INTERVAL_MS = CLIENT_CONFIG.timings.silentSyncIntervalMs;
+  const TRAINING_HISTORY_STORAGE_KEY = CLIENT_CONFIG.storageKeys.trainingHistory;
+  const TRAINING_SHEET_URL = CLIENT_CONFIG.urls.trainingSheet;
 
   /* ============================================================
    КОНФИГУРАЦИЯ РЕДАКТИРОВАНИЯ НА КЛИЕНТЕ
@@ -952,12 +954,12 @@
   }
 
   function getMaxEnrollmentYear() {
-    return new Date().getFullYear() + 1;
+    return new Date().getFullYear() + CLIENT_CONFIG.validation.enrollmentYearOffset;
   }
 
   function isEnrollmentYearInRange(value) {
     const year = Number(value);
-    return Number.isInteger(year) && year >= 1950 && year <= getMaxEnrollmentYear();
+    return Number.isInteger(year) && year >= CLIENT_CONFIG.validation.enrollmentYearMin && year <= getMaxEnrollmentYear();
   }
 
   function isValidRuDate(value) {
@@ -989,7 +991,7 @@
     toast.className = `toast ${type === 'error' ? 'error' : type === 'loading' ? 'loading' : 'success'}`;
     toast.textContent = message;
     dom.toastContainer.appendChild(toast);
-    if (autoHide) setTimeout(() => toast.remove(), 3500);
+    if (autoHide) setTimeout(() => toast.remove(), CLIENT_CONFIG.timings.toastAutoHideMs);
     return toast;
   }
 
@@ -1395,7 +1397,7 @@
   }
 
   async function getClientInfo() {
-    const ip = await fetch('https://api.ipify.org?format=json')
+    const ip = await fetch(CLIENT_CONFIG.urls.ipLookup)
       .then(r => r.json())
       .then(j => j.ip)
       .catch(() => 'не определён');
@@ -1467,20 +1469,8 @@
     logInitialPageOpen();
   });
 
-  const PARENT_SECTION_SUFFIXES = Object.freeze(['П', 'М', 'Д']);
-  const PARENT_SECTION_FIELDS = Object.freeze([
-    'Фамилия Имя Отчество',
-    'Телефон +7',
-    'Электронная почта',
-    'Дата рождения',
-    'Паспорт: Серия, номер',
-    'Паспорт: Кем выдан',
-    'Паспорт: Когда выдан',
-    'Паспорт: Прописка',
-    'Паспорт: Код подразделения',
-    'Марка автомобиля',
-    'гос. номер автомобиля'
-  ]);
+  const PARENT_SECTION_SUFFIXES = CLIENT_CONFIG.documentSections.parentSuffixes;
+  const PARENT_SECTION_FIELDS = CLIENT_CONFIG.documentSections.parentFields;
 
   function hasParentSectionData(header, row, suffix) {
     return PARENT_SECTION_FIELDS.some(field => {
@@ -1513,12 +1503,7 @@
 
     let html = '';
 
-    const SECTION_STARTS = {
-      'Фамилия Имя Отчество (С)': 'Спортсмен',
-      'Фамилия Имя Отчество (П)': 'Отец',
-      'Фамилия Имя Отчество (М)': 'Мать',
-      'Фамилия Имя Отчество (Д)': 'Другой законный представитель'
-    };
+    const SECTION_STARTS = CLIENT_CONFIG.documentSections.starts;
 
     const sectionKeys = Object.keys(SECTION_STARTS);
     const sectionPositions = [];
@@ -3415,7 +3400,7 @@
     logFillFormClickClient();
 
     const prefillValue = encodeURIComponent(values.join('\n'));
-    const url = 'https://docs.google.com/forms/d/e/1FAIpQLSdGwQQhPaY3wXjT90TX2daQx7U-mjnfkoL_7VZ9nJ8NUqbKtw/viewform?entry.286976530=' + prefillValue;
+    const url = `${CLIENT_CONFIG.urls.attendanceForm}=${prefillValue}`;
     window.open(url, '_blank');
   }
 </script>
