@@ -1,40 +1,68 @@
 /*************************************************
  * ЕДИНЫЙ КОНФИГ ПРИЛОЖЕНИЯ
  *
- * Меняйте рабочие параметры только в этом файле. Код
- * Code.gs использует эти значения, а CLIENT_CONFIG безопасно
- * передаётся в index.html при открытии web-app. После изменения
- * опубликуйте новую версию Apps Script.
+ * Меняйте рабочие параметры только в этом файле.
  *
- * ВАЖНО:
- * - Имена листов и заголовки должны совпадать с таблицей буквально.
- * - ID таблицы и папки берите из URL Google Sheets / Google Drive.
- * - URL должны быть публичными HTTPS-адресами.
- * - Не храните здесь пароли, токены и иные секреты: файл доступен
- *   всем редакторам проекта, а часть CLIENT_CONFIG видна в браузере.
+ * БЫСТРАЯ ПАМЯТКА ПО ИЗМЕНЕНИЮ
+ * 1. Изменяйте значение справа от двоеточия, а название слева НЕ меняйте:
+ *    его использует программный код.
+ * 2. Строки всегда заключайте в одинарные кавычки: 'Результат'. Числа
+ *    пишите без кавычек: 300. true включает параметр, false выключает.
+ * 3. После сохранения создайте новую версию и разверните web-app заново.
+ * 4. Если изменили имя листа или заголовок столбца, сначала переименуйте
+ *    его в Google Sheets, затем укажите точно такое же имя здесь.
+ *
+ * СОДЕРЖАНИЕ:
+ *   WEBAPP_FAVICON_URL — иконка вкладки;
+ *   CONFIG             — таблица, папка, даты, кэш, вложения;
+ *   APP_CONFIG         — название приложения и подписи журнала;
+ *   LOG_CONFIG         — состав и время объединения записей журнала;
+ *   EDIT_CONFIG        — правила ввода и карта доступа к столбцам;
+ *   CLIENT_CONFIG      — публичные настройки, которые получает браузер.
+ *
+ * ВНИМАНИЕ О БЕЗОПАСНОСТИ: всё из CLIENT_CONFIG посетитель может увидеть
+ * в исходном коде страницы. Пароли, ключи API, токены и приватные ссылки
+ * туда не добавляйте. Их нужно хранить в Script Properties.
+ * Code.gs использует серверные значения, а CLIENT_CONFIG передаётся
+ * в index.html при каждом открытии web-app.
  *************************************************/
 
 /*************************************************
  * КОНФИГУРАЦИЯ ПРИЛОЖЕНИЯ
  *************************************************/
-const WEBAPP_FAVICON_URL = 'https://raw.githubusercontent.com/Vld02/-v5/refs/heads/main/512.ico'; // Вставьте прямую HTTPS-ссылку на PNG/ICO для вкладки в обёртке Google Script.
+// Публичный HTTPS-адрес PNG или ICO. Пример: 'https://site.ru/icon.png'.
+// Пустая строка отключит отдельную иконку именно в обёртке Apps Script.
+const WEBAPP_FAVICON_URL = 'https://raw.githubusercontent.com/Vld02/-v5/refs/heads/main/512.ico';
 
+// Серверные параметры. Object.freeze защищает их от случайного изменения кодом.
 const CONFIG = Object.freeze({
+  // ID находится между /d/ и /edit в URL таблицы Google Sheets. Вставьте только ID.
   SPREADSHEET_ID: '1PITVXQ48g0hwtx4YSWB7OOy37zvujj9hhts-7eGR1aQ',
+  // Лист с персональными данными; значение — точное имя вкладки Sheets.
   RESULT_SHEET_NAME: 'Результат',
+  // Лист журнала; если его нет, приложение создаст его с этим именем.
   LOG_SHEET_NAME: 'Входы',
+  // Цвет заголовка разрешённого к показу столбца. Обычно '#ffff00' (жёлтый).
   YELLOW: '#ffff00',
+  // Часовой пояс Apps Script: например 'GMT+3', 'Europe/Moscow' или 'UTC'.
   TIMEZONE: 'GMT+3',
+  // Формат дат Utilities.formatDate: 'dd.MM.yyyy', 'yyyy-MM-dd' и т. п.
   DATE_FORMAT: 'dd.MM.yyyy',
+  // Произвольный уникальный ключ кэша; измените, чтобы принудительно сбросить кэш ФИО.
   NAMES_CACHE_KEY: 'dbv5_full_names_v1',
+  // Время жизни кэша в секундах: 60 = 1 минута, 300 = 5 минут, 3600 = 1 час.
   NAMES_CACHE_TTL_SECONDS: 300,
   // Границы допустимого года набора: текущий год + смещение.
   ENROLLMENT_YEAR_MIN: 1950,
   ENROLLMENT_YEAR_OFFSET: 1,
   // Корневая папка «Пользователи». Внутри неё создаётся папка для каждой строки.
+  // ID корневой папки Drive из URL .../folders/ID. Не URL и не название папки.
   ATTACHMENTS_FOLDER_ID: '1AyjWNspWbBVswPdrSy0M-JEbvZBzsjq1',
-  // Шаблоны используют значения столбцов листа «Результат». Меняйте только
-  // template/headers: это не требует изменений в функции загрузки.
+  // Шаблоны используют значения столбцов листа «Результат».
+  // template — строка имени. В ней указывайте заголовки точно как в headers,
+  // разделяя их текстом (например, 'ФИО - Дата'). headers — массив используемых
+  // заголовков. Добавьте/удалите оба одновременно. Ключ FILES — это точный
+  // заголовок FILE-столбца из EDIT_CONFIG.fields.
   ATTACHMENT_NAMING: Object.freeze({
     USER_FOLDER: Object.freeze({
       template: 'Фамилия Имя Отчество (С) - Дата рождения (С) - Год набора',
@@ -62,8 +90,10 @@ const CONFIG = Object.freeze({
  * сопоставляет технический ключ вкладки с понятной записью в журнале.
  */
 const APP_CONFIG = Object.freeze({
+  // Текст на вкладке браузера и в заголовке web-app. Любая короткая строка.
   APP_TITLE: 'ДБВv5',
   SECTION_NAMES: Object.freeze({
+    // Ключи docs / attendance / gear не менять: это ключи вкладок в коде.
     docs: 'ДБВv5 Документы',
     attendance: 'ДБВv5 Посещаемость',
     gear: 'ДБВv5 Снаряжение'
@@ -77,6 +107,7 @@ const APP_CONFIG = Object.freeze({
  * в одну многострочную запись.
  */
 const LOG_CONFIG = Object.freeze({
+  // Порядок обязателен: значения лога записываются в той же последовательности.
   COLUMNS: Object.freeze([
     'Дата/время входа',
     'Логин',
@@ -87,6 +118,7 @@ const LOG_CONFIG = Object.freeze({
     'Браузер',
     'Статус входа'
   ]),
+  // Число минут: 0 — не объединять записи, 30 — стандартное окно, 60 — час.
   MAX_AGE_MINUTES: 30
 });
 const LOG_COLUMNS = LOG_CONFIG.COLUMNS;
@@ -105,31 +137,82 @@ const LOG_MAX_AGE_MINUTES = LOG_CONFIG.MAX_AGE_MINUTES;
    editable, required и regex по EDIT_CONFIG.fields + EDIT_CONFIG.rules.
    ============================================================ */
 const EDIT_CONFIG = Object.freeze({
+  // КАТАЛОГ ВАРИАНТОВ rule:
+  // TEXT — любой текст; SUGGEST_TEXT — любой текст с подсказками из suggestions.
+  // FULL_NAME_RU — три русских слова: «Иванов Иван Иванович».
+  // YEAR — 4 цифры в диапазоне CONFIG.ENROLLMENT_YEAR_MIN..текущий год + OFFSET.
+  // CLASS_COURSE — 0–11 либо римские I–VI; RU_UPPER_LETTER — одна А–Я/Ё.
+  // PHONE_RU — строго «+7 999 123-45-67»; EMAIL — адрес с @ и доменом.
+  // CERTIFICATE_RU — «IV-АБ № 123456»; DATE_RU — «ДД.ММ.ГГГГ» с реальной датой.
+  // SNILS — 11 цифр, дефисы/пробелы допускаются; PASSPORT_RU — «12 34 567890».
+  // PASSPORT_DIVISION_CODE — «123-456»; MED_POLICY_NUMBER — 16 цифр группами 4.
+  // MGFSO_ID — ровно 7 цифр; FILE — загрузка файла, текст вручную не принимается.
   rules: Object.freeze({
+    // TEXT: Любая последовательность символов, включая цифры и пробелы.
     TEXT: { title: 'Текст', placeholder: '', regex: '^.*$', special: '' },
+    // SUGGEST_TEXT: Текст можно ввести вручную или выбрать подсказку; обязательно задайте suggestions у поля.
     SUGGEST_TEXT: { title: 'Текст из подсказок', placeholder: '', regex: '^.*$', special: 'suggest' },
+    // FULL_NAME_RU: Ровно три слова с русской заглавной буквы: фамилия, имя и отчество.
     FULL_NAME_RU: { title: 'ФИО', placeholder: 'Иванов Иван Иванович', regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: 'fullname' },
+    // YEAR: Ровно четыре цифры в настроенном диапазоне года набора.
     YEAR: { title: 'Год', placeholder: '2024', regex: '^\\d{4}$', special: 'year' },
+    // CLASS_COURSE: Арабское число 0–11 или римское обозначение I, II, III, IV, V, VI.
     CLASS_COURSE: { title: 'Класс / курс', placeholder: '7', regex: '^(?:[0-9]|1[01]|I|II|III|IV|V|VI)$', special: 'classCourse' },
+    // RU_UPPER_LETTER: Одна заглавная русская буква, включая Ё.
     RU_UPPER_LETTER: { title: 'Русская заглавная буква', placeholder: 'А', regex: '^[А-ЯЁ]$', special: 'singleRuUpper' },
+    // PHONE_RU: Только формат +7 999 123-45-67; пробелы и дефисы обязательны.
     PHONE_RU: { title: 'Номер телефона', placeholder: '+7 999 123-45-67', regex: '^\\+7\\s\\d{3}\\s\\d{3}-\\d{2}-\\d{2}$', special: 'phoneRu' },
+    // EMAIL: Обычный e-mail с @ и доменной частью после точки.
     EMAIL: { title: 'Электронная почта', placeholder: 'name@example.ru', regex: '^[A-Za-z0-9.!#$%&\'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$', special: 'email' },
+    // CERTIFICATE_RU: Серия римскими цифрами, русские буквы, знак № и шесть цифр.
     CERTIFICATE_RU: { title: 'Свидетельство о рождении', placeholder: 'IV-АБ № 123456', regex: '^([VIX]{1,4}-[А-ЯЁ]{1,3}\\s*№\\s*\\d{6})$', special: 'certificate' },
+    // DATE_RU: Формат ДД.ММ.ГГГГ; дополнительно проверяется существование даты.
     DATE_RU: { title: 'Дата', placeholder: 'ДД.ММ.ГГГГ', regex: '^\\d{2}\\.\\d{2}\\.\\d{4}$', special: 'date' },
+    // SNILS: 11 цифр; допускаются дефисы или пробелы между группами.
     SNILS: { title: 'СНИЛС', placeholder: '000-000-000-00', regex: '^\\d{3}[-\\s]?\\d{3}[-\\s]?\\d{3}[-\\s]?\\d{2}$', special: 'snils' },
+    // PASSPORT_RU: Две цифры, пробел, две цифры, пробел, шесть цифр.
     PASSPORT_RU: { title: 'Паспорт РФ', placeholder: '12 34 567890', regex: '^\\d{2}\\s\\d{2}\\s\\d{6}$', special: 'passportRu' },
+    // PASSPORT_DIVISION_CODE: Три цифры, дефис, три цифры.
     PASSPORT_DIVISION_CODE: { title: 'Код подразделения', placeholder: '123-456', regex: '^\\d{3}-\\d{3}$', special: 'passportDivisionCode' },
+    // MED_POLICY_NUMBER: 16 цифр, разделённые пробелами на четыре группы по четыре.
     MED_POLICY_NUMBER: { title: 'Номер медполиса', placeholder: '1234 5678 9012 3456', regex: '^\\d{4}\\s\\d{4}\\s\\d{4}\\s\\d{4}$', special: 'medPolicyNumber' },
+    // MGFSO_ID: Только семь цифр.
     MGFSO_ID: { title: 'ID МГФСО', placeholder: '1234567', regex: '^\\d{7}$', special: 'mgfsoId' },
+    // FILE: Кнопка прикрепления файла; ручной текст для ячейки запрещён.
     FILE: { title: 'Файл', placeholder: '', regex: '^$', special: 'file' }
   }),
 
   /* ============================================================
    СООТВЕТСТВИЕ ПОЛЕЙ И ПРАВИЛ — СЕРВЕРНАЯ КАРТА ДОСТУПА
 
-   Этот список определяет, какие реальные заголовки таблицы можно
-   менять. Если заголовка здесь нет или editable: false, сервер
-   откажет даже при ручном вызове updateResultCell() из DevTools.
+   КАЖДАЯ строка ниже — разрешение на редактирование одного столбца.
+   Ключ слева — ТОЧНЫЙ заголовок в первой строке листа «Результат».
+   Если его нет в карте, запись в него запрещена — это безопасное значение
+   по умолчанию. Чтобы добавить столбец, скопируйте любую строку, замените
+   ключ и подберите rule из полного списка выше.
+
+   ПАРАМЕТРЫ КАЖДОЙ СТРОКИ:
+   - editable: true — пользователь может сохранить значение; false — поле
+     показывается, но сервер запрещает его изменение.
+   - rule: один из TEXT, SUGGEST_TEXT, FULL_NAME_RU, YEAR, CLASS_COURSE,
+     RU_UPPER_LETTER, PHONE_RU, EMAIL, CERTIFICATE_RU, DATE_RU, SNILS,
+     PASSPORT_RU, PASSPORT_DIVISION_CODE, MED_POLICY_NUMBER, MGFSO_ID, FILE.
+     Полное объяснение каждого варианта находится непосредственно над картой.
+   - required: true — пустое значение нельзя сохранить; false — очистка поля
+     разрешена. required не отменяет проверку rule.
+   - isIdentityField: true — изменение обновляет текущие данные входа
+     пользователя; используйте только для ФИО спортсмена, даты рождения и СНИЛС.
+   - description — подсказка пользователю; example — пример корректного ввода.
+   - suggestions — только для SUGGEST_TEXT: sourceSheet — лист-источник,
+     sourceHeader — его точный заголовок, startRow — первая строка данных
+     (обычно 2, если первая строка содержит заголовки).
+   - onSave: 'UPDATE_SCHOOL_DATE' — после сохранения школы выполняет
+     встроенное действие обновления даты школы. Не указывайте другое значение:
+     других действий в коде нет.
+
+   Существующие строки намеренно содержат только допустимые варианты. Для
+   запрета уже существующего поля смените editable: true на editable: false;
+   для полного запрета удалите строку из карты.
    ============================================================ */
   fields: Object.freeze({
     'Фамилия Имя Отчество (С)': { editable: true, rule: 'FULL_NAME_RU', required: true, isIdentityField: true, description: 'Фамилия, имя и отчество.', example: 'Иванов Иван Иванович' },
@@ -225,6 +308,8 @@ const EDIT_CONFIG = Object.freeze({
  * автоматически вместе со списком выбранных ФИО.
  */
 const CLIENT_CONFIG = Object.freeze({
+  // Ключи браузерного localStorage. Оставьте как есть, чтобы не потерять
+  // сохранённые у пользователей черновики. Новое уникальное имя начнёт чистое хранилище.
   storageKeys: Object.freeze({
     activeTab: 'activeTab',
     attendanceRows: 'attendanceRowsDraftV1',
@@ -232,28 +317,44 @@ const CLIENT_CONFIG = Object.freeze({
     lastSilentSync: 'lastSilentSyncAt',
     trainingHistory: 'trainingHistoryItemsV1'
   }),
+  // Все значения в миллисекундах: 1000 = 1 секунда, 60000 = 1 минута.
   timings: Object.freeze({
+    // Сколько хранить черновик посещаемости после открытия формы.
     attendanceDraftTtlMs: 30 * 60 * 1000,
+    // Минимальный интервал фоновой синхронизации авторизованного пользователя.
     silentSyncIntervalMs: 15 * 60 * 1000,
+    // Через сколько скрывать обычное всплывающее сообщение; 0 не используйте.
     toastAutoHideMs: 3500
   }),
+  // Только публичные HTTPS-ссылки. Они видны каждому посетителю страницы.
   urls: Object.freeze({
+    // Сервис, возвращающий JSON вида { ip: '...' }; можно заменить совместимым API.
     ipLookup: 'https://api.ipify.org?format=json',
+    // Ссылка «открыть таблицу истории тренировок»; вставьте полный URL таблицы.
     trainingSheet: 'https://docs.google.com/spreadsheets/d/1K1TtjIL2retzFoXBlQaePKbeKIEkMZZedZX-Ans4VjY/edit?usp=sharing',
+    // URL формы ДО значения: оставьте параметр entry.<ID> без знака '=' в конце.
+    // Например: .../viewform?entry.123456. Приложение добавит '=ФИО%0AФИО'.
     attendanceForm: 'https://docs.google.com/forms/d/e/1FAIpQLSdGwQQhPaY3wXjT90TX2daQx7U-mjnfkoL_7VZ9nJ8NUqbKtw/viewform?entry.286976530'
   }),
+  // Эти значения дублируют серверную проверку только для удобства ввода.
+  // Реальная защита остаётся на сервере в CONFIG.
   validation: Object.freeze({
     enrollmentYearMin: CONFIG.ENROLLMENT_YEAR_MIN,
     enrollmentYearOffset: CONFIG.ENROLLMENT_YEAR_OFFSET
   }),
+  // Структура карточки «Документы». Изменяйте только если одновременно
+  // меняете соответствующие заголовки в таблице.
   documentSections: Object.freeze({
+    // Суффиксы законных представителей: П — отец, М — мать, Д — другой представитель.
     parentSuffixes: Object.freeze(['П', 'М', 'Д']),
+    // Общие части заголовков, по которым определяется заполненность блока представителя.
     parentFields: Object.freeze([
       'Фамилия Имя Отчество', 'Телефон +7', 'Электронная почта', 'Дата рождения',
       'Паспорт: Серия, номер', 'Паспорт: Кем выдан', 'Паспорт: Когда выдан',
       'Паспорт: Прописка', 'Паспорт: Код подразделения', 'Марка автомобиля',
       'гос. номер автомобиля'
     ]),
+    // Заголовок первого поля раздела => видимое название этого раздела на карточке.
     starts: Object.freeze({
       'Фамилия Имя Отчество (С)': 'Спортсмен',
       'Фамилия Имя Отчество (П)': 'Отец',
