@@ -268,7 +268,7 @@ function logAccess({ login = '', password = '', snils = '', clientInfo = {}, sta
   const lock = LockService.getScriptLock();
   // Журнал не должен задерживать аутентификацию: при конкурентной записи
   // пропускаем только эту запись журнала, а не весь запрос пользователя.
-  if (!lock.tryLock(1000)) return;
+  if (!lock.tryLock(CONFIG.OPERATIONS.lockWaitMs)) return;
   try {
     const sheet = getLogSheet();
     if (!sheet) return;
@@ -354,8 +354,8 @@ function getAllowedColumnIndexes(headerColors) {
  * @returns {{loginCol:number, passCol:number}}
  */
 function getAuthColumnIndexes(header) {
-  const loginCol = header.indexOf('Фамилия Имя Отчество (С)');
-  const passCol = header.indexOf('Дата рождения (С)');
+  const loginCol = header.indexOf(CONFIG.AUTH.loginHeader);
+  const passCol = header.indexOf(CONFIG.AUTH.passwordHeader);
 
   if (loginCol === -1 || passCol === -1) {
     throw new Error('AUTH_COLUMNS_NOT_FOUND');
@@ -371,7 +371,7 @@ function getAuthColumnIndexes(header) {
  * @returns {number}
  */
 function getSnilsColumnIndex(header) {
-  return header.indexOf('Снилс: номер');
+  return header.indexOf(CONFIG.AUTH.snilsHeader);
 }
 
 /**
@@ -670,7 +670,7 @@ function processInput(input, fullNames) {
   const short = normalizeShortName(input);
   if (!short) return null;
 
-  const maxErrors = 2;
+  const maxErrors = CONFIG.OPERATIONS.maxNameMatchErrors;
   const matches = fullNames
     .map(full => calculateMatch(short, full, maxErrors))
     .filter(Boolean)
@@ -681,7 +681,7 @@ function processInput(input, fullNames) {
   const exactLast = matches.filter(m => m.lastCost === 0);
   const selected = exactLast.length === 1 ? exactLast[0].original : matches[0].original;
 
-  const top = matches.slice(0, 3);
+  const top = matches.slice(0, CONFIG.OPERATIONS.nameMatchOptionsLimit);
   if (!top.some(m => m.original === selected)) {
     const selectedMatch = matches.find(m => m.original === selected);
     if (selectedMatch) {
@@ -707,24 +707,24 @@ function processInput(input, fullNames) {
  * @returns {Array<{timestamp:string,date:string,coach:string,place:string,fio:string,fioGroups:Array<{group:string,names:string[]}>}>}
  */
 function getTrainingHistory() {
-  const ss = SpreadsheetApp.openById('1K1TtjIL2retzFoXBlQaePKbeKIEkMZZedZX-Ans4VjY');
-  const sheet = ss.getSheetByName('ОтветыV5');
+  const ss = SpreadsheetApp.openById(CONFIG.TRAINING.spreadsheetId);
+  const sheet = ss.getSheetByName(CONFIG.TRAINING.responseSheetName);
   if (!sheet) return [];
 
   const values = sheet.getDataRange().getValues();
   if (values.length < 2) return [];
 
   const header = values[0].map(String);
-  const tsCol = header.indexOf('Отметка времени');
-  const dateCol = header.indexOf('Дата тренировки');
-  const coachCol = header.indexOf('Тренер присутствовал:');
-  const placeCol = header.indexOf('Место проведения занятия');
+  const tsCol = header.indexOf(CONFIG.TRAINING.headers.timestamp);
+  const dateCol = header.indexOf(CONFIG.TRAINING.headers.date);
+  const coachCol = header.indexOf(CONFIG.TRAINING.headers.coach);
+  const placeCol = header.indexOf(CONFIG.TRAINING.headers.place);
 
   if (tsCol === -1 || dateCol === -1 || coachCol === -1 || placeCol === -1) return [];
 
   const fioGroupMap = loadTrainingGroupMap();
-  const startCol = 12; // M
-  const endCol = 32;   // AG
+  const startCol = CONFIG.TRAINING.responseFioStartColumn;
+  const endCol = CONFIG.TRAINING.responseFioEndColumn;
 
   const rows = values.slice(1)
     .filter(row => row.some(cell => String(cell || '').trim() !== ''))
@@ -752,16 +752,16 @@ function getTrainingHistory() {
  * @returns {Object<string,string>}
  */
 function loadTrainingGroupMap() {
-  const ss = SpreadsheetApp.openById('1PITVXQ48g0hwtx4YSWB7OOy37zvujj9hhts-7eGR1aQ');
-  const sheet = ss.getSheetByName('Результат');
+  const ss = getSpreadsheet();
+  const sheet = ss.getSheetByName(CONFIG.RESULT_SHEET_NAME);
   if (!sheet) return {};
 
   const values = sheet.getDataRange().getValues();
   if (values.length < 2) return {};
 
   const header = values[0].map(String);
-  const fioCol = header.indexOf('Фамилия Имя Отчество (С)');
-  const groupCol = header.indexOf('Тренировочная группа');
+  const fioCol = header.indexOf(CONFIG.AUTH.loginHeader);
+  const groupCol = header.indexOf(CONFIG.TRAINING.athleteGroupHeader);
   if (fioCol === -1 || groupCol === -1) return {};
 
   const map = {};
@@ -769,7 +769,7 @@ function loadTrainingGroupMap() {
     const fio = String(row[fioCol] || '').trim();
     const group = String(row[groupCol] || '').trim();
     if (!fio) return;
-    map[normalizeTrainingName(fio)] = group || 'Без группы';
+    map[normalizeTrainingName(fio)] = group || CONFIG.TRAINING.noGroupLabel;
   });
 
   return map;
@@ -1082,7 +1082,7 @@ function setValueWithSiteEditNote_(cell, newValue, historyTimestamp, options = {
 
 function runFieldOnSaveAction_(fieldConfig, sheet, header, rowIndex, historyTimestamp) {
   if (fieldConfig.onSave !== 'UPDATE_SCHOOL_DATE') return false;
-  const schoolUpdatedCol = header.indexOf('Дата обн. инф. о школе (С)');
+  const schoolUpdatedCol = header.indexOf(CONFIG.FIELDS.schoolInfoUpdatedHeader);
   if (schoolUpdatedCol === -1) return false;
   const timestamp = historyTimestamp;
   const cell = sheet.getRange(rowIndex, schoolUpdatedCol + 1);

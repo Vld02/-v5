@@ -55,6 +55,30 @@ const CONFIG = Object.freeze({
   // Границы допустимого года набора: текущий год + смещение.
   ENROLLMENT_YEAR_MIN: 1950,
   ENROLLMENT_YEAR_OFFSET: 1,
+  // Настройка входа. Значения — точные заголовки столбцов листа RESULT_SHEET_NAME.
+  // loginHeader — ФИО для входа, passwordHeader — дата рождения, snilsHeader — СНИЛС.
+  AUTH: Object.freeze({
+    loginHeader: 'Фамилия Имя Отчество (С)',
+    passwordHeader: 'Дата рождения (С)',
+    snilsHeader: 'Снилс: номер'
+  }),
+  // Источник истории тренировок. responseFioStartColumn/endColumn — индексы с нуля:
+  // 12 = столбец M, 32 = AG. Из этого диапазона читаются выбранные ФИО формы.
+  TRAINING: Object.freeze({
+    spreadsheetId: '1K1TtjIL2retzFoXBlQaePKbeKIEkMZZedZX-Ans4VjY',
+    responseSheetName: 'ОтветыV5',
+    headers: Object.freeze({ timestamp: 'Отметка времени', date: 'Дата тренировки', coach: 'Тренер присутствовал:', place: 'Место проведения занятия' }),
+    responseFioStartColumn: 12,
+    responseFioEndColumn: 32,
+    athleteNameHeader: 'Фамилия Имя Отчество (С)',
+    athleteGroupHeader: 'Тренировочная группа',
+    noGroupLabel: 'Без группы'
+  }),
+  // Небольшие серверные интервалы/лимиты. lockWaitMs — ожидание записи в журнал;
+  // maxNameMatchErrors — допустимые опечатки в сокращённом ФИО; nameMatchOptionsLimit — число вариантов.
+  OPERATIONS: Object.freeze({ lockWaitMs: 1000, maxNameMatchErrors: 2, nameMatchOptionsLimit: 3 }),
+  // Служебные заголовки, используемые автоматическими действиями после сохранения.
+  FIELDS: Object.freeze({ schoolInfoUpdatedHeader: 'Дата обн. инф. о школе (С)' }),
   // Корневая папка «Пользователи». Внутри неё создаётся папка для каждой строки.
   // ID корневой папки Drive из URL .../folders/ID. Не URL и не название папки.
   ATTACHMENTS_FOLDER_ID: '1AyjWNspWbBVswPdrSy0M-JEbvZBzsjq1',
@@ -92,6 +116,15 @@ const CONFIG = Object.freeze({
 const APP_CONFIG = Object.freeze({
   // Текст на вкладке браузера и в заголовке web-app. Любая короткая строка.
   APP_TITLE: 'ДБВv5',
+  // Цвет браузерной темы в #RRGGBB; используйте любой корректный CSS-цвет.
+  THEME_COLOR: '#179bcf',
+  // Публичные изображения для вкладок и ярлыка на устройстве. Полные HTTPS-URL.
+  ICON_URLS: Object.freeze({
+    icon32: 'https://raw.githubusercontent.com/Vld02/-v5/refs/heads/main/32.png',
+    icon72: 'https://raw.githubusercontent.com/Vld02/-v5/refs/heads/main/72.png',
+    icon192: 'https://raw.githubusercontent.com/Vld02/-v5/refs/heads/main/192.png',
+    icon512: 'https://raw.githubusercontent.com/Vld02/-v5/refs/heads/main/512.png'
+  }),
   SECTION_NAMES: Object.freeze({
     // Ключи docs / attendance / gear не менять: это ключи вкладок в коде.
     docs: 'ДБВv5 Документы',
@@ -311,6 +344,11 @@ const CLIENT_CONFIG = Object.freeze({
   // Ключи браузерного localStorage. Оставьте как есть, чтобы не потерять
   // сохранённые у пользователей черновики. Новое уникальное имя начнёт чистое хранилище.
   storageKeys: Object.freeze({
+    // Сохраняемые данные входа. Менять только для принудительного сброса устройств.
+    savedLogin: 'savedLogin',
+    savedDate: 'savedDate',
+    savedSnils: 'savedSnils',
+    isLoggedIn: 'isLoggedIn',
     activeTab: 'activeTab',
     attendanceRows: 'attendanceRowsDraftV1',
     attendanceDraftDeleteAfter: 'attendanceDraftDeleteAfterAtV1',
@@ -324,7 +362,15 @@ const CLIENT_CONFIG = Object.freeze({
     // Минимальный интервал фоновой синхронизации авторизованного пользователя.
     silentSyncIntervalMs: 15 * 60 * 1000,
     // Через сколько скрывать обычное всплывающее сообщение; 0 не используйте.
-    toastAutoHideMs: 3500
+    toastAutoHideMs: 3500,
+    // Скорость анимации точек загрузки, задержка скрытия подсказок и уведомлений.
+    authLoadingAnimationMs: 450,
+    suggestionBlurDelayMs: 120,
+    nameMatchDebounceMs: 400,
+    attendanceNoticeMs: 1800,
+    trainingSyncSuccessMs: 950,
+    // Как долго открытая ссылка Blob на прикреплённый файл остаётся действительной.
+    attachmentObjectUrlLifetimeMs: 60 * 1000
   }),
   // Только публичные HTTPS-ссылки. Они видны каждому посетителю страницы.
   urls: Object.freeze({
@@ -334,10 +380,20 @@ const CLIENT_CONFIG = Object.freeze({
     trainingSheet: 'https://docs.google.com/spreadsheets/d/1K1TtjIL2retzFoXBlQaePKbeKIEkMZZedZX-Ans4VjY/edit?usp=sharing',
     // URL формы ДО значения: оставьте параметр entry.<ID> без знака '=' в конце.
     // Например: .../viewform?entry.123456. Приложение добавит '=ФИО%0AФИО'.
+    // Опубликованная таблица для встроенного режима посещаемости.
+    attendanceTable: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQAnNOAevcu7f79FGp8ol6XHXki2BUa_zXnujvbk-g3EzvQBXkVqFuK-SKMTfDHhMlRikuu220nf77D/pubhtml?gid=866330013&single=true&widget=true&headers=false',
     attendanceForm: 'https://docs.google.com/forms/d/e/1FAIpQLSdGwQQhPaY3wXjT90TX2daQx7U-mjnfkoL_7VZ9nJ8NUqbKtw/viewform?entry.286976530'
   }),
   // Эти значения дублируют серверную проверку только для удобства ввода.
   // Реальная защита остаётся на сервере в CONFIG.
+  // Заголовки полей авторизации, доступные браузеру для обновления формы после сохранения.
+  // Не меняйте отдельно от CONFIG.AUTH: значения должны совпадать.
+  authFields: Object.freeze({ login: CONFIG.AUTH.loginHeader, password: CONFIG.AUTH.passwordHeader, snils: CONFIG.AUTH.snilsHeader }),
+  ui: Object.freeze({
+    // Сколько тренировок показывать первоначально; целое число не меньше 1.
+    initialTrainingVisibleCount: 5,
+    attendanceIframeTitle: 'Таблица посещаемости'
+  }),
   validation: Object.freeze({
     enrollmentYearMin: CONFIG.ENROLLMENT_YEAR_MIN,
     enrollmentYearOffset: CONFIG.ENROLLMENT_YEAR_OFFSET
