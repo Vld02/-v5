@@ -79,6 +79,9 @@ const CONFIG = Object.freeze({
   OPERATIONS: Object.freeze({ lockWaitMs: 1000, maxNameMatchErrors: 2, nameMatchOptionsLimit: 3 }),
   // Служебные заголовки, используемые автоматическими действиями после сохранения.
   FIELDS: Object.freeze({ schoolInfoUpdatedHeader: 'Дата обн. инф. о школе (С)' }),
+  // Допустимые автоматические действия поля. Значение ACTIONS.updateSchoolDate
+  // разрешено у onSave в карте доступа; другое значение сервер игнорирует.
+  ACTIONS: Object.freeze({ updateSchoolDate: 'UPDATE_SCHOOL_DATE' }),
   // Корневая папка «Пользователи». Внутри неё создаётся папка для каждой строки.
   // ID корневой папки Drive из URL .../folders/ID. Не URL и не название папки.
   ATTACHMENTS_FOLDER_ID: '1AyjWNspWbBVswPdrSy0M-JEbvZBzsjq1',
@@ -124,6 +127,24 @@ const APP_CONFIG = Object.freeze({
     icon72: 'https://raw.githubusercontent.com/Vld02/-v5/refs/heads/main/72.png',
     icon192: 'https://raw.githubusercontent.com/Vld02/-v5/refs/heads/main/192.png',
     icon512: 'https://raw.githubusercontent.com/Vld02/-v5/refs/heads/main/512.png'
+  }),
+  // Главные размеры и цвета интерфейса. Это CSS-значения: указывайте единицы
+  // (rem, px и т. д.) там, где они есть. Фон страницы остаётся в index.html,
+  // потому что содержит большой встроенный файл изображения.
+  STYLE: Object.freeze({
+    cardBackground: 'rgba(255, 255, 255, 0.92)',
+    primaryColor: '#1a73e8',
+    borderColor: '#d8d8d8',
+    baseFontSize: 'clamp(1.35rem, 0.95rem + 1.35vw, 2rem)',
+    pageMaxWidth: '68rem',
+    topbarHeight: 'clamp(3.25rem, 7vh, 4.5rem)',
+    spaceXs: '0.25rem',
+    spaceSm: '0.5rem',
+    spaceMd: '0.75rem',
+    spaceLg: '1rem',
+    radiusSm: '0.35rem',
+    radiusMd: '0.5rem',
+    radiusLg: '0.8rem'
   }),
   SECTION_NAMES: Object.freeze({
     // Ключи docs / attendance / gear не менять: это ключи вкладок в коде.
@@ -239,7 +260,7 @@ const EDIT_CONFIG = Object.freeze({
    - suggestions — только для SUGGEST_TEXT: sourceSheet — лист-источник,
      sourceHeader — его точный заголовок, startRow — первая строка данных
      (обычно 2, если первая строка содержит заголовки).
-   - onSave: 'UPDATE_SCHOOL_DATE' — после сохранения школы выполняет
+   - onSave: CONFIG.ACTIONS.updateSchoolDate — после сохранения школы выполняет
      встроенное действие обновления даты школы. Не указывайте другое значение:
      других действий в коде нет.
 
@@ -253,7 +274,7 @@ const EDIT_CONFIG = Object.freeze({
     'Месяц рождения (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, description: 'Произвольное текстовое значение.', example: 'Текст' },
     'Год набора': { editable: true, rule: 'YEAR', required: false, isIdentityField: false, description: 'Год в динамическом диапазоне 1950 — текущий год + 1.', example: '2024' },
     'Пол (С)': { editable: true, rule: 'TEXT', required: false, isIdentityField: false, description: 'Произвольное текстовое значение.', example: 'Текст' },
-    'Школа': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false, onSave: 'UPDATE_SCHOOL_DATE', description: 'Произвольный текст с подсказками.', example: 'Значение из списка', suggestions: { sourceSheet: 'Списки данных', sourceHeader: 'Школы', startRow: 2 } },
+    'Школа': { editable: true, rule: 'SUGGEST_TEXT', required: false, isIdentityField: false, onSave: CONFIG.ACTIONS.updateSchoolDate, description: 'Произвольный текст с подсказками.', example: 'Значение из списка', suggestions: { sourceSheet: 'Списки данных', sourceHeader: 'Школы', startRow: 2 } },
     'Класс / курс': { editable: true, rule: 'CLASS_COURSE', required: false, isIdentityField: false, description: '0-11 или I-VI.', example: '7' },
     'Литера класса (буква)': { editable: true, rule: 'RU_UPPER_LETTER', required: false, isIdentityField: false, description: 'Одна заглавная русская буква.', example: 'А' },
     'Директор школы: Фамилия Имя Отчество': { editable: true, rule: 'FULL_NAME_RU', required: false, isIdentityField: false, description: 'Фамилия, имя и отчество.', example: 'Иванов Иван Иванович' },
@@ -389,6 +410,8 @@ const CLIENT_CONFIG = Object.freeze({
   // Заголовки полей авторизации, доступные браузеру для обновления формы после сохранения.
   // Не меняйте отдельно от CONFIG.AUTH: значения должны совпадать.
   authFields: Object.freeze({ login: CONFIG.AUTH.loginHeader, password: CONFIG.AUTH.passwordHeader, snils: CONFIG.AUTH.snilsHeader }),
+  // Короткие UI-подписи, используемые из JavaScript.
+  labels: Object.freeze({ noGroup: CONFIG.TRAINING.noGroupLabel }),
   ui: Object.freeze({
     // Сколько тренировок показывать первоначально; целое число не меньше 1.
     initialTrainingVisibleCount: 5,

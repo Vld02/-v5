@@ -811,7 +811,7 @@ function buildFioGroups(fioNames, fioGroupMap) {
 
   fioNames.forEach(name => {
     const normalized = normalizeTrainingName(name);
-    const group = fioGroupMap[normalized] || 'Без группы';
+    const group = fioGroupMap[normalized] || CONFIG.TRAINING.noGroupLabel;
     if (!groups[group]) {
       groups[group] = [];
       order.push(group);
@@ -1081,7 +1081,7 @@ function setValueWithSiteEditNote_(cell, newValue, historyTimestamp, options = {
 }
 
 function runFieldOnSaveAction_(fieldConfig, sheet, header, rowIndex, historyTimestamp) {
-  if (fieldConfig.onSave !== 'UPDATE_SCHOOL_DATE') return false;
+  if (fieldConfig.onSave !== CONFIG.ACTIONS.updateSchoolDate) return false;
   const schoolUpdatedCol = header.indexOf(CONFIG.FIELDS.schoolInfoUpdatedHeader);
   if (schoolUpdatedCol === -1) return false;
   const timestamp = historyTimestamp;
