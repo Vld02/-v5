@@ -878,7 +878,7 @@
     return editConfigPromise;
   }
 
-  let currentDocsRow = { header: [], row: [], serverRow: [], colors: [], fileStates: [], draftValues: {}, draftKey: '' };
+  let currentDocsRow = { header: [], serverRow: [], colors: [], fileStates: [], draftValues: {}, draftKey: '' };
   let documentDraftSaveTimer = null;
 
   loadEditConfig().catch(() => {});
@@ -1606,13 +1606,10 @@
     const draftKey = getDocumentDraftKey();
     const savedDraft = readDocumentDrafts()[draftKey];
     const draftValues = savedDraft && savedDraft.values && typeof savedDraft.values === 'object' ? savedDraft.values : {};
-    const row = serverRow.map((value, index) => {
-      const columnName = header[index];
-      return Object.hasOwn(draftValues, columnName) ? draftValues[columnName] : value;
-    });
+    // В режиме просмотра источником значений служит только таблица. Черновик
+    // хранится отдельно и подставляется лишь после нажатия «Редактировать».
     currentDocsRow = {
       header: [...header],
-      row: [...row],
       serverRow: [...serverRow],
       colors: [...colors],
       fileStates: [...(response.fileStates || [])],
@@ -1639,7 +1636,7 @@
 
     sections.forEach(section => {
       const contentId = `document-section-${section.id}`;
-      const isOpen = section.columns.some(index => String(row[index] ?? '').trim() !== '');
+      const isOpen = section.columns.some(index => String(serverRow[index] ?? '').trim() !== '');
       html += `<section class="document-section${isOpen ? ' open' : ''}"><button type="button" class="document-section-header" aria-expanded="${isOpen}" aria-controls="${contentId}">${escapeHtml(section.title)}</button><div id="${contentId}" class="document-section-content">`;
 
       section.columns.forEach(i => {
@@ -1648,7 +1645,7 @@
         const style = bg ? `background:${bg};` : '';
         const rule = getFieldEditRule(header[i]);
         const btnClass = rule.editable ? '' : 'non-editable';
-        html += `<div class="item"><div class="item-title"><span class="item-title-text">${escapeHtml(cleanedTitle)}</span></div><div class="item-value" style="${style}" data-col-index="${i}">${renderCellDisplayMarkup(i, row[i] ?? '', rule.editable, btnClass, rule)}</div></div>`;
+        html += `<div class="item"><div class="item-title"><span class="item-title-text">${escapeHtml(cleanedTitle)}</span></div><div class="item-value" style="${style}" data-col-index="${i}">${renderCellDisplayMarkup(i, serverRow[i] ?? '', rule.editable, btnClass, rule)}</div></div>`;
       });
       html += '</div></section>';
     });
@@ -1818,7 +1815,7 @@
             form.remove();
             if (currentDocsRow.fileStates) currentDocsRow.fileStates[colIndex] = (response && response.fileState) || { hasFile: true };
             const cell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
-            if (cell) renderCellDisplay(cell, colIndex, currentDocsRow.row[colIndex] ?? '');
+            if (cell) renderCellDisplay(cell, colIndex, currentDocsRow.serverRow[colIndex] ?? '');
             showToast(`Файл «${(response && response.fileName) || 'документ'}» загружен.`);
           })
           .withFailureHandler(error => {
@@ -1878,9 +1875,14 @@
     }
     if (!rule.editable) return;
     if (mode === 'edit') {
-      const textNode = cell.querySelector('.cell-value-text');
-      const value = textNode ? textNode.textContent : '';
-      cell.dataset.originalValue = value;
+      const columnName = currentDocsRow.header[colIndex];
+      const serverValue = String(currentDocsRow.serverRow[colIndex] ?? '');
+      // Продолжаем незавершённое редактирование, но не используем черновик
+      // как значение карточки до входа в режим редактирования.
+      const value = Object.hasOwn(currentDocsRow.draftValues, columnName)
+        ? currentDocsRow.draftValues[columnName]
+        : serverValue;
+      cell.dataset.originalValue = serverValue;
       cell.innerHTML = `<div class="cell-edit-shell"><div class="cell-editor"><input class="cell-value-input" data-col-index="${colIndex}" value="${escapeHtmlAttr(value)}" /></div>${renderCellEditActions(colIndex)}</div>`;
       const input = cell.querySelector('input');
       const suggestConfig = rule.special === 'suggest' ? rule.suggestions : null;
@@ -1993,8 +1995,8 @@
       if (existing) existing.remove();
       delete cell.dataset.originalValue;
       setDocumentDraftValue(colIndex, draftValue);
-      currentDocsRow.row[colIndex] = draftValue;
-      renderCellDisplay(cell, colIndex, draftValue);
+      // После выхода из редактирования снова показываем значение из таблицы.
+      renderCellDisplay(cell, colIndex, currentDocsRow.serverRow[colIndex] ?? '');
       return;
     }
     const input = cell.querySelector('input');
@@ -2010,7 +2012,6 @@
     btn.setAttribute('aria-label', 'Сохранение');
     google.script.run
       .withSuccessHandler(response => {
-        currentDocsRow.row[colIndex] = saveValue;
         currentDocsRow.serverRow[colIndex] = saveValue;
         delete cell.dataset.originalValue;
         removeDocumentDraftValue(colIndex);
