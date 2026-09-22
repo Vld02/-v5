@@ -30,9 +30,14 @@ const DOCUMENTS_CONFIG = Object.freeze({
       attachmentObjectUrlLifetimeMs: 60 * 1000
     }),
     documentSections: Object.freeze({
-      parentSuffixes: Object.freeze(['П', 'М', 'Д']),
-      parentFields: Object.freeze(['Фамилия Имя Отчество', 'Телефон +7', 'Электронная почта', 'Дата рождения', 'Паспорт: Серия, номер', 'Паспорт: Кем выдан', 'Паспорт: Когда выдан', 'Паспорт: Прописка', 'Паспорт: Код подразделения', 'Марка автомобиля', 'гос. номер автомобиля']),
-      starts: Object.freeze({ 'Фамилия Имя Отчество (С)': 'Спортсмен', 'Фамилия Имя Отчество (П)': 'Отец', 'Фамилия Имя Отчество (М)': 'Мать', 'Фамилия Имя Отчество (Д)': 'Другой законный представитель' })
+      // Метки в конце заголовков таблицы определяют группу поля.
+      // title — название раздела, отображаемое пользователю.
+      groups: Object.freeze({
+        '(С)': Object.freeze({ id: 'athlete', title: 'Спортсмен' }),
+        '(П)': Object.freeze({ id: 'father', title: 'Отец' }),
+        '(М)': Object.freeze({ id: 'mother', title: 'Мать' }),
+        '(Д)': Object.freeze({ id: 'otherGuardian', title: 'Другой законный представитель' })
+      })
     })
   })
 });
@@ -70,7 +75,7 @@ const EDIT_CONFIG = Object.freeze({
     // YEAR: Ровно четыре цифры в настроенном диапазоне года набора.
     YEAR: { title: 'Год', placeholder: '2024', regex: '^\\d{4}$', special: 'year', min: 1950, maxOffset: 1 },
     // CLASS_COURSE: Арабское число 0–11 или римское обозначение I, II, III, IV, V, VI.
-    CLASS_COURSE: { title: 'Класс / курс', placeholder: '7', regex: '^(?:[0-9]|1[01]|I|II|III|IV|V|VI)$', maxLength: 3, special: 'classCourse' },
+    CLASS_COURSE: { title: 'Класс / курс', placeholder: '7', regex: '^(?:[0-9]|1[01]|I|II|III|IV|V|VI)$', maxLength: 2, special: 'classCourse' },
     // RU_UPPER_LETTER: Одна заглавная русская буква, включая Ё.
     RU_UPPER_LETTER: { title: 'Русская заглавная буква', placeholder: 'А', regex: '^[А-ЯЁ]$', special: 'singleRuUpper' },
     // PHONE_RU: Только формат +7 999 123-45-67; пробелы и дефисы обязательны.
