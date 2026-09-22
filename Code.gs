@@ -696,28 +696,43 @@ function findNames(inputs) {
 }
 
 /**
- * Загружает полные ФИО из первого столбца листа результатов.
+ * Возвращает ключ кэша ФИО с учётом настроенного столбца.
+ * @returns {string}
+ */
+function getFullNamesCacheKey_() {
+  return `${TRAINING_CONFIG.NAMES_CACHE_KEY}:${TRAINING_CONFIG.athleteNameHeader}`;
+}
+
+/**
+ * Загружает полные ФИО из настроенного столбца листа результатов.
  * Для ускорения используется краткоживущий кэш ScriptCache.
  * @returns {Array<{original:string,last:string,first:string,middle:string}>}
  */
 function loadFullNames() {
   const cache = CacheService.getScriptCache();
-  const cached = cache.get(TRAINING_CONFIG.NAMES_CACHE_KEY);
+  const cacheKey = getFullNamesCacheKey_();
+  const cached = cache.get(cacheKey);
   if (cached) {
     return JSON.parse(cached);
   }
 
   const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
-  if (!sheet) return [];
+  if (!sheet || sheet.getLastRow() < 2 || sheet.getLastColumn() < 1) return [];
+
+  const header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
+  const fioCol = header.indexOf(TRAINING_CONFIG.athleteNameHeader);
+  if (fioCol === -1) {
+    throw new Error(`В листе «${CONFIG.RESULT_SHEET_NAME}» нет столбца ФИО «${TRAINING_CONFIG.athleteNameHeader}».`);
+  }
 
   const values = sheet
-    .getRange(1, 1, sheet.getLastRow(), 1)
+    .getRange(2, fioCol + 1, sheet.getLastRow() - 1, 1)
     .getValues()
     .flat()
     .filter(String)
     .map(normalizeFullName);
 
-  cache.put(TRAINING_CONFIG.NAMES_CACHE_KEY, JSON.stringify(values), TRAINING_CONFIG.NAMES_CACHE_TTL_SECONDS);
+  cache.put(cacheKey, JSON.stringify(values), TRAINING_CONFIG.NAMES_CACHE_TTL_SECONDS);
   return values;
 }
 
@@ -872,7 +887,7 @@ function buildFioGroups(fioNames, fioGroupMap) {
 
   fioNames.forEach(name => {
     const normalized = normalizeTrainingName(name);
-    const group = fioGroupMap[normalized] || 'Без группы';
+    const group = fioGroupMap[normalized] || TRAINING_CONFIG.noGroupLabel;
     if (!groups[group]) {
       groups[group] = [];
       order.push(group);
