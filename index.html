@@ -689,9 +689,9 @@
 <body>
 <header class="topbar">
   <nav class="topbar-tabs" aria-label="Основные вкладки">
-    <button class="topbar-tab active" type="button" data-tab="docs" aria-current="page">ДБВv5 Документы</button>
-    <button class="topbar-tab" type="button" data-tab="attendance">ДБВv5 Посещаемость</button>
-    <button class="topbar-tab" type="button" data-tab="gear">ДБВv5 Снаряжение</button>
+    <button class="topbar-tab active" type="button" data-tab="docs" aria-current="page"><?= APP_CONFIG.SECTION_NAMES.docs ?></button>
+    <button class="topbar-tab" type="button" data-tab="attendance"><?= APP_CONFIG.SECTION_NAMES.attendance ?></button>
+    <button class="topbar-tab" type="button" data-tab="gear"><?= APP_CONFIG.SECTION_NAMES.gear ?></button>
   </nav>
 </header>
 
@@ -699,7 +699,7 @@
 
 <div class="page">
   <section id="tab-docs" class="tab-panel active">
-    <h2 class="section-heading">ДБВv5 Документы</h2>
+    <h2 class="section-heading"><?= APP_CONFIG.SECTION_NAMES.docs ?></h2>
 
     <label>ФИО занимающегося:</label>
     <input id="login" type="text" placeholder="Фамилия Имя Отчество" />
@@ -723,7 +723,7 @@
   </section>
 
   <section id="tab-attendance" class="tab-panel">
-    <h2 class="section-heading">ДБВv5 Посещаемость</h2>
+    <h2 class="section-heading"><?= APP_CONFIG.SECTION_NAMES.attendance ?></h2>
     <div class="controls" aria-label="Инструменты таблицы посещаемости">
       <div class="attendance-toolbar-group">
         <button type="button" class="attendance-icon-btn" title="Вставить" aria-label="Вставить" onclick="pasteAttendanceToLastCell()">📋</button>
@@ -783,7 +783,7 @@
   </section>
 
   <section id="tab-gear" class="tab-panel">
-    <h2 class="section-heading">ДБВv5 Снаряжение</h2>
+    <h2 class="section-heading"><?= APP_CONFIG.SECTION_NAMES.gear ?></h2>
     <div class="placeholder">Раздел в разработке.</div>
   </section>
 </div>
