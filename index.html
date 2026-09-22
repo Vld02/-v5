@@ -813,6 +813,7 @@
   };
   const AUTH_STORAGE_KEYS = CLIENT_CONFIG.storageKeys;
   const UI_TIMINGS = CLIENT_CONFIG.timings;
+  const NO_GROUP_LABEL = <?!= JSON.stringify(TRAINING_CONFIG.noGroupLabel) ?>;
   const ACTIVE_TAB_STORAGE_KEY = AUTH_STORAGE_KEYS.activeTab;
   const ATTENDANCE_ROWS_STORAGE_KEY = CLIENT_CONFIG.storageKeys.attendanceRows;
   const ATTENDANCE_DRAFT_DELETE_AFTER_KEY = CLIENT_CONFIG.storageKeys.attendanceDraftDeleteAfter;
@@ -3146,7 +3147,7 @@
 
           const title = document.createElement('div');
           title.className = 'training-fio-group-title';
-          title.textContent = groupItem.group || 'Без группы';
+          title.textContent = groupItem.group || NO_GROUP_LABEL;
 
           col.appendChild(title);
 
