@@ -22,7 +22,7 @@ function getClientConfigScript() {
     },
     documentSections: DOCUMENTS_CONFIG.client.documentSections
   };
-  return `window.CLIENT_CONFIG = ${JSON.stringify(clientConfig).replace(/</g, '\u003c')};`;
+  return `window.CLIENT_CONFIG = ${JSON.stringify(clientConfig).replace(/</g, '\\u003c')};`;
 }
 
 /*************************************************
