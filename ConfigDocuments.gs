@@ -30,9 +30,14 @@ const DOCUMENTS_CONFIG = Object.freeze({
       attachmentObjectUrlLifetimeMs: 60 * 1000
     }),
     documentSections: Object.freeze({
-      parentSuffixes: Object.freeze(['П', 'М', 'Д']),
-      parentFields: Object.freeze(['Фамилия Имя Отчество', 'Телефон +7', 'Электронная почта', 'Дата рождения', 'Паспорт: Серия, номер', 'Паспорт: Кем выдан', 'Паспорт: Когда выдан', 'Паспорт: Прописка', 'Паспорт: Код подразделения', 'Марка автомобиля', 'гос. номер автомобиля']),
-      starts: Object.freeze({ 'Фамилия Имя Отчество (С)': 'Спортсмен', 'Фамилия Имя Отчество (П)': 'Отец', 'Фамилия Имя Отчество (М)': 'Мать', 'Фамилия Имя Отчество (Д)': 'Другой законный представитель' })
+      // Метки в конце заголовков таблицы определяют группу поля.
+      // title — название раздела, отображаемое пользователю.
+      groups: Object.freeze({
+        '(С)': Object.freeze({ id: 'athlete', title: 'Спортсмен' }),
+        '(П)': Object.freeze({ id: 'father', title: 'Отец' }),
+        '(М)': Object.freeze({ id: 'mother', title: 'Мать' }),
+        '(Д)': Object.freeze({ id: 'otherGuardian', title: 'Другой законный представитель' })
+      })
     })
   })
 });
