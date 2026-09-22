@@ -3,17 +3,17 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<meta name="theme-color" content="#179bcf" />
+<meta name="theme-color" content="<?= APP_CONFIG.THEME_COLOR ?>" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <!-- Иконки приложения подключаются по публичным ссылкам (cache-busting для /exec) -->
-<link rel="icon" type="image/png" sizes="32x32" href="https://raw.githubusercontent.com/Vld02/-v5/refs/heads/main/32.png" />
-<link rel="icon" type="image/png" sizes="72x72" href="https://raw.githubusercontent.com/Vld02/-v5/refs/heads/main/72.png" />
-<link rel="icon" type="image/png" sizes="192x192" href="https://raw.githubusercontent.com/Vld02/-v5/refs/heads/main/192.png" />
-<link rel="icon" type="image/png" sizes="512x512" href="https://raw.githubusercontent.com/Vld02/-v5/refs/heads/main/512.png" />
-<link rel="apple-touch-icon" sizes="180x180" href="https://raw.githubusercontent.com/Vld02/-v5/refs/heads/main/192.png" />
-<link rel="apple-touch-icon" sizes="512x512" href="https://raw.githubusercontent.com/Vld02/-v5/refs/heads/main/512.png" />
-<title>ДБВv5</title>
+<link rel="icon" type="image/png" sizes="32x32" href="<?= APP_CONFIG.ICON_URLS.icon32 ?>" />
+<link rel="icon" type="image/png" sizes="72x72" href="<?= APP_CONFIG.ICON_URLS.icon72 ?>" />
+<link rel="icon" type="image/png" sizes="192x192" href="<?= APP_CONFIG.ICON_URLS.icon192 ?>" />
+<link rel="icon" type="image/png" sizes="512x512" href="<?= APP_CONFIG.ICON_URLS.icon512 ?>" />
+<link rel="apple-touch-icon" sizes="180x180" href="<?= APP_CONFIG.ICON_URLS.icon192 ?>" />
+<link rel="apple-touch-icon" sizes="512x512" href="<?= APP_CONFIG.ICON_URLS.icon512 ?>" />
+<title><?= APP_CONFIG.APP_TITLE ?></title>
 <style>
   :root {
     --card-bg: rgba(255, 255, 255, 0.92);
@@ -773,11 +773,11 @@
     <div id="trainingList" class="training-list"></div>
     </div>
     <div id="trainingTableView" class="training-content-view training-embedded-sheet hidden">
-      <iframe src="https://docs.google.com/spreadsheets/d/e/2PACX-1vQAnNOAevcu7f79FGp8ol6XHXki2BUa_zXnujvbk-g3EzvQBXkVqFuK-SKMTfDHhMlRikuu220nf77D/pubhtml?gid=866330013&amp;single=true&amp;widget=true&amp;headers=false" loading="lazy" title="Таблица посещаемости"></iframe>
+      <iframe src="<?= CLIENT_CONFIG.urls.attendanceTable ?>" loading="lazy" title="<?= CLIENT_CONFIG.ui.attendanceIframeTitle ?>"></iframe>
     </div>
     <label id="trainingVisibleCountWrap" class="training-visible-count" for="trainingVisibleCountInput">
       <span>Показать тренировок</span>
-      <input id="trainingVisibleCountInput" type="number" min="1" step="1" value="5" />
+      <input id="trainingVisibleCountInput" type="number" min="1" step="1" value="<?= CLIENT_CONFIG.ui.initialTrainingVisibleCount ?>" />
     </label>
     <div id="trainingFilterMenu" class="training-filter-menu"></div>
   </section>
@@ -789,6 +789,8 @@
 </div>
 
 <script>
+  <?!= getClientConfigScript(); ?>
+
   /*************************************************
    * ОБЩИЕ DOM-ССЫЛКИ И НАВИГАЦИЯ ПО ВКЛАДКАМ
    *************************************************/
@@ -809,14 +811,16 @@
     attendance: document.getElementById('tab-attendance'),
     gear: document.getElementById('tab-gear')
   };
-  const ACTIVE_TAB_STORAGE_KEY = 'activeTab';
-  const ATTENDANCE_ROWS_STORAGE_KEY = 'attendanceRowsDraftV1';
-  const ATTENDANCE_DRAFT_DELETE_AFTER_KEY = 'attendanceDraftDeleteAfterAtV1';
-  const ATTENDANCE_DRAFT_TTL_MS = 30 * 60 * 1000;
-  const LAST_SILENT_SYNC_KEY = 'lastSilentSyncAt';
-  const SILENT_SYNC_INTERVAL_MS = 15 * 60 * 1000;
-  const TRAINING_HISTORY_STORAGE_KEY = 'trainingHistoryItemsV1';
-  const TRAINING_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1K1TtjIL2retzFoXBlQaePKbeKIEkMZZedZX-Ans4VjY/edit?usp=sharing';
+  const AUTH_STORAGE_KEYS = CLIENT_CONFIG.storageKeys;
+  const UI_TIMINGS = CLIENT_CONFIG.timings;
+  const ACTIVE_TAB_STORAGE_KEY = AUTH_STORAGE_KEYS.activeTab;
+  const ATTENDANCE_ROWS_STORAGE_KEY = CLIENT_CONFIG.storageKeys.attendanceRows;
+  const ATTENDANCE_DRAFT_DELETE_AFTER_KEY = CLIENT_CONFIG.storageKeys.attendanceDraftDeleteAfter;
+  const ATTENDANCE_DRAFT_TTL_MS = CLIENT_CONFIG.timings.attendanceDraftTtlMs;
+  const LAST_SILENT_SYNC_KEY = CLIENT_CONFIG.storageKeys.lastSilentSync;
+  const SILENT_SYNC_INTERVAL_MS = CLIENT_CONFIG.timings.silentSyncIntervalMs;
+  const TRAINING_HISTORY_STORAGE_KEY = CLIENT_CONFIG.storageKeys.trainingHistory;
+  const TRAINING_SHEET_URL = CLIENT_CONFIG.urls.trainingSheet;
 
   /* ============================================================
    КОНФИГУРАЦИЯ РЕДАКТИРОВАНИЯ НА КЛИЕНТЕ
@@ -952,12 +956,12 @@
   }
 
   function getMaxEnrollmentYear() {
-    return new Date().getFullYear() + 1;
+    return new Date().getFullYear() + CLIENT_CONFIG.validation.enrollmentYearOffset;
   }
 
   function isEnrollmentYearInRange(value) {
     const year = Number(value);
-    return Number.isInteger(year) && year >= 1950 && year <= getMaxEnrollmentYear();
+    return Number.isInteger(year) && year >= CLIENT_CONFIG.validation.enrollmentYearMin && year <= getMaxEnrollmentYear();
   }
 
   function isValidRuDate(value) {
@@ -989,7 +993,7 @@
     toast.className = `toast ${type === 'error' ? 'error' : type === 'loading' ? 'loading' : 'success'}`;
     toast.textContent = message;
     dom.toastContainer.appendChild(toast);
-    if (autoHide) setTimeout(() => toast.remove(), 3500);
+    if (autoHide) setTimeout(() => toast.remove(), CLIENT_CONFIG.timings.toastAutoHideMs);
     return toast;
   }
 
@@ -998,11 +1002,11 @@
   }
 
   function updateCurrentIdentityAfterSave(columnName, value) {
-    if (columnName === 'Фамилия Имя Отчество (С)') {
+    if (columnName === CLIENT_CONFIG.authFields.login) {
       dom.login.value = value;
-    } else if (columnName === 'Дата рождения (С)') {
+    } else if (columnName === CLIENT_CONFIG.authFields.password) {
       dom.password.value = value;
-    } else if (columnName === 'Снилс: номер') {
+    } else if (columnName === CLIENT_CONFIG.authFields.snils) {
       dom.snils.value = formatSnilsInput(value);
     }
     saveAuthInputs(dom.login.value.trim(), dom.password.value.trim(), dom.snils.value.trim());
@@ -1072,7 +1076,7 @@
     authLoadingTimer = setInterval(() => {
       dots = (dots + 1) % 4;
       dom.loading.innerText = `${authLoadingBaseText}${'.'.repeat(dots)}`;
-    }, 450);
+    }, UI_TIMINGS.authLoadingAnimationMs);
   }
 
   function stopAuthLoading() {
@@ -1103,7 +1107,7 @@
     authState.login = login;
     authState.password = password;
 
-    const savedSnils = localStorage.getItem('savedSnils');
+    const savedSnils = localStorage.getItem(AUTH_STORAGE_KEYS.savedSnils);
     if (savedSnils && !dom.snils.value.trim()) {
       dom.snils.value = formatSnilsInput(savedSnils);
     }
@@ -1114,9 +1118,9 @@
   }
 
   function saveAuthInputs(loginVal, dateVal, snilsVal) {
-    localStorage.setItem('savedLogin', loginVal);
-    localStorage.setItem('savedDate', dateVal);
-    localStorage.setItem('savedSnils', snilsVal);
+    localStorage.setItem(AUTH_STORAGE_KEYS.savedLogin, loginVal);
+    localStorage.setItem(AUTH_STORAGE_KEYS.savedDate, dateVal);
+    localStorage.setItem(AUTH_STORAGE_KEYS.savedSnils, snilsVal);
   }
 
   function parseDateString(value) {
@@ -1336,7 +1340,7 @@
           return;
         }
 
-        localStorage.setItem('isLoggedIn', '1');
+        localStorage.setItem(AUTH_STORAGE_KEYS.isLoggedIn, '1');
         hideSnilsStep();
         showDocsResult(response);
       })
@@ -1380,10 +1384,10 @@
           return;
         }
 
-        localStorage.setItem('savedLogin', authState.login);
-        localStorage.setItem('savedDate', dom.password.value);
-        localStorage.setItem('savedSnils', snilsFormatted);
-        localStorage.setItem('isLoggedIn', '1');
+        localStorage.setItem(AUTH_STORAGE_KEYS.savedLogin, authState.login);
+        localStorage.setItem(AUTH_STORAGE_KEYS.savedDate, dom.password.value);
+        localStorage.setItem(AUTH_STORAGE_KEYS.savedSnils, snilsFormatted);
+        localStorage.setItem(AUTH_STORAGE_KEYS.isLoggedIn, '1');
         authState.awaitingSnils = false;
         authState.login = '';
         authState.password = '';
@@ -1395,7 +1399,7 @@
   }
 
   async function getClientInfo() {
-    const ip = await fetch('https://api.ipify.org?format=json')
+    const ip = await fetch(CLIENT_CONFIG.urls.ipLookup)
       .then(r => r.json())
       .then(j => j.ip)
       .catch(() => 'не определён');
@@ -1416,8 +1420,8 @@
   }
 
   function loadDataSilently() {
-    const loginVal = localStorage.getItem('savedLogin');
-    const dateRaw = localStorage.getItem('savedDate');
+    const loginVal = localStorage.getItem(AUTH_STORAGE_KEYS.savedLogin);
+    const dateRaw = localStorage.getItem(AUTH_STORAGE_KEYS.savedDate);
     if (!loginVal || !dateRaw) return;
 
     const passwordForServer = toServerDate(dateRaw);
@@ -1426,7 +1430,7 @@
   }
 
   function getSavedLoginForLog() {
-    return localStorage.getItem('savedLogin') || dom.login.value.trim() || 'неизвестно';
+    return localStorage.getItem(AUTH_STORAGE_KEYS.savedLogin) || dom.login.value.trim() || 'неизвестно';
   }
 
   function logLoginButtonClickClient() {
@@ -1456,9 +1460,9 @@
   }
 
   window.addEventListener('DOMContentLoaded', () => {
-    const savedLogin = localStorage.getItem('savedLogin');
-    const savedDate = localStorage.getItem('savedDate');
-    const savedSnils = localStorage.getItem('savedSnils');
+    const savedLogin = localStorage.getItem(AUTH_STORAGE_KEYS.savedLogin);
+    const savedDate = localStorage.getItem(AUTH_STORAGE_KEYS.savedDate);
+    const savedSnils = localStorage.getItem(AUTH_STORAGE_KEYS.savedSnils);
 
     if (savedLogin) dom.login.value = savedLogin;
     if (savedDate) dom.password.value = formatDateInput(savedDate);
@@ -1467,20 +1471,8 @@
     logInitialPageOpen();
   });
 
-  const PARENT_SECTION_SUFFIXES = Object.freeze(['П', 'М', 'Д']);
-  const PARENT_SECTION_FIELDS = Object.freeze([
-    'Фамилия Имя Отчество',
-    'Телефон +7',
-    'Электронная почта',
-    'Дата рождения',
-    'Паспорт: Серия, номер',
-    'Паспорт: Кем выдан',
-    'Паспорт: Когда выдан',
-    'Паспорт: Прописка',
-    'Паспорт: Код подразделения',
-    'Марка автомобиля',
-    'гос. номер автомобиля'
-  ]);
+  const PARENT_SECTION_SUFFIXES = CLIENT_CONFIG.documentSections.parentSuffixes;
+  const PARENT_SECTION_FIELDS = CLIENT_CONFIG.documentSections.parentFields;
 
   function hasParentSectionData(header, row, suffix) {
     return PARENT_SECTION_FIELDS.some(field => {
@@ -1513,12 +1505,7 @@
 
     let html = '';
 
-    const SECTION_STARTS = {
-      'Фамилия Имя Отчество (С)': 'Спортсмен',
-      'Фамилия Имя Отчество (П)': 'Отец',
-      'Фамилия Имя Отчество (М)': 'Мать',
-      'Фамилия Имя Отчество (Д)': 'Другой законный представитель'
-    };
+    const SECTION_STARTS = CLIENT_CONFIG.documentSections.starts;
 
     const sectionKeys = Object.keys(SECTION_STARTS);
     const sectionPositions = [];
@@ -1657,7 +1644,7 @@
           for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
           const objectUrl = URL.createObjectURL(new Blob([bytes], { type: file.mimeType || 'application/octet-stream' }));
           openedWindow.location.replace(objectUrl);
-          setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+          setTimeout(() => URL.revokeObjectURL(objectUrl), UI_TIMINGS.attachmentObjectUrlLifetimeMs);
         } catch (error) {
           openedWindow.close();
           showToast(`Ошибка: ${error.message || 'Не удалось открыть файл.'}`, 'error');
@@ -1880,7 +1867,7 @@
           saveBtn.click();
         }, 0);
       });
-      input.addEventListener('blur', () => setTimeout(dropSuggestionList, 120));
+      input.addEventListener('blur', () => setTimeout(dropSuggestionList, UI_TIMINGS.suggestionBlurDelayMs));
       validate();
       if (suggestConfig) {
         google.script.run
@@ -2050,7 +2037,7 @@
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
     loadEditConfig().catch(() => {});
-    if (localStorage.getItem('isLoggedIn') !== '1') return;
+    if (localStorage.getItem(AUTH_STORAGE_KEYS.isLoggedIn) !== '1') return;
     const now = Date.now();
     const lastSyncAt = Number(localStorage.getItem(LAST_SILENT_SYNC_KEY) || 0);
     if (now - lastSyncAt < SILENT_SYNC_INTERVAL_MS) return;
@@ -2383,7 +2370,7 @@
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
       latestMatchPromise = runMatch();
-    }, 400);
+    }, UI_TIMINGS.nameMatchDebounceMs);
   }
 
 
@@ -2402,7 +2389,7 @@
     if (attendanceNoticeTimer) clearTimeout(attendanceNoticeTimer);
     attendanceNoticeTimer = setTimeout(() => {
       notice.classList.remove('show');
-    }, 1800);
+    }, UI_TIMINGS.attendanceNoticeMs);
   }
 
   const trainingState = {
@@ -2417,7 +2404,7 @@
     opened: new Set(),
     filters: { timestamp: null, date: null, coach: null, place: null },
     activeFilterKey: '',
-    visibleCount: 5,
+    visibleCount: CLIENT_CONFIG.ui.initialTrainingVisibleCount,
     filterDrafts: {}
   };
   let collectActiveFilterDraft = null;
@@ -2465,7 +2452,7 @@
     renderTrainingActionButton();
 
     if (state === 'success') {
-      trainingState.syncStateTimer = setTimeout(() => setTrainingSyncState('idle'), 950);
+      trainingState.syncStateTimer = setTimeout(() => setTrainingSyncState('idle'), UI_TIMINGS.trainingSyncSuccessMs);
     }
   }
 
@@ -3415,7 +3402,7 @@
     logFillFormClickClient();
 
     const prefillValue = encodeURIComponent(values.join('\n'));
-    const url = 'https://docs.google.com/forms/d/e/1FAIpQLSdGwQQhPaY3wXjT90TX2daQx7U-mjnfkoL_7VZ9nJ8NUqbKtw/viewform?entry.286976530=' + prefillValue;
+    const url = `${CLIENT_CONFIG.urls.attendanceForm}=${prefillValue}`;
     window.open(url, '_blank');
   }
 </script>
