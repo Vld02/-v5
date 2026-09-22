@@ -1,3 +1,30 @@
+
+/**
+ * Собирает публичную конфигурацию из трёх Config-файлов для index.html.
+ * @returns {string}
+ */
+function getClientConfigScript() {
+  const clientConfig = {
+    storageKeys: Object.assign({}, GENERAL_CLIENT_CONFIG.storageKeys, TRAINING_CONFIG.client.storageKeys),
+    timings: Object.assign({}, GENERAL_CLIENT_CONFIG.timings, TRAINING_CONFIG.client.timings, DOCUMENTS_CONFIG.client.timings),
+    urls: Object.assign({}, GENERAL_CLIENT_CONFIG.urls, TRAINING_CONFIG.client.urls, {
+      trainingSheet: TRAINING_CONFIG.spreadsheetUrl
+    }),
+    authFields: {
+      login: CONFIG.AUTH.loginHeader,
+      password: CONFIG.AUTH.passwordHeader,
+      snils: CONFIG.AUTH.snilsHeader
+    },
+    ui: TRAINING_CONFIG.client.ui,
+    validation: {
+      enrollmentYearMin: EDIT_CONFIG.rules.YEAR.min,
+      enrollmentYearOffset: EDIT_CONFIG.rules.YEAR.maxOffset
+    },
+    documentSections: DOCUMENTS_CONFIG.client.documentSections
+  };
+  return `window.CLIENT_CONFIG = ${JSON.stringify(clientConfig).replace(/</g, '\u003c')};`;
+}
+
 /*************************************************
  * ИНФРАСТРУКТУРА: ДОСТУП К ТАБЛИЦАМ
  *************************************************/
