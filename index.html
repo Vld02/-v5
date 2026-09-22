@@ -884,7 +884,7 @@
     if (!rule || !rule.special) return value;
     if (rule.special === 'date') return formatDateInput(value);
     if (rule.special === 'year') return value.replace(/\D/g, '').slice(0, 4);
-    if (rule.special === 'classCourse') return value.toUpperCase().replace(/[^0-9IV]/g, '').slice(0, 2);
+    if (rule.special === 'classCourse') return value.toUpperCase().replace(/[^0-9IV]/g, '').slice(0, rule.maxLength);
     if (rule.special === 'singleRuUpper') {
       const onlyRu = value.toUpperCase().replace(/[^А-ЯЁ]/g, '');
       return onlyRu.slice(0, 1);
@@ -1813,6 +1813,7 @@
         if (editor) editor.appendChild(wrap);
       };
       if (rule.placeholder) input.placeholder = rule.placeholder;
+      if (Number.isInteger(rule.maxLength)) input.maxLength = rule.maxLength;
       if (rule.special === 'date') input.placeholder = 'ДД.ММ.ГГГГ';
       if (rule.special === 'date') input.addEventListener('blur', function() {
         const formatted = formatDateInput(input.value, { finalizeYear: true });
