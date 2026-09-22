@@ -12,6 +12,7 @@ const TechnicalConfig = Object.freeze({
     attendanceRows: 'attendanceRowsDraftV1',
     attendanceDraftDeleteAfter: 'attendanceDraftDeleteAfterAtV1',
     lastSilentSync: 'lastSilentSyncAt',
-    trainingHistory: 'trainingHistoryItemsV1'
+    trainingHistory: 'trainingHistoryItemsV1',
+    documentEditDrafts: 'documentEditDraftsV1'
   })
 });
