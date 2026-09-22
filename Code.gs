@@ -1221,10 +1221,8 @@ function updateResultCell(login, password, snils, columnName, value) {
 
 /**
  * Подставляет значения указанной строки в шаблон имени.
- * `headers` задаёт именно те части шаблона, которые являются заголовками, поэтому
- * совпадающий с заголовком текст (например, название FILE-поля) можно оставить
- * неизменяемой подписью в шаблоне.
- * @param {{template:string,headers:string[]}} namingConfig Конфигурация шаблона.
+ * Заголовки таблицы указываются в шаблоне маркерами `{Название столбца}`.
+ * @param {{template:string}} namingConfig Конфигурация шаблона.
  * @param {string[]} header Заголовки листа «Результат».
  * @param {Array<*>} row Значения строки пользователя.
  * @returns {string}
@@ -1234,9 +1232,11 @@ function renderAttachmentTemplate_(namingConfig, header, row) {
     throw new Error('Шаблон имени вложения не настроен.');
   }
 
-  let result = String(namingConfig.template);
-  const valueHeaders = Array.isArray(namingConfig.headers) ? namingConfig.headers : [];
-  valueHeaders.forEach(columnName => {
+  const result = String(namingConfig.template).replace(/\{([^{}]*)\}/g, (_, marker) => {
+    const columnName = String(marker).trim();
+    if (!columnName) {
+      throw new Error('В шаблоне имени указан пустой маркер столбца.');
+    }
     const columnIndex = header.indexOf(columnName);
     if (columnIndex === -1) {
       throw new Error(`В листе «${CONFIG.RESULT_SHEET_NAME}» нет столбца «${columnName}» из шаблона.`);
@@ -1245,8 +1245,7 @@ function renderAttachmentTemplate_(namingConfig, header, row) {
     if (!value) {
       throw new Error(`Нельзя сформировать имя: в столбце «${columnName}» нет значения.`);
     }
-    // split/join заменяет текст буквально, не интерпретируя спецсимволы RegExp.
-    result = result.split(columnName).join(value);
+    return value;
   });
 
   return sanitizeDriveName_(result);
