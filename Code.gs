@@ -1,11 +1,11 @@
 
 /**
- * Собирает публичную конфигурацию из трёх Config-файлов для index.html.
+ * Собирает публичную конфигурацию из Config-файлов для index.html.
  * @returns {string}
  */
 function getClientConfigScript() {
   const clientConfig = {
-    storageKeys: Object.assign({}, GENERAL_CLIENT_CONFIG.storageKeys, TRAINING_CONFIG.client.storageKeys),
+    storageKeys: Object.assign({}, GENERAL_CLIENT_CONFIG.storageKeys, TechnicalConfig.storageKeys),
     timings: Object.assign({}, GENERAL_CLIENT_CONFIG.timings, TRAINING_CONFIG.client.timings, DOCUMENTS_CONFIG.client.timings),
     urls: Object.assign({}, GENERAL_CLIENT_CONFIG.urls, TRAINING_CONFIG.client.urls, {
       trainingSheet: TRAINING_CONFIG.spreadsheetUrl
@@ -700,7 +700,7 @@ function findNames(inputs) {
  * @returns {string}
  */
 function getFullNamesCacheKey_() {
-  return `${TRAINING_CONFIG.NAMES_CACHE_KEY}:${TRAINING_CONFIG.athleteNameHeader}`;
+  return `${TechnicalConfig.NAMES_CACHE_KEY}:${TRAINING_CONFIG.athleteNameHeader}`;
 }
 
 /**
