@@ -1,124 +1,41 @@
 /*************************************************
- * ЕДИНЫЙ КОНФИГ ПРИЛОЖЕНИЯ
+ * ОБЩИЕ НАСТРОЙКИ САЙТА
  *
- * Меняйте рабочие параметры только в этом файле.
- *
- * БЫСТРАЯ ПАМЯТКА ПО ИЗМЕНЕНИЮ
- * 1. Изменяйте значение справа от двоеточия, а название слева НЕ меняйте:
- *    его использует программный код.
- * 2. Строки всегда заключайте в одинарные кавычки: 'Результат'. Числа
- *    пишите без кавычек: 300. true включает параметр, false выключает.
- * 3. После сохранения создайте новую версию и разверните web-app заново.
- * 4. Если изменили имя листа или заголовок столбца, сначала переименуйте
- *    его в Google Sheets, затем укажите точно такое же имя здесь.
- *
- * СОДЕРЖАНИЕ:
- *   WEBAPP_FAVICON_URL — иконка вкладки;
- *   CONFIG             — таблица, папка, даты, кэш, вложения;
- *   APP_CONFIG         — название приложения и подписи журнала;
- *   LOG_CONFIG         — состав и время объединения записей журнала;
- *   EDIT_CONFIG        — правила ввода и карта доступа к столбцам;
- *   CLIENT_CONFIG      — публичные настройки, которые получает браузер.
- *
- * ВНИМАНИЕ О БЕЗОПАСНОСТИ: всё из CLIENT_CONFIG посетитель может увидеть
- * в исходном коде страницы. Пароли, ключи API, токены и приватные ссылки
- * туда не добавляйте. Их нужно хранить в Script Properties.
- * Code.gs использует серверные значения, а CLIENT_CONFIG передаётся
- * в index.html при каждом открытии web-app.
+ * Меняйте значения в конфигурации, не меняя названия свойств.
  *************************************************/
 
-/*************************************************
- * КОНФИГУРАЦИЯ ПРИЛОЖЕНИЯ
- *************************************************/
-// Публичный HTTPS-адрес PNG или ICO. Пример: 'https://site.ru/icon.png'.
-// Пустая строка отключит отдельную иконку именно в обёртке Apps Script.
+// Ссылка на иконку сайта:
 const WEBAPP_FAVICON_URL = 'https://raw.githubusercontent.com/Vld02/-v5/refs/heads/main/512.ico';
 
-// Серверные параметры. Object.freeze защищает их от случайного изменения кодом.
+// Основные настройки сайта:
 const CONFIG = Object.freeze({
-  // ID находится между /d/ и /edit в URL таблицы Google Sheets. Вставьте только ID.
-  SPREADSHEET_ID: '1PITVXQ48g0hwtx4YSWB7OOy37zvujj9hhts-7eGR1aQ',
-  // Лист с персональными данными; значение — точное имя вкладки Sheets.
+  // Ссылка на основную таблицу Google Sheets:
+  SPREADSHEET_URL: 'https://docs.google.com/spreadsheets/d/1PITVXQ48g0hwtx4YSWB7OOy37zvujj9hhts-7eGR1aQ/edit',
+  // Название листа с персональными данными:
   RESULT_SHEET_NAME: 'Результат',
-  // Лист журнала; если его нет, приложение создаст его с этим именем.
+  // Название листа журнала входов на сайт:
   LOG_SHEET_NAME: 'Входы',
-  // Цвет заголовка разрешённого к показу столбца. Обычно '#ffff00' (жёлтый).
+  // Цвет показываемого столбца:
   YELLOW: '#ffff00',
-  // Часовой пояс Apps Script: например 'GMT+3', 'Europe/Moscow' или 'UTC'.
+  // Часовой пояс приложения:
   TIMEZONE: 'GMT+3',
-  // Формат дат Utilities.formatDate: 'dd.MM.yyyy', 'yyyy-MM-dd' и т. п.
+  // Формат даты:
   DATE_FORMAT: 'dd.MM.yyyy',
-  // Произвольный уникальный ключ кэша; измените, чтобы принудительно сбросить кэш ФИО.
-  NAMES_CACHE_KEY: 'dbv5_full_names_v1',
-  // Время жизни кэша в секундах: 60 = 1 минута, 300 = 5 минут, 3600 = 1 час.
-  NAMES_CACHE_TTL_SECONDS: 300,
-  // Границы допустимого года набора: текущий год + смещение.
-  ENROLLMENT_YEAR_MIN: 1950,
-  ENROLLMENT_YEAR_OFFSET: 1,
-  // Настройка входа. Значения — точные заголовки столбцов листа RESULT_SHEET_NAME.
-  // loginHeader — ФИО для входа, passwordHeader — дата рождения, snilsHeader — СНИЛС.
+  // Общая авторизация:
   AUTH: Object.freeze({
+    // Столбец с ФИО для входа:
     loginHeader: 'Фамилия Имя Отчество (С)',
+    // Столбец с датой рождения для входа:
     passwordHeader: 'Дата рождения (С)',
+    // Столбец со СНИЛС:
     snilsHeader: 'Снилс: номер'
-  }),
-  // Источник истории тренировок. responseFioStartColumn/endColumn — индексы с нуля:
-  // 12 = столбец M, 32 = AG. Из этого диапазона читаются выбранные ФИО формы.
-  TRAINING: Object.freeze({
-    spreadsheetId: '1K1TtjIL2retzFoXBlQaePKbeKIEkMZZedZX-Ans4VjY',
-    responseSheetName: 'ОтветыV5',
-    headers: Object.freeze({ timestamp: 'Отметка времени', date: 'Дата тренировки', coach: 'Тренер присутствовал:', place: 'Место проведения занятия' }),
-    responseFioStartColumn: 12,
-    responseFioEndColumn: 32,
-    athleteNameHeader: 'Фамилия Имя Отчество (С)',
-    athleteGroupHeader: 'Тренировочная группа',
-    noGroupLabel: 'Без группы'
-  }),
-  // Небольшие серверные интервалы/лимиты. lockWaitMs — ожидание записи в журнал;
-  // maxNameMatchErrors — допустимые опечатки в сокращённом ФИО; nameMatchOptionsLimit — число вариантов.
-  OPERATIONS: Object.freeze({ lockWaitMs: 1000, maxNameMatchErrors: 2, nameMatchOptionsLimit: 3 }),
-  // Служебные заголовки, используемые автоматическими действиями после сохранения.
-  FIELDS: Object.freeze({ schoolInfoUpdatedHeader: 'Дата обн. инф. о школе (С)' }),
-  // Корневая папка «Пользователи». Внутри неё создаётся папка для каждой строки.
-  // ID корневой папки Drive из URL .../folders/ID. Не URL и не название папки.
-  ATTACHMENTS_FOLDER_ID: '1AyjWNspWbBVswPdrSy0M-JEbvZBzsjq1',
-  // Шаблоны используют значения столбцов листа «Результат».
-  // template — строка имени. В ней указывайте заголовки точно как в headers,
-  // разделяя их текстом (например, 'ФИО - Дата'). headers — массив используемых
-  // заголовков. Добавьте/удалите оба одновременно. Ключ FILES — это точный
-  // заголовок FILE-столбца из EDIT_CONFIG.fields.
-  ATTACHMENT_NAMING: Object.freeze({
-    USER_FOLDER: Object.freeze({
-      template: 'Фамилия Имя Отчество (С) - Дата рождения (С) - Год набора',
-      headers: Object.freeze(['Фамилия Имя Отчество (С)', 'Дата рождения (С)', 'Год набора'])
-    }),
-    FILES: Object.freeze({
-      'Свидетельство: скан (С)': Object.freeze({ template: 'Свидетельство: скан (С) - Фамилия Имя Отчество (С)', headers: Object.freeze(['Фамилия Имя Отчество (С)']) }),
-      'Паспорт: скан (С)': Object.freeze({ template: 'Паспорт: скан (С) - Фамилия Имя Отчество (С)', headers: Object.freeze(['Фамилия Имя Отчество (С)']) }),
-      'Снилс: Скан': Object.freeze({ template: 'Снилс: Скан - Фамилия Имя Отчество (С)', headers: Object.freeze(['Фамилия Имя Отчество (С)']) }),
-      'Полис: Скан': Object.freeze({ template: 'Полис: Скан - Фамилия Имя Отчество (С)', headers: Object.freeze(['Фамилия Имя Отчество (С)']) }),
-      'Страховка: Скан': Object.freeze({ template: 'Страховка: Скан - Фамилия Имя Отчество (С)', headers: Object.freeze(['Фамилия Имя Отчество (С)']) }),
-      'Мед допуск: Скан': Object.freeze({ template: 'Мед допуск: Скан - Фамилия Имя Отчество (С)', headers: Object.freeze(['Фамилия Имя Отчество (С)']) }),
-      'Русада: Скан': Object.freeze({ template: 'Русада: Скан - Фамилия Имя Отчество (С)', headers: Object.freeze(['Фамилия Имя Отчество (С)']) }),
-      'Паспорт: Скан (П)': Object.freeze({ template: 'Паспорт: Скан (П) - Фамилия Имя Отчество (П)', headers: Object.freeze(['Фамилия Имя Отчество (П)']) }),
-      'Паспорт: Скан (М)': Object.freeze({ template: 'Паспорт: Скан (М) - Фамилия Имя Отчество (М)', headers: Object.freeze(['Фамилия Имя Отчество (М)']) }),
-      'Паспорт: Скан (Д)': Object.freeze({ template: 'Паспорт: Скан (Д) - Фамилия Имя Отчество (Д)', headers: Object.freeze(['Фамилия Имя Отчество (Д)']) })
-    })
   })
 });
 
-
-/**
- * Отображаемое название приложения и названия разделов в журнале.
- * APP_TITLE используется в заголовке вкладки и web-app. SECTION_NAMES
- * сопоставляет технический ключ вкладки с понятной записью в журнале.
- */
+// Настройки приложения:
 const APP_CONFIG = Object.freeze({
-  // Текст на вкладке браузера и в заголовке web-app. Любая короткая строка.
   APP_TITLE: 'ДБВv5',
-  // Цвет браузерной темы в #RRGGBB; используйте любой корректный CSS-цвет.
   THEME_COLOR: '#179bcf',
-  // Публичные изображения для вкладок и ярлыка на устройстве. Полные HTTPS-URL.
   ICON_URLS: Object.freeze({
     icon32: 'https://raw.githubusercontent.com/Vld02/-v5/refs/heads/main/32.png',
     icon72: 'https://raw.githubusercontent.com/Vld02/-v5/refs/heads/main/72.png',
@@ -126,36 +43,37 @@ const APP_CONFIG = Object.freeze({
     icon512: 'https://raw.githubusercontent.com/Vld02/-v5/refs/heads/main/512.png'
   }),
   SECTION_NAMES: Object.freeze({
-    // Ключи docs / attendance / gear не менять: это ключи вкладок в коде.
     docs: 'ДБВv5 Документы',
     attendance: 'ДБВv5 Посещаемость',
     gear: 'ДБВv5 Снаряжение'
   })
 });
 
-/**
- * Параметры журнала действий. LOG_COLUMNS определяет и порядок, и
- * названия колонок: при изменении существующий заголовок будет обновлён.
- * MAX_AGE_MINUTES — окно, в котором открытие страницы и вход объединяются
- * в одну многострочную запись.
- */
+// Журнал:
 const LOG_CONFIG = Object.freeze({
-  // Порядок обязателен: значения лога записываются в той же последовательности.
+  // Столбцы журнала:
   COLUMNS: Object.freeze([
-    'Дата/время входа',
-    'Логин',
-    'Пароль',
-    'СНИЛС',
-    'IP',
-    'Устройство',
-    'Браузер',
-    'Статус входа'
+    'Дата/время входа', 'Логин', 'Пароль', 'СНИЛС', 'IP', 'Устройство', 'Браузер', 'Статус входа'
   ]),
-  // Число минут: 0 — не объединять записи, 30 — стандартное окно, 60 — час.
-  MAX_AGE_MINUTES: 30
+  // Время объединения записей, минут:
+  MAX_AGE_MINUTES: 30,
+  // Ожидание записи журнала, миллисекунд:
+  lockWaitMs: 1000
 });
 const LOG_COLUMNS = LOG_CONFIG.COLUMNS;
 const LOG_MAX_AGE_MINUTES = LOG_CONFIG.MAX_AGE_MINUTES;
+
+// Общие настройки интерфейса браузера:
+const GENERAL_CLIENT_CONFIG = Object.freeze({
+  storageKeys: Object.freeze({
+    savedLogin: 'savedLogin', savedDate: 'savedDate', savedSnils: 'savedSnils',
+    isLoggedIn: 'isLoggedIn', activeTab: 'activeTab'
+  }),
+  timings: Object.freeze({
+    toastAutoHideMs: 3500, authLoadingAnimationMs: 450, suggestionBlurDelayMs: 120
+  }),
+  urls: Object.freeze({ ipLookup: 'https://api.ipify.org?format=json' })
+});
 
 /* ============================================================
    НАБОР ПРАВИЛ РЕДАКТИРОВАНИЯ — СЕРВЕРНЫЙ ИСТОЧНИК ПРОВЕРКИ
@@ -173,7 +91,7 @@ const EDIT_CONFIG = Object.freeze({
   // КАТАЛОГ ВАРИАНТОВ rule:
   // TEXT — любой текст; SUGGEST_TEXT — любой текст с подсказками из suggestions.
   // FULL_NAME_RU — три русских слова: «Иванов Иван Иванович».
-  // YEAR — 4 цифры в диапазоне CONFIG.ENROLLMENT_YEAR_MIN..текущий год + OFFSET.
+  // YEAR — 4 цифры в настроенном диапазоне года набора.
   // CLASS_COURSE — 0–11 либо римские I–VI; RU_UPPER_LETTER — одна А–Я/Ё.
   // PHONE_RU — строго «+7 999 123-45-67»; EMAIL — адрес с @ и доменом.
   // CERTIFICATE_RU — «IV-АБ № 123456»; DATE_RU — «ДД.ММ.ГГГГ» с реальной датой.
@@ -188,7 +106,7 @@ const EDIT_CONFIG = Object.freeze({
     // FULL_NAME_RU: Ровно три слова с русской заглавной буквы: фамилия, имя и отчество.
     FULL_NAME_RU: { title: 'ФИО', placeholder: 'Иванов Иван Иванович', regex: '^\\s*[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s*$', special: 'fullname' },
     // YEAR: Ровно четыре цифры в настроенном диапазоне года набора.
-    YEAR: { title: 'Год', placeholder: '2024', regex: '^\\d{4}$', special: 'year' },
+    YEAR: { title: 'Год', placeholder: '2024', regex: '^\\d{4}$', special: 'year', min: 1950, maxOffset: 1 },
     // CLASS_COURSE: Арабское число 0–11 или римское обозначение I, II, III, IV, V, VI.
     CLASS_COURSE: { title: 'Класс / курс', placeholder: '7', regex: '^(?:[0-9]|1[01]|I|II|III|IV|V|VI)$', special: 'classCourse' },
     // RU_UPPER_LETTER: Одна заглавная русская буква, включая Ё.
@@ -331,100 +249,27 @@ const EDIT_CONFIG = Object.freeze({
 });
 
 
-/**
- * Параметры браузера, которые разрешено менять без поиска по HTML.
- * Значения передаются посетителю, поэтому не добавляйте сюда секреты.
- *
- * storageKeys: ключи localStorage; изменяйте их только если намеренно
- * хотите начать новую локальную историю/черновик у пользователей.
- * attendanceFormUrl: URL Google Forms БЕЗ параметра entry — он добавляется
- * автоматически вместе со списком выбранных ФИО.
- */
-const CLIENT_CONFIG = Object.freeze({
-  // Ключи браузерного localStorage. Оставьте как есть, чтобы не потерять
-  // сохранённые у пользователей черновики. Новое уникальное имя начнёт чистое хранилище.
-  storageKeys: Object.freeze({
-    // Сохраняемые данные входа. Менять только для принудительного сброса устройств.
-    savedLogin: 'savedLogin',
-    savedDate: 'savedDate',
-    savedSnils: 'savedSnils',
-    isLoggedIn: 'isLoggedIn',
-    activeTab: 'activeTab',
-    attendanceRows: 'attendanceRowsDraftV1',
-    attendanceDraftDeleteAfter: 'attendanceDraftDeleteAfterAtV1',
-    lastSilentSync: 'lastSilentSyncAt',
-    trainingHistory: 'trainingHistoryItemsV1'
-  }),
-  // Все значения в миллисекундах: 1000 = 1 секунда, 60000 = 1 минута.
-  timings: Object.freeze({
-    // Сколько хранить черновик посещаемости после открытия формы.
-    attendanceDraftTtlMs: 30 * 60 * 1000,
-    // Минимальный интервал фоновой синхронизации авторизованного пользователя.
-    silentSyncIntervalMs: 15 * 60 * 1000,
-    // Через сколько скрывать обычное всплывающее сообщение; 0 не используйте.
-    toastAutoHideMs: 3500,
-    // Скорость анимации точек загрузки, задержка скрытия подсказок и уведомлений.
-    authLoadingAnimationMs: 450,
-    suggestionBlurDelayMs: 120,
-    nameMatchDebounceMs: 400,
-    attendanceNoticeMs: 1800,
-    trainingSyncSuccessMs: 950,
-    // Как долго открытая ссылка Blob на прикреплённый файл остаётся действительной.
-    attachmentObjectUrlLifetimeMs: 60 * 1000
-  }),
-  // Только публичные HTTPS-ссылки. Они видны каждому посетителю страницы.
-  urls: Object.freeze({
-    // Сервис, возвращающий JSON вида { ip: '...' }; можно заменить совместимым API.
-    ipLookup: 'https://api.ipify.org?format=json',
-    // Ссылка «открыть таблицу истории тренировок»; вставьте полный URL таблицы.
-    trainingSheet: 'https://docs.google.com/spreadsheets/d/1K1TtjIL2retzFoXBlQaePKbeKIEkMZZedZX-Ans4VjY/edit?usp=sharing',
-    // URL формы ДО значения: оставьте параметр entry.<ID> без знака '=' в конце.
-    // Например: .../viewform?entry.123456. Приложение добавит '=ФИО%0AФИО'.
-    // Опубликованная таблица для встроенного режима посещаемости.
-    attendanceTable: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQAnNOAevcu7f79FGp8ol6XHXki2BUa_zXnujvbk-g3EzvQBXkVqFuK-SKMTfDHhMlRikuu220nf77D/pubhtml?gid=866330013&single=true&widget=true&headers=false',
-    attendanceForm: 'https://docs.google.com/forms/d/e/1FAIpQLSdGwQQhPaY3wXjT90TX2daQx7U-mjnfkoL_7VZ9nJ8NUqbKtw/viewform?entry.286976530'
-  }),
-  // Эти значения дублируют серверную проверку только для удобства ввода.
-  // Реальная защита остаётся на сервере в CONFIG.
-  // Заголовки полей авторизации, доступные браузеру для обновления формы после сохранения.
-  // Не меняйте отдельно от CONFIG.AUTH: значения должны совпадать.
-  authFields: Object.freeze({ login: CONFIG.AUTH.loginHeader, password: CONFIG.AUTH.passwordHeader, snils: CONFIG.AUTH.snilsHeader }),
-  ui: Object.freeze({
-    // Сколько тренировок показывать первоначально; целое число не меньше 1.
-    initialTrainingVisibleCount: 5,
-    attendanceIframeTitle: 'Таблица посещаемости'
-  }),
-  validation: Object.freeze({
-    enrollmentYearMin: CONFIG.ENROLLMENT_YEAR_MIN,
-    enrollmentYearOffset: CONFIG.ENROLLMENT_YEAR_OFFSET
-  }),
-  // Структура карточки «Документы». Изменяйте только если одновременно
-  // меняете соответствующие заголовки в таблице.
-  documentSections: Object.freeze({
-    // Суффиксы законных представителей: П — отец, М — мать, Д — другой представитель.
-    parentSuffixes: Object.freeze(['П', 'М', 'Д']),
-    // Общие части заголовков, по которым определяется заполненность блока представителя.
-    parentFields: Object.freeze([
-      'Фамилия Имя Отчество', 'Телефон +7', 'Электронная почта', 'Дата рождения',
-      'Паспорт: Серия, номер', 'Паспорт: Кем выдан', 'Паспорт: Когда выдан',
-      'Паспорт: Прописка', 'Паспорт: Код подразделения', 'Марка автомобиля',
-      'гос. номер автомобиля'
-    ]),
-    // Заголовок первого поля раздела => видимое название этого раздела на карточке.
-    starts: Object.freeze({
-      'Фамилия Имя Отчество (С)': 'Спортсмен',
-      'Фамилия Имя Отчество (П)': 'Отец',
-      'Фамилия Имя Отчество (М)': 'Мать',
-      'Фамилия Имя Отчество (Д)': 'Другой законный представитель'
-    })
-  })
-});
 
 /**
- * Возвращает JSON-конфиг как безопасный JavaScript для шаблона index.html.
- * Экранирование < предотвращает закрытие тега script значением настройки.
+ * Собирает публичную конфигурацию для браузера из трёх конфигурационных файлов.
  * @returns {string}
  */
 function getClientConfigScript() {
-  return `window.CLIENT_CONFIG = ${JSON.stringify(CLIENT_CONFIG).replace(/</g, '\\u003c')};`;
+  const clientConfig = {
+    storageKeys: Object.assign({}, GENERAL_CLIENT_CONFIG.storageKeys, TRAINING_CLIENT_CONFIG.storageKeys),
+    timings: Object.assign({}, GENERAL_CLIENT_CONFIG.timings, TRAINING_CLIENT_CONFIG.timings, DOCUMENTS_CLIENT_CONFIG.timings),
+    urls: Object.assign({}, GENERAL_CLIENT_CONFIG.urls, TRAINING_CLIENT_CONFIG.urls),
+    authFields: {
+      login: CONFIG.AUTH.loginHeader,
+      password: CONFIG.AUTH.passwordHeader,
+      snils: CONFIG.AUTH.snilsHeader
+    },
+    ui: TRAINING_CLIENT_CONFIG.ui,
+    validation: {
+      enrollmentYearMin: EDIT_CONFIG.rules.YEAR.min,
+      enrollmentYearOffset: EDIT_CONFIG.rules.YEAR.maxOffset
+    },
+    documentSections: DOCUMENTS_CLIENT_CONFIG.documentSections
+  };
+  return `window.CLIENT_CONFIG = ${JSON.stringify(clientConfig).replace(/</g, '\\u003c')};`;
 }
