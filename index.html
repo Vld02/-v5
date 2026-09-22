@@ -130,6 +130,28 @@
   .item-title { font-weight: bold; width: 45%; padding: var(--space-sm); background:#f7f7f7; border-right:0.05rem solid #d8d8d8; display:flex; align-items:center; }
   .item-title-text { max-width:100%; box-sizing:border-box; }
   .item-value { width: 55%; padding: var(--space-sm); position: relative; min-height: 2.2rem; }
+  .document-section { margin-top:1rem; }
+  .document-section-header {
+    width:100%;
+    margin:0 0 0.5rem;
+    padding:0 0 0.35rem;
+    border:0;
+    border-bottom:0.1rem solid #000;
+    background:transparent;
+    color:inherit;
+    font:inherit;
+    font-weight:bold;
+    font-size:1.2rem;
+    text-align:center;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:0.45rem;
+    cursor:pointer;
+  }
+  .document-section-header:hover { background:#f7f7f7; }
+  .document-section-toggle { font-weight:normal; opacity:0.75; }
+  .document-section-content[hidden] { display:none; }
   .cell-edit-shell { position:relative; min-height:2rem; padding-right:calc(1.55rem + var(--space-xs)); }
   .cell-edit-actions { position:absolute; top:50%; right:calc(-1 * var(--space-sm)); width:1.55rem; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0; transform:translateY(-50%); }
   .cell-edit-btn { width:1.55rem; height:1.55rem; min-width:1.55rem; min-height:1.55rem; max-width:1.55rem; max-height:1.55rem; flex:0 0 1.55rem; padding:0; display:inline-flex; align-items:center; justify-content:center; overflow:visible; color:inherit; line-height:1; }
@@ -1500,7 +1522,8 @@
     });
 
     sections.forEach(section => {
-      html += `<div style="margin-top:1rem;margin-bottom:0.5rem;font-weight:bold;font-size:1.2rem;text-align:center;border-bottom:0.1rem solid #000;padding-bottom:0.35rem;">${escapeHtml(section.title)}</div>`;
+      const contentId = `document-section-${section.id}`;
+      html += `<section class="document-section"><button type="button" class="document-section-header" aria-expanded="true" aria-controls="${contentId}"><span class="document-section-toggle" aria-hidden="true">▼</span><span>${escapeHtml(section.title)}</span></button><div id="${contentId}" class="document-section-content">`;
 
       section.columns.forEach(i => {
         const cleanedTitle = header[i].slice(0, -section.marker.length).trim();
@@ -1510,11 +1533,29 @@
         const btnClass = rule.editable ? '' : 'non-editable';
         html += `<div class="item"><div class="item-title"><span class="item-title-text">${escapeHtml(cleanedTitle)}</span></div><div class="item-value" style="${style}" data-col-index="${i}">${renderCellDisplayMarkup(i, row[i] ?? '', rule.editable, btnClass, rule)}</div></div>`;
       });
+      html += '</div></section>';
     });
 
     document.getElementById('result').innerHTML = html;
     stopAuthLoading();
   }
+
+  document.addEventListener('click', function(e) {
+    const headerButton = e.target.closest('.document-section-header');
+    if (!headerButton) return;
+
+    const contentId = headerButton.getAttribute('aria-controls');
+    const content = contentId ? document.getElementById(contentId) : null;
+    if (!content) return;
+
+    const isExpanded = headerButton.getAttribute('aria-expanded') === 'true';
+    const nextExpanded = !isExpanded;
+    headerButton.setAttribute('aria-expanded', String(nextExpanded));
+    content.hidden = !nextExpanded;
+
+    const toggle = headerButton.querySelector('.document-section-toggle');
+    if (toggle) toggle.textContent = nextExpanded ? '▼' : '▶';
+  });
 
   function iconSvg(name) {
     const icons = {
