@@ -1,9 +1,49 @@
+
+/**
+ * Собирает публичную конфигурацию из трёх Config-файлов для index.html.
+ * @returns {string}
+ */
+function getClientConfigScript() {
+  const clientConfig = {
+    storageKeys: Object.assign({}, GENERAL_CLIENT_CONFIG.storageKeys, TRAINING_CONFIG.client.storageKeys),
+    timings: Object.assign({}, GENERAL_CLIENT_CONFIG.timings, TRAINING_CONFIG.client.timings, DOCUMENTS_CONFIG.client.timings),
+    urls: Object.assign({}, GENERAL_CLIENT_CONFIG.urls, TRAINING_CONFIG.client.urls, {
+      trainingSheet: TRAINING_CONFIG.spreadsheetUrl
+    }),
+    authFields: {
+      login: CONFIG.AUTH.loginHeader,
+      password: CONFIG.AUTH.passwordHeader,
+      snils: CONFIG.AUTH.snilsHeader
+    },
+    ui: TRAINING_CONFIG.client.ui,
+    validation: {
+      enrollmentYearMin: EDIT_CONFIG.rules.YEAR.min,
+      enrollmentYearOffset: EDIT_CONFIG.rules.YEAR.maxOffset
+    },
+    documentSections: DOCUMENTS_CONFIG.client.documentSections
+  };
+  return `window.CLIENT_CONFIG = ${JSON.stringify(clientConfig).replace(/</g, '\\u003c')};`;
+}
+
 /*************************************************
  * ИНФРАСТРУКТУРА: ДОСТУП К ТАБЛИЦАМ
  *************************************************/
 /** @returns {GoogleAppsScript.Spreadsheet.Spreadsheet} */
 function getSpreadsheet() {
-  return SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  return SpreadsheetApp.openById(extractGoogleResourceId_(CONFIG.SPREADSHEET_URL));
+}
+
+
+/**
+ * Извлекает идентификатор Google Sheets или Google Drive из полной ссылки.
+ * @param {string} url Ссылка на ресурс Google.
+ * @returns {string}
+ */
+function extractGoogleResourceId_(url) {
+  const value = String(url || '').trim();
+  const match = value.match(/(?:\/d\/|\/folders\/|[?&]id=)([-\w]{20,})/);
+  if (!match) throw new Error('Укажите корректную ссылку на ресурс Google.');
+  return match[1];
 }
 
 /**
@@ -103,7 +143,7 @@ function appendPlainLogRow(sheet, values) {
 }
 
 /**
- * Разбирает дату первой строки лога в формате dd.MM.yyyy HH:mm:ss.
+ * Разбирает дату первой строки журнала в настроенном формате отображения.
  * @param {*} value Значение ячейки с датой.
  * @returns {Date | null}
  */
@@ -111,11 +151,18 @@ function parseLogDateTime(value) {
   if (value instanceof Date) return value;
 
   const firstLine = splitLogLines(value)[0] || '';
-  const match = firstLine.match(/^(\d{2})\.(\d{2})\.(\d{4}) (\d{2}):(\d{2}):(\d{2})$/);
+  const format = `${CONFIG.DATE_FORMAT} HH:mm:ss`;
+  const tokens = [];
+  const pattern = format.replace(/yyyy|MM|dd|HH|mm|ss/g, token => {
+    tokens.push(token);
+    return token === 'yyyy' ? '(\\d{4})' : '(\\d{2})';
+  }).replace(/[.]/g, '\\.');
+  const match = firstLine.match(new RegExp(`^${pattern}$`));
   if (!match) return null;
 
-  const [, day, month, year, hours, minutes, seconds] = match;
-  return new Date(Number(year), Number(month) - 1, Number(day), Number(hours), Number(minutes), Number(seconds));
+  const values = {};
+  tokens.forEach((token, index) => { values[token] = Number(match[index + 1]); });
+  return new Date(values.yyyy, values.MM - 1, values.dd, values.HH, values.mm, values.ss);
 }
 
 /**
@@ -268,7 +315,7 @@ function logAccess({ login = '', password = '', snils = '', clientInfo = {}, sta
   const lock = LockService.getScriptLock();
   // Журнал не должен задерживать аутентификацию: при конкурентной записи
   // пропускаем только эту запись журнала, а не весь запрос пользователя.
-  if (!lock.tryLock(CONFIG.OPERATIONS.lockWaitMs)) return;
+  if (!lock.tryLock(LOG_CONFIG.lockWaitMs)) return;
   try {
     const sheet = getLogSheet();
     if (!sheet) return;
@@ -432,6 +479,20 @@ function formatCellValue(value) {
   return String(value ?? '');
 }
 
+
+/**
+ * Форматирует значение пароля для авторизации по правилу ввода DATE_RU.
+ * Формат отображения CONFIG.DATE_FORMAT не влияет на вход в приложение.
+ * @param {*} value Значение ячейки с датой рождения.
+ * @returns {string}
+ */
+function formatAuthPasswordValue_(value) {
+  if (value instanceof Date) {
+    return Utilities.formatDate(value, CONFIG.TIMEZONE, 'dd.MM.yyyy');
+  }
+  return String(value ?? '');
+}
+
 /**
  * Собирает данные строки только по разрешенным колонкам.
  * @param {Array<*>} row Значения строки.
@@ -515,7 +576,7 @@ function checkLogin(login, password, clientInfo = {}, snils = '') {
 
   for (let i = 0; i < rowCount; i++) {
     const rowLogin = normalizeLogin(logins[i][0]);
-    const rowPassword = formatCellValue(passwords[i][0]).trim();
+    const rowPassword = formatAuthPasswordValue_(passwords[i][0]).trim();
 
     if (rowLogin === normalizedLogin && rowPassword === password) {
       const rowSnils = snilsValues ? normalizeSnils(snilsValues[i][0]) : '';
@@ -592,7 +653,7 @@ function verifySnils(login, password, snils, clientInfo = {}) {
 
   for (let i = 0; i < rowCount; i++) {
     const rowLogin = normalizeLogin(logins[i][0]);
-    const rowPassword = formatCellValue(passwords[i][0]).trim();
+    const rowPassword = formatAuthPasswordValue_(passwords[i][0]).trim();
 
     if (rowLogin === normalizedLogin && rowPassword === password) {
       const rowSnils = normalizeSnils(snilsValues[i][0]);
@@ -641,7 +702,7 @@ function findNames(inputs) {
  */
 function loadFullNames() {
   const cache = CacheService.getScriptCache();
-  const cached = cache.get(CONFIG.NAMES_CACHE_KEY);
+  const cached = cache.get(TRAINING_CONFIG.NAMES_CACHE_KEY);
   if (cached) {
     return JSON.parse(cached);
   }
@@ -656,7 +717,7 @@ function loadFullNames() {
     .filter(String)
     .map(normalizeFullName);
 
-  cache.put(CONFIG.NAMES_CACHE_KEY, JSON.stringify(values), CONFIG.NAMES_CACHE_TTL_SECONDS);
+  cache.put(TRAINING_CONFIG.NAMES_CACHE_KEY, JSON.stringify(values), TRAINING_CONFIG.NAMES_CACHE_TTL_SECONDS);
   return values;
 }
 
@@ -670,7 +731,7 @@ function processInput(input, fullNames) {
   const short = normalizeShortName(input);
   if (!short) return null;
 
-  const maxErrors = CONFIG.OPERATIONS.maxNameMatchErrors;
+  const maxErrors = TRAINING_CONFIG.maxNameMatchErrors;
   const matches = fullNames
     .map(full => calculateMatch(short, full, maxErrors))
     .filter(Boolean)
@@ -681,7 +742,7 @@ function processInput(input, fullNames) {
   const exactLast = matches.filter(m => m.lastCost === 0);
   const selected = exactLast.length === 1 ? exactLast[0].original : matches[0].original;
 
-  const top = matches.slice(0, CONFIG.OPERATIONS.nameMatchOptionsLimit);
+  const top = matches.slice(0, TRAINING_CONFIG.nameMatchOptionsLimit);
   if (!top.some(m => m.original === selected)) {
     const selectedMatch = matches.find(m => m.original === selected);
     if (selectedMatch) {
@@ -707,24 +768,24 @@ function processInput(input, fullNames) {
  * @returns {Array<{timestamp:string,date:string,coach:string,place:string,fio:string,fioGroups:Array<{group:string,names:string[]}>}>}
  */
 function getTrainingHistory() {
-  const ss = SpreadsheetApp.openById(CONFIG.TRAINING.spreadsheetId);
-  const sheet = ss.getSheetByName(CONFIG.TRAINING.responseSheetName);
+  const ss = SpreadsheetApp.openById(extractGoogleResourceId_(TRAINING_CONFIG.spreadsheetUrl));
+  const sheet = ss.getSheetByName(TRAINING_CONFIG.responseSheetName);
   if (!sheet) return [];
 
   const values = sheet.getDataRange().getValues();
   if (values.length < 2) return [];
 
   const header = values[0].map(String);
-  const tsCol = header.indexOf(CONFIG.TRAINING.headers.timestamp);
-  const dateCol = header.indexOf(CONFIG.TRAINING.headers.date);
-  const coachCol = header.indexOf(CONFIG.TRAINING.headers.coach);
-  const placeCol = header.indexOf(CONFIG.TRAINING.headers.place);
+  const tsCol = header.indexOf(TRAINING_CONFIG.headers.timestamp);
+  const dateCol = header.indexOf(TRAINING_CONFIG.headers.date);
+  const coachCol = header.indexOf(TRAINING_CONFIG.headers.coach);
+  const placeCol = header.indexOf(TRAINING_CONFIG.headers.place);
 
   if (tsCol === -1 || dateCol === -1 || coachCol === -1 || placeCol === -1) return [];
 
   const fioGroupMap = loadTrainingGroupMap();
-  const startCol = CONFIG.TRAINING.responseFioStartColumn;
-  const endCol = CONFIG.TRAINING.responseFioEndColumn;
+  const startCol = TRAINING_CONFIG.responseFioStartColumn;
+  const endCol = TRAINING_CONFIG.responseFioEndColumn;
 
   const rows = values.slice(1)
     .filter(row => row.some(cell => String(cell || '').trim() !== ''))
@@ -760,8 +821,8 @@ function loadTrainingGroupMap() {
   if (values.length < 2) return {};
 
   const header = values[0].map(String);
-  const fioCol = header.indexOf(CONFIG.AUTH.loginHeader);
-  const groupCol = header.indexOf(CONFIG.TRAINING.athleteGroupHeader);
+  const fioCol = header.indexOf(TRAINING_CONFIG.athleteNameHeader);
+  const groupCol = header.indexOf(TRAINING_CONFIG.athleteGroupHeader);
   if (fioCol === -1 || groupCol === -1) return {};
 
   const map = {};
@@ -769,7 +830,7 @@ function loadTrainingGroupMap() {
     const fio = String(row[fioCol] || '').trim();
     const group = String(row[groupCol] || '').trim();
     if (!fio) return;
-    map[normalizeTrainingName(fio)] = group || CONFIG.TRAINING.noGroupLabel;
+    map[normalizeTrainingName(fio)] = group || TRAINING_CONFIG.noGroupLabel;
   });
 
   return map;
@@ -843,7 +904,7 @@ function normalizeTrainingName(value) {
 function formatTrainingCell(value) {
   if (value instanceof Date) {
     const hasTime = value.getHours() !== 0 || value.getMinutes() !== 0 || value.getSeconds() !== 0;
-    const pattern = hasTime ? 'dd.MM.yyyy HH:mm:ss' : CONFIG.DATE_FORMAT;
+    const pattern = hasTime ? `${CONFIG.DATE_FORMAT} HH:mm:ss` : CONFIG.DATE_FORMAT;
     return Utilities.formatDate(value, CONFIG.TIMEZONE, pattern);
   }
   return String(value ?? '');
@@ -987,12 +1048,12 @@ function getEditConfig() {
 }
 
 function getMaxEnrollmentYear_() {
-  return new Date().getFullYear() + CONFIG.ENROLLMENT_YEAR_OFFSET;
+  return new Date().getFullYear() + EDIT_CONFIG.rules.YEAR.maxOffset;
 }
 
 function isEnrollmentYearInRange_(value) {
   const year = Number(value);
-  return Number.isInteger(year) && year >= CONFIG.ENROLLMENT_YEAR_MIN && year <= getMaxEnrollmentYear_();
+  return Number.isInteger(year) && year >= EDIT_CONFIG.rules.YEAR.min && year <= getMaxEnrollmentYear_();
 }
 
 function isValidRuDate_(value) {
@@ -1033,7 +1094,7 @@ function validateEditableFieldValue_(columnName, value) {
   }
 
   if (rule.special === 'year' && !isEnrollmentYearInRange_(normalizedValue)) {
-    throw new Error(`Год должен быть в диапазоне 1950-${getMaxEnrollmentYear_()}.`);
+    throw new Error(`Год должен быть в диапазоне ${EDIT_CONFIG.rules.YEAR.min}-${getMaxEnrollmentYear_()}.`);
   }
 
   if (rule.special === 'date' && !isValidRuDate_(normalizedValue)) {
@@ -1082,7 +1143,7 @@ function setValueWithSiteEditNote_(cell, newValue, historyTimestamp, options = {
 
 function runFieldOnSaveAction_(fieldConfig, sheet, header, rowIndex, historyTimestamp) {
   if (fieldConfig.onSave !== 'UPDATE_SCHOOL_DATE') return false;
-  const schoolUpdatedCol = header.indexOf(CONFIG.FIELDS.schoolInfoUpdatedHeader);
+  const schoolUpdatedCol = header.indexOf(DOCUMENTS_CONFIG.schoolInfoUpdatedHeader);
   if (schoolUpdatedCol === -1) return false;
   const timestamp = historyTimestamp;
   const cell = sheet.getRange(rowIndex, schoolUpdatedCol + 1);
@@ -1121,7 +1182,7 @@ function updateResultCell(login, password, snils, columnName, value) {
 
   for (let i = 0; i < rowCount; i++) {
     const rowLogin = normalizeLogin(logins[i][0]);
-    const rowPassword = formatCellValue(passwords[i][0]).trim();
+    const rowPassword = formatAuthPasswordValue_(passwords[i][0]).trim();
     if (rowLogin !== normalizedLogin || rowPassword !== String(password || '').trim()) continue;
 
     const rowSnils = normalizeSnils(snilsValues[i][0]);
@@ -1264,20 +1325,19 @@ function uploadDocumentAttachment(formData) {
   const normalizedSnils = normalizeSnils(payload.snils);
 
   for (let i = 0; i < rowCount; i++) {
-    if (normalizeLogin(logins[i][0]) !== normalizedLogin || formatCellValue(passwords[i][0]).trim() !== password) continue;
+    if (normalizeLogin(logins[i][0]) !== normalizedLogin || formatAuthPasswordValue_(passwords[i][0]).trim() !== password) continue;
     const rowSnils = snilsValues ? normalizeSnils(snilsValues[i][0]) : '';
     if (rowSnils && rowSnils !== normalizedSnils) continue;
 
     const row = sheet.getRange(i + 2, 1, 1, lastCol).getValues()[0];
-    const namingConfig = CONFIG.ATTACHMENT_NAMING;
-    const folderName = renderAttachmentTemplate_(namingConfig.USER_FOLDER, header, row);
-    const fileTemplate = namingConfig.FILES[columnName];
+    const folderName = renderAttachmentTemplate_(DOCUMENTS_CONFIG.userFolder, header, row);
+    const fileTemplate = DOCUMENTS_CONFIG.files[columnName];
     if (!fileTemplate) throw new Error(`Для FILE-поля «${columnName}» не настроен шаблон имени.`);
 
     const fileBaseName = renderAttachmentTemplate_(fileTemplate, header, row);
     const extension = getFileExtension_(file.getName());
     const destinationFolder = getOrCreateUserAttachmentsFolder_(
-      DriveApp.getFolderById(CONFIG.ATTACHMENTS_FOLDER_ID),
+      DriveApp.getFolderById(extractGoogleResourceId_(DOCUMENTS_CONFIG.attachmentsFolderUrl)),
       folderName
     );
     const uploadedFile = destinationFolder.createFile(file).setName(`${fileBaseName}${extension}`);
@@ -1344,7 +1404,7 @@ function getDocumentAttachmentContent(login, password, snils, columnName) {
   const normalizedLogin = normalizeLogin(login);
   const normalizedSnils = normalizeSnils(snils);
   for (let i = 0; i < lastRow - 1; i++) {
-    if (normalizeLogin(logins[i][0]) !== normalizedLogin || formatCellValue(passwords[i][0]).trim() !== String(password || '').trim()) continue;
+    if (normalizeLogin(logins[i][0]) !== normalizedLogin || formatAuthPasswordValue_(passwords[i][0]).trim() !== String(password || '').trim()) continue;
     const rowSnils = snilsValues ? normalizeSnils(snilsValues[i][0]) : '';
     if (rowSnils && rowSnils !== normalizedSnils) continue;
     const fileUrl = formatCellValue(sheet.getRange(i + 2, targetCol + 1).getValue()).trim();
