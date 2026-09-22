@@ -27,7 +27,10 @@ const DOCUMENTS_CONFIG = Object.freeze({
   client: Object.freeze({
     timings: Object.freeze({
       // Время действия временной ссылки на открываемый файл, миллисекунд:
-      attachmentObjectUrlLifetimeMs: 60 * 1000
+      attachmentObjectUrlLifetimeMs: 60 * 1000,
+
+      // Задержка перед сохранением черновика редактирования документов в браузере:
+      documentDraftSaveDebounceMs: 400
     }),
     documentSections: Object.freeze({
       // Метки в конце заголовков таблицы определяют группу поля.
