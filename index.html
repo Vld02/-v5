@@ -134,24 +134,36 @@
   .document-section-header {
     width:100%;
     margin:0 0 0.5rem;
-    padding:0 0 0.35rem;
+    padding:0.8em 1.8em 0.8em 0.8em;
     border:0;
     border-bottom:0.1rem solid #000;
-    background:transparent;
+    background:#fff;
     color:inherit;
     font:inherit;
     font-weight:bold;
     font-size:1.2rem;
-    text-align:center;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    gap:0.45rem;
+    text-align:left;
+    position:relative;
     cursor:pointer;
   }
-  .document-section-header:hover { background:#f7f7f7; }
-  .document-section-toggle { font-weight:normal; opacity:0.75; }
-  .document-section-content[hidden] { display:none; }
+  .document-section-header::after {
+    content:'▾';
+    position:absolute;
+    right:0.65rem;
+    top:50%;
+    transform:translateY(-50%);
+    color:#4a5a6a;
+    transition:transform .5s ease;
+    pointer-events:none;
+  }
+  .document-section.open .document-section-header::after { transform:translateY(-50%) rotate(180deg); }
+  .document-section-content {
+    max-height:0;
+    opacity:0;
+    overflow:hidden;
+    transition:max-height .5s ease, opacity .5s ease;
+  }
+  .document-section.open .document-section-content { max-height:500rem; opacity:1; }
   .cell-edit-shell { position:relative; min-height:2rem; padding-right:calc(1.55rem + var(--space-xs)); }
   .cell-edit-actions { position:absolute; top:50%; right:calc(-1 * var(--space-sm)); width:1.55rem; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0; transform:translateY(-50%); }
   .cell-edit-btn { width:1.55rem; height:1.55rem; min-width:1.55rem; min-height:1.55rem; max-width:1.55rem; max-height:1.55rem; flex:0 0 1.55rem; padding:0; display:inline-flex; align-items:center; justify-content:center; overflow:visible; color:inherit; line-height:1; }
@@ -820,6 +832,8 @@
   const LAST_SILENT_SYNC_KEY = CLIENT_CONFIG.storageKeys.lastSilentSync;
   const SILENT_SYNC_INTERVAL_MS = CLIENT_CONFIG.timings.silentSyncIntervalMs;
   const TRAINING_HISTORY_STORAGE_KEY = CLIENT_CONFIG.storageKeys.trainingHistory;
+  const DOCUMENT_EDIT_DRAFTS_STORAGE_KEY = CLIENT_CONFIG.storageKeys.documentEditDrafts;
+  const DOCUMENT_DRAFT_SAVE_DEBOUNCE_MS = CLIENT_CONFIG.timings.documentDraftSaveDebounceMs;
   const TRAINING_SHEET_URL = CLIENT_CONFIG.urls.trainingSheet;
 
   /* ============================================================
@@ -864,7 +878,8 @@
     return editConfigPromise;
   }
 
-  let currentDocsRow = { header: [], row: [], colors: [], fileStates: [] };
+  let currentDocsRow = { header: [], row: [], serverRow: [], colors: [], fileStates: [], draftValues: {}, draftKey: '' };
+  let documentDraftSaveTimer = null;
 
   loadEditConfig().catch(() => {});
 
@@ -877,6 +892,92 @@
     const editRule = editConfig.rules[fieldConfig.rule] || editConfig.rules.TEXT || { regex: '^.*$', special: '', placeholder: '' };
     return { ...editRule, ...fieldConfig, ruleKey: fieldConfig.rule };
   }
+
+  function getDocumentDraftKey() {
+    return [dom.login.value.trim(), dom.password.value.trim(), dom.snils.value.trim()].join('\u001f');
+  }
+
+  function readDocumentDrafts() {
+    try {
+      const drafts = JSON.parse(localStorage.getItem(DOCUMENT_EDIT_DRAFTS_STORAGE_KEY) || '{}');
+      return drafts && typeof drafts === 'object' ? drafts : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function writeDocumentDraft(draftKey, draftValues) {
+    if (!draftKey) return;
+    const drafts = readDocumentDrafts();
+    if (Object.keys(draftValues).length) {
+      drafts[draftKey] = { values: draftValues };
+    } else {
+      delete drafts[draftKey];
+    }
+    try {
+      localStorage.setItem(DOCUMENT_EDIT_DRAFTS_STORAGE_KEY, JSON.stringify(drafts));
+    } catch (_) {}
+  }
+
+  function writeCurrentDocumentDraft() {
+    writeDocumentDraft(currentDocsRow.draftKey, currentDocsRow.draftValues);
+  }
+
+  function scheduleDocumentDraftSave() {
+    if (documentDraftSaveTimer) clearTimeout(documentDraftSaveTimer);
+    const draftKey = currentDocsRow.draftKey;
+    const draftValues = { ...currentDocsRow.draftValues };
+    documentDraftSaveTimer = setTimeout(() => {
+      documentDraftSaveTimer = null;
+      writeDocumentDraft(draftKey, draftValues);
+    }, DOCUMENT_DRAFT_SAVE_DEBOUNCE_MS);
+  }
+
+  function setDocumentDraftValue(colIndex, value) {
+    const columnName = currentDocsRow.header[colIndex];
+    if (!columnName) return;
+
+    const normalizedValue = String(value ?? '');
+    const serverValue = String(currentDocsRow.serverRow[colIndex] ?? '');
+    if (normalizedValue === serverValue) {
+      delete currentDocsRow.draftValues[columnName];
+    } else {
+      currentDocsRow.draftValues[columnName] = normalizedValue;
+    }
+    scheduleDocumentDraftSave();
+  }
+
+  function removeDocumentDraftValue(colIndex) {
+    const columnName = currentDocsRow.header[colIndex];
+    if (!columnName) return;
+    delete currentDocsRow.draftValues[columnName];
+    if (documentDraftSaveTimer) {
+      clearTimeout(documentDraftSaveTimer);
+      documentDraftSaveTimer = null;
+    }
+    writeCurrentDocumentDraft();
+  }
+
+  function moveCurrentDocumentDraftToCurrentIdentity(previousDraftKey) {
+    const nextDraftKey = getDocumentDraftKey();
+    if (!previousDraftKey || previousDraftKey === nextDraftKey) return;
+
+    if (documentDraftSaveTimer) {
+      clearTimeout(documentDraftSaveTimer);
+      documentDraftSaveTimer = null;
+    }
+    writeDocumentDraft(previousDraftKey, {});
+    currentDocsRow.draftKey = nextDraftKey;
+    writeCurrentDocumentDraft();
+  }
+
+  window.addEventListener('pagehide', () => {
+    if (documentDraftSaveTimer) {
+      clearTimeout(documentDraftSaveTimer);
+      documentDraftSaveTimer = null;
+    }
+    writeCurrentDocumentDraft();
+  });
 
   function applyInputSpecial(rawValue, rule) {
     const value = String(rawValue || '');
@@ -1500,9 +1601,24 @@
     }
 
     const header = response.header;
-    const row = response.row;
+    const serverRow = response.row;
     const colors = response.colors || [];
-    currentDocsRow = { header: [...header], row: [...row], colors: [...colors], fileStates: [...(response.fileStates || [])] };
+    const draftKey = getDocumentDraftKey();
+    const savedDraft = readDocumentDrafts()[draftKey];
+    const draftValues = savedDraft && savedDraft.values && typeof savedDraft.values === 'object' ? savedDraft.values : {};
+    const row = serverRow.map((value, index) => {
+      const columnName = header[index];
+      return Object.hasOwn(draftValues, columnName) ? draftValues[columnName] : value;
+    });
+    currentDocsRow = {
+      header: [...header],
+      row: [...row],
+      serverRow: [...serverRow],
+      colors: [...colors],
+      fileStates: [...(response.fileStates || [])],
+      draftValues: { ...draftValues },
+      draftKey
+    };
 
     let html = '';
 
@@ -1523,7 +1639,8 @@
 
     sections.forEach(section => {
       const contentId = `document-section-${section.id}`;
-      html += `<section class="document-section"><button type="button" class="document-section-header" aria-expanded="true" aria-controls="${contentId}"><span class="document-section-toggle" aria-hidden="true">▼</span><span>${escapeHtml(section.title)}</span></button><div id="${contentId}" class="document-section-content">`;
+      const isOpen = section.columns.some(index => String(row[index] ?? '').trim() !== '');
+      html += `<section class="document-section${isOpen ? ' open' : ''}"><button type="button" class="document-section-header" aria-expanded="${isOpen}" aria-controls="${contentId}">${escapeHtml(section.title)}</button><div id="${contentId}" class="document-section-content">`;
 
       section.columns.forEach(i => {
         const cleanedTitle = header[i].slice(0, -section.marker.length).trim();
@@ -1544,17 +1661,14 @@
     const headerButton = e.target.closest('.document-section-header');
     if (!headerButton) return;
 
-    const contentId = headerButton.getAttribute('aria-controls');
-    const content = contentId ? document.getElementById(contentId) : null;
-    if (!content) return;
+    const section = headerButton.closest('.document-section');
+    if (!section) return;
 
-    const isExpanded = headerButton.getAttribute('aria-expanded') === 'true';
-    const nextExpanded = !isExpanded;
-    headerButton.setAttribute('aria-expanded', String(nextExpanded));
-    content.hidden = !nextExpanded;
-
-    const toggle = headerButton.querySelector('.document-section-toggle');
-    if (toggle) toggle.textContent = nextExpanded ? '▼' : '▶';
+    const beforeY = window.scrollY;
+    const willOpen = !section.classList.contains('open');
+    section.classList.toggle('open', willOpen);
+    headerButton.setAttribute('aria-expanded', String(willOpen));
+    if (!willOpen) preserveViewportOnCollapse(beforeY);
   });
 
   function iconSvg(name) {
@@ -1791,6 +1905,7 @@
           opt.addEventListener('mousedown', event => {
             event.preventDefault();
             input.value = item;
+            setDocumentDraftValue(colIndex, input.value);
             validate();
             dropSuggestionList();
             input.focus();
@@ -1806,6 +1921,7 @@
       if (rule.special === 'date') input.addEventListener('blur', function() {
         const formatted = formatDateInput(input.value, { finalizeYear: true });
         if (formatted !== input.value) input.value = formatted;
+        setDocumentDraftValue(colIndex, input.value);
         validate();
       });
       input.focus();
@@ -1821,6 +1937,7 @@
       input.addEventListener('input', () => {
         const prepared = applyInputSpecial(input.value, rule);
         if (prepared !== input.value) input.value = prepared;
+        setDocumentDraftValue(colIndex, input.value);
         validate();
         renderSuggestionList();
       });
@@ -1871,16 +1988,18 @@
       return;
     }
     if (mode === 'cancel') {
-      const originalValue = cell.dataset.originalValue ?? '';
+      const draftValue = cell.querySelector('input')?.value ?? cell.dataset.originalValue ?? '';
       const existing = cell.querySelector('.cell-suggest-list');
       if (existing) existing.remove();
       delete cell.dataset.originalValue;
-      renderCellDisplay(cell, colIndex, originalValue);
+      setDocumentDraftValue(colIndex, draftValue);
+      currentDocsRow.row[colIndex] = draftValue;
+      renderCellDisplay(cell, colIndex, draftValue);
       return;
     }
     const input = cell.querySelector('input');
     const saveValue = (input?.value || '').trim();
-    const oldValue = String(currentDocsRow.row[colIndex] ?? '').trim();
+    const oldValue = String(currentDocsRow.serverRow[colIndex] ?? '').trim();
     const identityChanged = Boolean(rule.isIdentityField && saveValue !== oldValue);
     if (!isValidFieldValue(saveValue, rule)) return;
     if (identityChanged && !confirm('Вы изменяете данные, используемые для идентификации пользователя.\n\nПосле успешного сохранения следующие запросы будут использовать новое значение.\n\nПродолжить?')) return;
@@ -1892,10 +2011,14 @@
     google.script.run
       .withSuccessHandler(response => {
         currentDocsRow.row[colIndex] = saveValue;
+        currentDocsRow.serverRow[colIndex] = saveValue;
         delete cell.dataset.originalValue;
+        removeDocumentDraftValue(colIndex);
         renderCellDisplay(cell, colIndex, saveValue);
         if (identityChanged || (response && response.identityChanged)) {
+          const previousDraftKey = currentDocsRow.draftKey;
           updateCurrentIdentityAfterSave(currentDocsRow.header[colIndex], saveValue);
+          moveCurrentDocumentDraftToCurrentIdentity(previousDraftKey);
         }
         showToast('Сохранено');
       })
