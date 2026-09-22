@@ -28,7 +28,7 @@ const CONFIG = Object.freeze({
     // Столбец с датой рождения для входа:
     passwordHeader: 'Дата рождения (С)',
     // Столбец со СНИЛС:
-    snilsHeader: 'Снилс: номер'
+    snilsHeader: 'Снилс: номер (С)'
   })
 });
 
