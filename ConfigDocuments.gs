@@ -8,21 +8,20 @@ const DOCUMENTS_CONFIG = Object.freeze({
   schoolInfoUpdatedHeader: 'Дата обн. инф. о школе (С)',
   // Название папки пользователя:
   userFolder: Object.freeze({
-    template: 'Фамилия Имя Отчество (С) - Дата рождения (С) - Год набора',
-    headers: Object.freeze(['Фамилия Имя Отчество (С)', 'Дата рождения (С)', 'Год набора'])
+    template: '{Фамилия Имя Отчество (С)} - {Дата рождения (С)} - {Год набора}'
   }),
   // Настройки отдельных файлов:
   files: Object.freeze({
-    'Свидетельство: скан (С)': Object.freeze({ template: 'Свидетельство: скан (С) - Фамилия Имя Отчество (С)', headers: Object.freeze(['Фамилия Имя Отчество (С)']) }),
-    'Паспорт: скан (С)': Object.freeze({ template: 'Паспорт: скан (С) - Фамилия Имя Отчество (С)', headers: Object.freeze(['Фамилия Имя Отчество (С)']) }),
-    'Снилс: Скан': Object.freeze({ template: 'Снилс: Скан - Фамилия Имя Отчество (С)', headers: Object.freeze(['Фамилия Имя Отчество (С)']) }),
-    'Полис: Скан': Object.freeze({ template: 'Полис: Скан - Фамилия Имя Отчество (С)', headers: Object.freeze(['Фамилия Имя Отчество (С)']) }),
-    'Страховка: Скан': Object.freeze({ template: 'Страховка: Скан - Фамилия Имя Отчество (С)', headers: Object.freeze(['Фамилия Имя Отчество (С)']) }),
-    'Мед допуск: Скан': Object.freeze({ template: 'Мед допуск: Скан - Фамилия Имя Отчество (С)', headers: Object.freeze(['Фамилия Имя Отчество (С)']) }),
-    'Русада: Скан': Object.freeze({ template: 'Русада: Скан - Фамилия Имя Отчество (С)', headers: Object.freeze(['Фамилия Имя Отчество (С)']) }),
-    'Паспорт: Скан (П)': Object.freeze({ template: 'Паспорт: Скан (П) - Фамилия Имя Отчество (П)', headers: Object.freeze(['Фамилия Имя Отчество (П)']) }),
-    'Паспорт: Скан (М)': Object.freeze({ template: 'Паспорт: Скан (М) - Фамилия Имя Отчество (М)', headers: Object.freeze(['Фамилия Имя Отчество (М)']) }),
-    'Паспорт: Скан (Д)': Object.freeze({ template: 'Паспорт: Скан (Д) - Фамилия Имя Отчество (Д)', headers: Object.freeze(['Фамилия Имя Отчество (Д)']) })
+    'Свидетельство: скан (С)': Object.freeze({ template: 'Свидетельство: скан (С) - {Фамилия Имя Отчество (С)}' }),
+    'Паспорт: скан (С)': Object.freeze({ template: 'Паспорт: скан (С) - {Фамилия Имя Отчество (С)}' }),
+    'Снилс: Скан': Object.freeze({ template: 'Снилс: Скан - {Фамилия Имя Отчество (С)}' }),
+    'Полис: Скан': Object.freeze({ template: 'Полис: Скан - {Фамилия Имя Отчество (С)}' }),
+    'Страховка: Скан': Object.freeze({ template: 'Страховка: Скан - {Фамилия Имя Отчество (С)}' }),
+    'Мед допуск: Скан': Object.freeze({ template: 'Мед допуск: Скан - {Фамилия Имя Отчество (С)}' }),
+    'Русада: Скан': Object.freeze({ template: 'Русада: Скан - {Фамилия Имя Отчество (С)}' }),
+    'Паспорт: Скан (П)': Object.freeze({ template: 'Паспорт: Скан (П) - {Фамилия Имя Отчество (П)}' }),
+    'Паспорт: Скан (М)': Object.freeze({ template: 'Паспорт: Скан (М) - {Фамилия Имя Отчество (М)}' }),
+    'Паспорт: Скан (Д)': Object.freeze({ template: 'Паспорт: Скан (Д) - {Фамилия Имя Отчество (Д)}' })
   }),
   // Публичные настройки документов:
   client: Object.freeze({
@@ -71,7 +70,7 @@ const EDIT_CONFIG = Object.freeze({
     // YEAR: Ровно четыре цифры в настроенном диапазоне года набора.
     YEAR: { title: 'Год', placeholder: '2024', regex: '^\\d{4}$', special: 'year', min: 1950, maxOffset: 1 },
     // CLASS_COURSE: Арабское число 0–11 или римское обозначение I, II, III, IV, V, VI.
-    CLASS_COURSE: { title: 'Класс / курс', placeholder: '7', regex: '^(?:[0-9]|1[01]|I|II|III|IV|V|VI)$', special: 'classCourse' },
+    CLASS_COURSE: { title: 'Класс / курс', placeholder: '7', regex: '^(?:[0-9]|1[01]|I|II|III|IV|V|VI)$', maxLength: 2, special: 'classCourse' },
     // RU_UPPER_LETTER: Одна заглавная русская буква, включая Ё.
     RU_UPPER_LETTER: { title: 'Русская заглавная буква', placeholder: 'А', regex: '^[А-ЯЁ]$', special: 'singleRuUpper' },
     // PHONE_RU: Только формат +7 999 123-45-67; пробелы и дефисы обязательны.
