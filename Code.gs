@@ -479,6 +479,20 @@ function formatCellValue(value) {
   return String(value ?? '');
 }
 
+
+/**
+ * Форматирует значение пароля для авторизации по правилу ввода DATE_RU.
+ * Формат отображения CONFIG.DATE_FORMAT не влияет на вход в приложение.
+ * @param {*} value Значение ячейки с датой рождения.
+ * @returns {string}
+ */
+function formatAuthPasswordValue_(value) {
+  if (value instanceof Date) {
+    return Utilities.formatDate(value, CONFIG.TIMEZONE, 'dd.MM.yyyy');
+  }
+  return String(value ?? '');
+}
+
 /**
  * Собирает данные строки только по разрешенным колонкам.
  * @param {Array<*>} row Значения строки.
@@ -562,7 +576,7 @@ function checkLogin(login, password, clientInfo = {}, snils = '') {
 
   for (let i = 0; i < rowCount; i++) {
     const rowLogin = normalizeLogin(logins[i][0]);
-    const rowPassword = formatCellValue(passwords[i][0]).trim();
+    const rowPassword = formatAuthPasswordValue_(passwords[i][0]).trim();
 
     if (rowLogin === normalizedLogin && rowPassword === password) {
       const rowSnils = snilsValues ? normalizeSnils(snilsValues[i][0]) : '';
@@ -639,7 +653,7 @@ function verifySnils(login, password, snils, clientInfo = {}) {
 
   for (let i = 0; i < rowCount; i++) {
     const rowLogin = normalizeLogin(logins[i][0]);
-    const rowPassword = formatCellValue(passwords[i][0]).trim();
+    const rowPassword = formatAuthPasswordValue_(passwords[i][0]).trim();
 
     if (rowLogin === normalizedLogin && rowPassword === password) {
       const rowSnils = normalizeSnils(snilsValues[i][0]);
@@ -807,7 +821,7 @@ function loadTrainingGroupMap() {
   if (values.length < 2) return {};
 
   const header = values[0].map(String);
-  const fioCol = header.indexOf(CONFIG.AUTH.loginHeader);
+  const fioCol = header.indexOf(TRAINING_CONFIG.athleteNameHeader);
   const groupCol = header.indexOf(TRAINING_CONFIG.athleteGroupHeader);
   if (fioCol === -1 || groupCol === -1) return {};
 
@@ -1080,7 +1094,7 @@ function validateEditableFieldValue_(columnName, value) {
   }
 
   if (rule.special === 'year' && !isEnrollmentYearInRange_(normalizedValue)) {
-    throw new Error(`Год должен быть в диапазоне 1950-${getMaxEnrollmentYear_()}.`);
+    throw new Error(`Год должен быть в диапазоне ${EDIT_CONFIG.rules.YEAR.min}-${getMaxEnrollmentYear_()}.`);
   }
 
   if (rule.special === 'date' && !isValidRuDate_(normalizedValue)) {
@@ -1168,7 +1182,7 @@ function updateResultCell(login, password, snils, columnName, value) {
 
   for (let i = 0; i < rowCount; i++) {
     const rowLogin = normalizeLogin(logins[i][0]);
-    const rowPassword = formatCellValue(passwords[i][0]).trim();
+    const rowPassword = formatAuthPasswordValue_(passwords[i][0]).trim();
     if (rowLogin !== normalizedLogin || rowPassword !== String(password || '').trim()) continue;
 
     const rowSnils = normalizeSnils(snilsValues[i][0]);
@@ -1311,7 +1325,7 @@ function uploadDocumentAttachment(formData) {
   const normalizedSnils = normalizeSnils(payload.snils);
 
   for (let i = 0; i < rowCount; i++) {
-    if (normalizeLogin(logins[i][0]) !== normalizedLogin || formatCellValue(passwords[i][0]).trim() !== password) continue;
+    if (normalizeLogin(logins[i][0]) !== normalizedLogin || formatAuthPasswordValue_(passwords[i][0]).trim() !== password) continue;
     const rowSnils = snilsValues ? normalizeSnils(snilsValues[i][0]) : '';
     if (rowSnils && rowSnils !== normalizedSnils) continue;
 
@@ -1390,7 +1404,7 @@ function getDocumentAttachmentContent(login, password, snils, columnName) {
   const normalizedLogin = normalizeLogin(login);
   const normalizedSnils = normalizeSnils(snils);
   for (let i = 0; i < lastRow - 1; i++) {
-    if (normalizeLogin(logins[i][0]) !== normalizedLogin || formatCellValue(passwords[i][0]).trim() !== String(password || '').trim()) continue;
+    if (normalizeLogin(logins[i][0]) !== normalizedLogin || formatAuthPasswordValue_(passwords[i][0]).trim() !== String(password || '').trim()) continue;
     const rowSnils = snilsValues ? normalizeSnils(snilsValues[i][0]) : '';
     if (rowSnils && rowSnils !== normalizedSnils) continue;
     const fileUrl = formatCellValue(sheet.getRange(i + 2, targetCol + 1).getValue()).trim();
