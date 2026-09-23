@@ -1242,9 +1242,9 @@ function renderAttachmentTemplate_(namingConfig, header, row) {
       throw new Error(`В листе «${CONFIG.RESULT_SHEET_NAME}» нет столбца «${columnName}» из шаблона.`);
     }
     const value = formatCellValue(row[columnIndex]).trim();
-    if (!value) {
-      throw new Error(`Нельзя сформировать имя: в столбце «${columnName}» нет значения.`);
-    }
+    // Пустая ячейка — допустимая часть имени. Это отличается от отсутствующего
+    // заголовка, который проверяется выше и по-прежнему является ошибкой
+    // настройки шаблона.
     return value;
   });
 
