@@ -1721,6 +1721,40 @@
     return `<div class="cell-edit-shell" tabindex="0"><div class="cell-editor"><div class="cell-value-display">${display}<span class="cell-action-reserve" aria-hidden="true"></span></div></div>${renderCellViewActions(colIndex, editable, extraClass, rule)}</div>`;
   }
 
+  const CELL_EDIT_GEOMETRY_PROPERTIES = [
+    'width', 'height', 'min-width', 'min-height', 'max-width', 'max-height', 'flex', 'box-sizing'
+  ];
+
+  function lockCellGeometryForEdit(cell) {
+    const rect = cell.getBoundingClientRect();
+    const previousStyles = {};
+    CELL_EDIT_GEOMETRY_PROPERTIES.forEach(property => {
+      previousStyles[property] = {
+        value: cell.style.getPropertyValue(property),
+        priority: cell.style.getPropertyPriority(property)
+      };
+    });
+    cell.dataset.editGeometryStyles = JSON.stringify(previousStyles);
+    cell.style.setProperty('box-sizing', 'border-box');
+    cell.style.setProperty('width', `${rect.width}px`);
+    cell.style.setProperty('min-width', `${rect.width}px`);
+    cell.style.setProperty('max-width', `${rect.width}px`);
+    cell.style.setProperty('height', `${rect.height}px`);
+    cell.style.setProperty('min-height', `${rect.height}px`);
+    cell.style.setProperty('max-height', `${rect.height}px`);
+    cell.style.setProperty('flex', `0 0 ${rect.width}px`);
+  }
+
+  function unlockCellGeometryAfterEdit(cell) {
+    const previousStyles = JSON.parse(cell.dataset.editGeometryStyles || '{}');
+    CELL_EDIT_GEOMETRY_PROPERTIES.forEach(property => {
+      const previous = previousStyles[property];
+      if (previous && previous.value) cell.style.setProperty(property, previous.value, previous.priority);
+      else cell.style.removeProperty(property);
+    });
+    delete cell.dataset.editGeometryStyles;
+  }
+
   function renderCellDisplay(cell, colIndex, value) {
     const bg = currentDocsRow.colors[colIndex] || '';
     const style = bg ? `background:${bg};` : '';
@@ -1895,6 +1929,7 @@
     if (!rule.editable) return;
     if (mode === 'edit') {
       cell.classList.remove('is-actions-active');
+      lockCellGeometryForEdit(cell);
       const columnName = currentDocsRow.header[colIndex];
       const serverValue = String(currentDocsRow.serverRow[colIndex] ?? '');
       // Продолжаем незавершённое редактирование, но не используем черновик
@@ -2016,6 +2051,7 @@
       delete cell.dataset.originalValue;
       setDocumentDraftValue(colIndex, draftValue);
       // После выхода из редактирования снова показываем значение из таблицы.
+      unlockCellGeometryAfterEdit(cell);
       renderCellDisplay(cell, colIndex, currentDocsRow.serverRow[colIndex] ?? '');
       return;
     }
@@ -2035,6 +2071,7 @@
         currentDocsRow.serverRow[colIndex] = saveValue;
         delete cell.dataset.originalValue;
         removeDocumentDraftValue(colIndex);
+        unlockCellGeometryAfterEdit(cell);
         renderCellDisplay(cell, colIndex, saveValue);
         if (identityChanged || (response && response.identityChanged)) {
           const previousDraftKey = currentDocsRow.draftKey;
