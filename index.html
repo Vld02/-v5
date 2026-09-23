@@ -20,7 +20,6 @@
   (function applyResponsiveConfig() {
     const root = document.documentElement;
     const responsive = CLIENT_CONFIG.responsive;
-    const minimumInterfaceScale = 0.65;
 
     root.style.setProperty('--page-max-width', `${responsive.pageMaxWidth}px`);
 
@@ -28,11 +27,12 @@
       // clientWidth — ширина CSS viewport. Она не зависит от виртуальной
       // ширины мобильного браузера при корректном viewport-метатеге.
       const viewportWidth = root.clientWidth || window.innerWidth;
+      const compactRange = responsive.compactModeWidth - responsive.compactMinViewportWidth;
       const compactProgress = Math.max(0, Math.min(1,
-        (responsive.compactModeWidth - viewportWidth) / responsive.compactModeWidth
+        (responsive.compactModeWidth - viewportWidth) / compactRange
       ));
-      // compactModeWidth является точкой начала режима: до неё масштаб равен 1.
-      const scale = 1 - (1 - minimumInterfaceScale) * compactProgress;
+      // compactModeWidth — начало масштабирования, compactMinViewportWidth — его нижняя граница.
+      const scale = 1 - (1 - responsive.minimumInterfaceScale) * compactProgress;
       root.style.setProperty('--base-font-size', `${scale}rem`);
     };
 
