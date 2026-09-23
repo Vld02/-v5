@@ -29,21 +29,30 @@ function getClientConfigScript() {
 
 /**
  * Проверяет и возвращает публичные настройки адаптивности.
- * @returns {{pageMaxWidth: number, compactModeWidth: number}}
+ * @returns {{pageMaxWidth: number, compactModeWidth: number, compactMinViewportWidth: number, minimumInterfaceScale: number}}
  */
 function getResponsiveClientConfig_() {
   const pageMaxWidth = RESPONSIVE_CONFIG.pageMaxWidth;
   const compactModeWidth = RESPONSIVE_CONFIG.compactModeWidth;
+  const compactMinViewportWidth = RESPONSIVE_CONFIG.compactMinViewportWidth;
+  const minimumInterfaceScale = RESPONSIVE_CONFIG.minimumInterfaceScale;
 
   if (!Number.isFinite(pageMaxWidth) || !Number.isFinite(compactModeWidth) ||
-      pageMaxWidth <= 0 || compactModeWidth <= 0) {
-    throw new Error('Настройки адаптивности должны быть положительными числами в пикселях.');
+      !Number.isFinite(compactMinViewportWidth) || !Number.isFinite(minimumInterfaceScale) ||
+      pageMaxWidth <= 0 || compactModeWidth <= 0 || compactMinViewportWidth <= 0) {
+    throw new Error('Границы адаптивности должны быть положительными числами в пикселях, а minimumInterfaceScale — числом.');
   }
   if (compactModeWidth >= pageMaxWidth) {
     throw new Error('Некорректные настройки адаптивности: compactModeWidth должен быть меньше pageMaxWidth.');
   }
+  if (compactMinViewportWidth >= compactModeWidth) {
+    throw new Error('Некорректные настройки адаптивности: compactMinViewportWidth должен быть меньше compactModeWidth.');
+  }
+  if (minimumInterfaceScale <= 0 || minimumInterfaceScale > 1) {
+    throw new Error('Некорректные настройки адаптивности: minimumInterfaceScale должен быть больше 0 и не больше 1.');
+  }
 
-  return { pageMaxWidth, compactModeWidth };
+  return { pageMaxWidth, compactModeWidth, compactMinViewportWidth, minimumInterfaceScale };
 }
 
 /*************************************************
