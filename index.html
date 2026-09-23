@@ -14,15 +14,34 @@
 <link rel="apple-touch-icon" sizes="180x180" href="<?= APP_CONFIG.ICON_URLS.icon192 ?>" />
 <link rel="apple-touch-icon" sizes="512x512" href="<?= APP_CONFIG.ICON_URLS.icon512 ?>" />
 <title><?= APP_CONFIG.APP_TITLE ?></title>
+<script>
+  <?!= getClientConfigScript(); ?>
+
+  (function applyResponsiveConfig() {
+    const root = document.documentElement;
+    const responsive = CLIENT_CONFIG.responsive;
+
+    root.style.setProperty('--page-max-width', `${responsive.pageMaxWidth}px`);
+    root.style.setProperty('--compact-mode-width', `${responsive.compactModeWidth}px`);
+
+    const updateInterfaceScale = () => {
+      const scale = Math.min(1, window.innerWidth / responsive.compactModeWidth);
+      root.style.setProperty('--base-font-size', `${scale}rem`);
+    };
+
+    updateInterfaceScale();
+    window.addEventListener('resize', updateInterfaceScale, { passive: true });
+  })();
+</script>
 <style>
   :root {
     --card-bg: rgba(255, 255, 255, 0.92);
     --primary: #1a73e8;
     --border: #d8d8d8;
-    /* Интерфейс сохраняет единый масштаб при любой ширине viewport:
-       сжимается доступная область страницы, а не размеры элементов. */
+    /* Границы и масштаб задаются из RESPONSIVE_CONFIG через CLIENT_CONFIG. */
     --base-font-size: 1rem;
-    --page-max-width: 68rem;
+    --page-max-width: 100%;
+    --compact-mode-width: 100%;
     --topbar-height: 4rem;
     --space-xs: 0.25rem;
     --space-sm: 0.5rem;
@@ -764,8 +783,6 @@
 </div>
 
 <script>
-  <?!= getClientConfigScript(); ?>
-
   /*************************************************
    * ОБЩИЕ DOM-ССЫЛКИ И НАВИГАЦИЯ ПО ВКЛАДКАМ
    *************************************************/

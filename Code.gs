@@ -4,6 +4,7 @@
  * @returns {string}
  */
 function getClientConfigScript() {
+  const responsiveConfig = getResponsiveClientConfig_();
   const clientConfig = {
     storageKeys: Object.assign({}, GENERAL_CLIENT_CONFIG.storageKeys, TechnicalConfig.storageKeys),
     timings: Object.assign({}, GENERAL_CLIENT_CONFIG.timings, TRAINING_CONFIG.client.timings, DOCUMENTS_CONFIG.client.timings),
@@ -20,9 +21,29 @@ function getClientConfigScript() {
       enrollmentYearMin: EDIT_CONFIG.rules.YEAR.min,
       enrollmentYearOffset: EDIT_CONFIG.rules.YEAR.maxOffset
     },
+    responsive: responsiveConfig,
     documentSections: DOCUMENTS_CONFIG.client.documentSections
   };
   return `window.CLIENT_CONFIG = ${JSON.stringify(clientConfig).replace(/</g, '\\u003c')};`;
+}
+
+/**
+ * Проверяет и возвращает публичные настройки адаптивности.
+ * @returns {{pageMaxWidth: number, compactModeWidth: number}}
+ */
+function getResponsiveClientConfig_() {
+  const pageMaxWidth = RESPONSIVE_CONFIG.pageMaxWidth;
+  const compactModeWidth = RESPONSIVE_CONFIG.compactModeWidth;
+
+  if (!Number.isFinite(pageMaxWidth) || !Number.isFinite(compactModeWidth) ||
+      pageMaxWidth <= 0 || compactModeWidth <= 0) {
+    throw new Error('Настройки адаптивности должны быть положительными числами в пикселях.');
+  }
+  if (compactModeWidth >= pageMaxWidth) {
+    throw new Error('Некорректные настройки адаптивности: compactModeWidth должен быть меньше pageMaxWidth.');
+  }
+
+  return { pageMaxWidth, compactModeWidth };
 }
 
 /*************************************************

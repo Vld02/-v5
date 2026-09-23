@@ -60,6 +60,14 @@ const APP_CONFIG = Object.freeze({
   })
 });
 
+// Адаптивность основного блока сайта:
+const RESPONSIVE_CONFIG = Object.freeze({
+  // Максимальная ширина сайта, px. При большей ширине экрана сайт дальше не расширяется.
+  pageMaxWidth: 1088,
+  // Граница компактного режима, px. Ниже этой ширины начинает уменьшаться масштаб интерфейса.
+  compactModeWidth: 600
+});
+
 // Журнал:
 const LOG_CONFIG = Object.freeze({
   // Столбцы журнала:
