@@ -164,8 +164,8 @@
     transition:max-height .5s ease, opacity .5s ease;
   }
   .document-section.open .document-section-content { max-height:500rem; opacity:1; }
-  .cell-edit-shell { display:flex; align-items:flex-end; min-height:2rem; gap:var(--space-xs); }
-  .cell-edit-actions { display:flex; flex:0 0 auto; align-items:center; gap:var(--space-xs); }
+  .cell-edit-shell { min-height:2rem; }
+  .cell-edit-actions { display:inline-flex; align-items:center; gap:var(--space-xs); margin-left:var(--space-xs); vertical-align:bottom; }
   .cell-edit-btn { width:1.55rem; height:1.55rem; min-width:1.55rem; min-height:1.55rem; max-width:1.55rem; max-height:1.55rem; flex:0 0 1.55rem; padding:0; display:inline-flex; align-items:center; justify-content:center; overflow:visible; color:inherit; line-height:1; }
   .file-status { display:inline-flex; align-items:center; gap:0.35rem; color:#5f6368; }
   .file-status.has-file { color:#137333; }
@@ -184,7 +184,10 @@
   .cell-editor { position:relative; min-width:0; flex:1 1 auto; }
   .cell-value-input, .cell-value-display { width:100%; box-sizing:border-box; margin:0; padding:0.35rem 0.5rem; border:0.05rem solid #c5c5c5; border-radius:0.4rem; outline:none; font:inherit; min-height:2rem; }
   .cell-value-input { background:#fff; }
-  .cell-value-display { display:flex; align-items:center; overflow-wrap:anywhere; border-color:transparent; background:transparent; }
+  .cell-value-display { display:block; overflow-wrap:anywhere; border-color:transparent; background:transparent; }
+  .cell-edit-inline { display:flex; align-items:flex-end; gap:var(--space-xs); }
+  .cell-edit-inline .cell-value-input { width:auto; min-width:0; flex:1 1 auto; }
+  .cell-edit-inline .cell-edit-actions { flex:0 0 auto; margin-left:0; }
   .cell-value-input:focus { border-color:#8ab4f8; box-shadow:0 0 0 0.1rem rgba(138,180,248,0.2); }
   .cell-edit-help { position:relative; }
   .cell-help-popover { position:absolute; right:calc(100% + var(--space-xs)); top:0; z-index:80; width:max-content; max-width:min(16rem, 70vw); padding:0.45rem 0.55rem; border:0.05rem solid var(--border); border-radius:var(--radius-sm); background:#fff; box-shadow:0 0.3rem 0.8rem rgba(0,0,0,0.12); font-size:0.85rem; line-height:1.25; opacity:0; visibility:hidden; pointer-events:none; }
@@ -1706,7 +1709,7 @@
   }
 
   function renderCellViewActions(colIndex, editable = true, extraClass = '', rule = {}) {
-    return `<div class="cell-edit-actions">${renderCellHelpButton(colIndex, rule)}${renderCellEditButton(colIndex, editable, extraClass, rule)}</div>`;
+    return `<div class="cell-edit-actions">${renderCellEditButton(colIndex, editable, extraClass, rule)}${renderCellHelpButton(colIndex, rule)}</div>`;
   }
 
   function renderCellEditActions(colIndex) {
@@ -1723,8 +1726,8 @@
       ? isUploading
         ? '<div class="file-status is-uploading" role="status" aria-live="polite">Загрузка файла…</div>'
         : `<div class="file-status${hasFile ? ' has-file' : ''}" title="${fileLabel}">${hasFile ? `<button type="button" class="file-status-link file-open-btn" data-col-index="${colIndex}" aria-label="Открыть прикреплённый файл">${fileContent}</button>` : fileContent}</div>`
-      : `<div class="cell-value-text">${escapeHtml(value)}</div>`;
-    return `<div class="cell-edit-shell"><div class="cell-editor"><div class="cell-value-display">${display}</div></div>${renderCellViewActions(colIndex, editable, extraClass, rule)}</div>`;
+      : `<span class="cell-value-text">${escapeHtml(value)}</span>`;
+    return `<div class="cell-edit-shell"><div class="cell-editor"><div class="cell-value-display">${display}${renderCellViewActions(colIndex, editable, extraClass, rule)}</div></div></div>`;
   }
 
   function renderCellDisplay(cell, colIndex, value) {
@@ -1896,7 +1899,7 @@
         ? currentDocsRow.draftValues[columnName]
         : serverValue;
       cell.dataset.originalValue = serverValue;
-      cell.innerHTML = `<div class="cell-edit-shell"><div class="cell-editor"><input class="cell-value-input" data-col-index="${colIndex}" value="${escapeHtmlAttr(value)}" /></div>${renderCellEditActions(colIndex)}</div>`;
+      cell.innerHTML = `<div class="cell-edit-shell"><div class="cell-editor"><div class="cell-edit-inline"><input class="cell-value-input" data-col-index="${colIndex}" value="${escapeHtmlAttr(value)}" />${renderCellEditActions(colIndex)}</div></div></div>`;
       const input = cell.querySelector('input');
       const suggestConfig = rule.special === 'suggest' ? rule.suggestions : null;
       let suggestionOptions = [];
