@@ -19,9 +19,12 @@
     --card-bg: rgba(255, 255, 255, 0.92);
     --primary: #1a73e8;
     --border: #d8d8d8;
-    --base-font-size: clamp(1.35rem, 0.95rem + 1.35vw, 2rem);
+    /* До мобильной точки интерфейс сохраняет единый масштаб. Поэтому
+       максимальная ширина страницы и размеры элементов не зависят от
+       ширины окна: сначала сжимается только доступная область страницы. */
+    --base-font-size: 1rem;
     --page-max-width: 68rem;
-    --topbar-height: clamp(3.25rem, 7vh, 4.5rem);
+    --topbar-height: 4rem;
     --space-xs: 0.25rem;
     --space-sm: 0.5rem;
     --space-md: 0.75rem;
@@ -34,12 +37,6 @@
 
   html {
     font-size: var(--base-font-size);
-  }
-
-  @media (min-width: 52.0625em) and (pointer: fine) {
-    html {
-      font-size: calc(var(--base-font-size) * 0.47);
-    }
   }
 
   body {
@@ -120,7 +117,7 @@
   .tab-panel.active { display: block; }
   .section-heading { display: none; }
 
-  h2 { text-align: center; font-size: clamp(1.35rem, 1rem + 1vw, 2rem); }
+  h2 { text-align: center; font-size: 1.6rem; }
   label { display: block; margin-top: var(--space-md); }
   input { padding: 0.65em 0.75em; margin: var(--space-sm) 0; width: 100%; box-sizing: border-box; font: inherit; }
   button { padding: 0.7em 1.1em; margin-top: var(--space-md); cursor: pointer; font: inherit; }
@@ -613,8 +610,10 @@
 
   @media (max-width: 52em) {
     :root {
-      --base-font-size: clamp(1.2rem, 3.8vw, 1.75rem);
-      --topbar-height: clamp(3.4rem, 11vw, 4.5rem);
+      /* Это уже существующая точка перехода к мобильной компоновке.
+         Только после неё допустимо уменьшать общий масштаб интерфейса. */
+      --base-font-size: clamp(0.875rem, 2vw, 1rem);
+      --topbar-height: clamp(3rem, 8vw, 4rem);
     }
 
     .topbar {
@@ -628,6 +627,8 @@
     .topbar-tab {
       padding: 0.4em 0.6em;
     }
+
+    h2 { font-size: clamp(1.35rem, 1rem + 1vw, 2rem); }
 
     .tabs {
       top: var(--space-sm);
