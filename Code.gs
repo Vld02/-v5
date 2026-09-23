@@ -87,6 +87,9 @@ function doGet() {
     .createTemplateFromFile('index')
     .evaluate()
     .setTitle(APP_CONFIG.APP_TITLE)
+    // HtmlService добавляет метатеги в итоговую страницу Web App.
+    // Это гарантирует CSS-ширину viewport устройства, а не виртуальные ~980 px.
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 
   // setFaviconUrl не принимает data:image/...;base64. Нужен только публичный HTTPS URL.
