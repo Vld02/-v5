@@ -20,24 +20,29 @@
   (function applyResponsiveConfig() {
     const root = document.documentElement;
     const responsive = CLIENT_CONFIG.responsive;
-    const minimumInterfaceScale = 0.65;
+    const hoverMedia = window.matchMedia && window.matchMedia('(hover: hover)');
 
     root.style.setProperty('--page-max-width', `${responsive.pageMaxWidth}px`);
+    root.classList.toggle('supports-hover', Boolean(hoverMedia && hoverMedia.matches));
 
     const updateInterfaceScale = () => {
       // clientWidth — ширина CSS viewport. Она не зависит от виртуальной
       // ширины мобильного браузера при корректном viewport-метатеге.
       const viewportWidth = root.clientWidth || window.innerWidth;
+      const compactRange = responsive.compactModeWidth - responsive.compactMinViewportWidth;
       const compactProgress = Math.max(0, Math.min(1,
-        (responsive.compactModeWidth - viewportWidth) / responsive.compactModeWidth
+        (responsive.compactModeWidth - viewportWidth) / compactRange
       ));
-      // compactModeWidth является точкой начала режима: до неё масштаб равен 1.
-      const scale = 1 - (1 - minimumInterfaceScale) * compactProgress;
+      // compactModeWidth — начало масштабирования, compactMinViewportWidth — его нижняя граница.
+      const scale = 1 - (1 - responsive.minimumInterfaceScale) * compactProgress;
       root.style.setProperty('--base-font-size', `${scale}rem`);
     };
 
     updateInterfaceScale();
     window.addEventListener('resize', updateInterfaceScale, { passive: true });
+    if (hoverMedia && hoverMedia.addEventListener) {
+      hoverMedia.addEventListener('change', event => root.classList.toggle('supports-hover', event.matches));
+    }
   })();
 </script>
 <style>
@@ -187,6 +192,11 @@
   .document-section.open .document-section-content { max-height:500rem; opacity:1; }
   .cell-edit-shell { position:relative; min-height:2rem; }
   .cell-edit-actions { position:absolute; right:0.5rem; bottom:0.35rem; display:flex; align-items:center; gap:var(--space-xs); }
+  .cell-view-actions { opacity:0; visibility:hidden; pointer-events:none; transition:opacity .16s ease, visibility .16s ease; }
+  .item-value.is-actions-active .cell-view-actions,
+  .cell-edit-shell:focus-visible .cell-view-actions,
+  .cell-edit-shell:focus-within .cell-view-actions { opacity:1; visibility:visible; pointer-events:auto; }
+  .supports-hover .item-value:hover .cell-view-actions { opacity:1; visibility:visible; pointer-events:auto; }
   .cell-edit-btn { width:1.55rem; height:1.55rem; min-width:1.55rem; min-height:1.55rem; max-width:1.55rem; max-height:1.55rem; flex:0 0 1.55rem; padding:0; display:inline-flex; align-items:center; justify-content:center; overflow:visible; color:inherit; line-height:1; }
   .file-status { display:inline-flex; align-items:center; gap:0.35rem; color:#5f6368; }
   .file-status.has-file { color:#137333; }
@@ -1690,7 +1700,7 @@
   }
 
   function renderCellViewActions(colIndex, editable = true, extraClass = '', rule = {}) {
-    return `<div class="cell-edit-actions">${renderCellEditButton(colIndex, editable, extraClass, rule)}${renderCellHelpButton(colIndex, rule)}</div>`;
+    return `<div class="cell-edit-actions cell-view-actions">${renderCellEditButton(colIndex, editable, extraClass, rule)}${renderCellHelpButton(colIndex, rule)}</div>`;
   }
 
   function renderCellEditActions(colIndex) {
@@ -1708,7 +1718,41 @@
         ? '<div class="file-status is-uploading" role="status" aria-live="polite">Загрузка файла…</div>'
         : `<div class="file-status${hasFile ? ' has-file' : ''}" title="${fileLabel}">${hasFile ? `<button type="button" class="file-status-link file-open-btn" data-col-index="${colIndex}" aria-label="Открыть прикреплённый файл">${fileContent}</button>` : fileContent}</div>`
       : `<span class="cell-value-text">${escapeHtml(value)}</span>`;
-    return `<div class="cell-edit-shell"><div class="cell-editor"><div class="cell-value-display">${display}<span class="cell-action-reserve" aria-hidden="true"></span></div></div>${renderCellViewActions(colIndex, editable, extraClass, rule)}</div>`;
+    return `<div class="cell-edit-shell" tabindex="0"><div class="cell-editor"><div class="cell-value-display">${display}<span class="cell-action-reserve" aria-hidden="true"></span></div></div>${renderCellViewActions(colIndex, editable, extraClass, rule)}</div>`;
+  }
+
+  const CELL_EDIT_GEOMETRY_PROPERTIES = [
+    'width', 'height', 'min-width', 'min-height', 'max-width', 'max-height', 'flex', 'box-sizing'
+  ];
+
+  function lockCellGeometryForEdit(cell) {
+    const rect = cell.getBoundingClientRect();
+    const previousStyles = {};
+    CELL_EDIT_GEOMETRY_PROPERTIES.forEach(property => {
+      previousStyles[property] = {
+        value: cell.style.getPropertyValue(property),
+        priority: cell.style.getPropertyPriority(property)
+      };
+    });
+    cell.dataset.editGeometryStyles = JSON.stringify(previousStyles);
+    cell.style.setProperty('box-sizing', 'border-box');
+    cell.style.setProperty('width', `${rect.width}px`);
+    cell.style.setProperty('min-width', `${rect.width}px`);
+    cell.style.setProperty('max-width', `${rect.width}px`);
+    cell.style.setProperty('height', `${rect.height}px`);
+    cell.style.setProperty('min-height', `${rect.height}px`);
+    cell.style.setProperty('max-height', `${rect.height}px`);
+    cell.style.setProperty('flex', `0 0 ${rect.width}px`);
+  }
+
+  function unlockCellGeometryAfterEdit(cell) {
+    const previousStyles = JSON.parse(cell.dataset.editGeometryStyles || '{}');
+    CELL_EDIT_GEOMETRY_PROPERTIES.forEach(property => {
+      const previous = previousStyles[property];
+      if (previous && previous.value) cell.style.setProperty(property, previous.value, previous.priority);
+      else cell.style.removeProperty(property);
+    });
+    delete cell.dataset.editGeometryStyles;
   }
 
   function renderCellDisplay(cell, colIndex, value) {
@@ -1835,6 +1879,17 @@
   }
 
   document.addEventListener('click', function(e) {
+    const supportsHover = window.matchMedia && window.matchMedia('(hover: hover)').matches;
+    if (!supportsHover) {
+      const cell = e.target.closest('.item-value');
+      const hasViewActions = cell && cell.querySelector('.cell-view-actions');
+      document.querySelectorAll('.item-value.is-actions-active').forEach(node => {
+        if (node !== cell) node.classList.remove('is-actions-active');
+      });
+      if (hasViewActions) cell.classList.add('is-actions-active');
+      else if (!cell) document.querySelectorAll('.item-value.is-actions-active').forEach(node => node.classList.remove('is-actions-active'));
+    }
+
     const fileOpenButton = e.target.closest('.file-open-btn');
     if (fileOpenButton) {
       e.preventDefault();
@@ -1850,6 +1905,7 @@
     if (mode === 'attachment') {
       e.preventDefault();
       e.stopPropagation();
+      btn.closest('.item-value')?.classList.remove('is-actions-active');
       handleAttachmentClick(colIndex);
       return;
     }
@@ -1872,6 +1928,8 @@
     }
     if (!rule.editable) return;
     if (mode === 'edit') {
+      cell.classList.remove('is-actions-active');
+      lockCellGeometryForEdit(cell);
       const columnName = currentDocsRow.header[colIndex];
       const serverValue = String(currentDocsRow.serverRow[colIndex] ?? '');
       // Продолжаем незавершённое редактирование, но не используем черновик
@@ -1993,6 +2051,7 @@
       delete cell.dataset.originalValue;
       setDocumentDraftValue(colIndex, draftValue);
       // После выхода из редактирования снова показываем значение из таблицы.
+      unlockCellGeometryAfterEdit(cell);
       renderCellDisplay(cell, colIndex, currentDocsRow.serverRow[colIndex] ?? '');
       return;
     }
@@ -2012,6 +2071,7 @@
         currentDocsRow.serverRow[colIndex] = saveValue;
         delete cell.dataset.originalValue;
         removeDocumentDraftValue(colIndex);
+        unlockCellGeometryAfterEdit(cell);
         renderCellDisplay(cell, colIndex, saveValue);
         if (identityChanged || (response && response.identityChanged)) {
           const previousDraftKey = currentDocsRow.draftKey;
