@@ -234,51 +234,34 @@ function buildLogRichText(lines) {
 }
 
 /**
- * Сравнивает набор авторизационных данных, который определяет строку журнала.
- * @param {Array<*>} row Значения строки листа «Входы».
- * @param {{login?:string,password?:string,snils?:string}} payload Данные пользователя.
- * @returns {boolean}
+ * Возвращает ключ временного сопоставления строки и идентификатора сессии.
+ * Идентификатор создаётся браузером на каждую загрузку страницы и не хранится
+ * в колонках листа, чтобы сохранить исходную структуру из восьми столбцов.
  */
-function isSameLogIdentity(row, { login = '', password = '', snils = '' }) {
-  return normalizeLogin(row[1]) === normalizeLogin(login) &&
-    String(row[2] ?? '').trim() === String(password ?? '').trim() &&
-    normalizeSnils(row[3]) === normalizeSnils(snils);
+function getLogSessionCacheKey_(sessionId) {
+  return `access-log-session:${String(sessionId || '').trim()}`;
 }
 
-/**
- * Ищет недавнюю строку строго по ФИО, дате рождения и СНИЛС.
- * IP намеренно не участвует в выборе: один IP может использоваться разными людьми.
- * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet Лист логов.
- * @param {{login?:string,password?:string,snils?:string}} payload Данные для поиска.
- * @returns {number} Номер строки или -1.
- */
-function findRecentLogRow(sheet, payload) {
-  const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return -1;
-
-  const values = sheet.getRange(2, 1, lastRow - 1, LOG_COLUMNS.length).getValues();
-  const cutoff = Date.now() - LOG_MAX_AGE_MINUTES * 60 * 1000;
-  for (let i = values.length - 1; i >= 0; i--) {
-    const dateValue = parseLogDateTime(values[i][0]);
-    if (!(dateValue instanceof Date) || Number.isNaN(dateValue.getTime()) || dateValue.getTime() < cutoff) continue;
-    if (isSameLogIdentity(values[i], payload)) return i + 2;
-  }
-  return -1;
+/** Ищет строку, созданную для текущей сессии браузера. */
+function findSessionLogRow_(sessionId) {
+  const value = CacheService.getScriptCache().get(getLogSessionCacheKey_(sessionId));
+  const rowIndex = Number(value);
+  return Number.isInteger(rowIndex) && rowIndex > 1 ? rowIndex : -1;
 }
 
-/**
- * Добавляет событие только в историю даты и статуса текущей строки.
- * Идентификационные данные и сведения о клиенте записываются исключительно при
- * создании строки и никогда не дублируются переносами.
- */
+/** Запоминает строку сессии на срок, достаточный для активной работы страницы. */
+function rememberSessionLogRow_(sessionId, rowIndex) {
+  CacheService.getScriptCache().put(getLogSessionCacheKey_(sessionId), String(rowIndex), 21600);
+}
+
+/** Добавляет событие только в историю даты и статуса текущей строки. */
 function appendLogLine(sheet, rowIndex, status) {
   const range = sheet.getRange(rowIndex, 1, 1, LOG_COLUMNS.length);
   const oldValues = range.getValues()[0];
-  const updates = [
+  [
     { col: 0, value: formatLogDateTime(new Date()) },
     { col: 7, value: String(status || '') }
-  ];
-  updates.forEach(({ col, value }) => {
+  ].forEach(({ col, value }) => {
     const oldText = formatLogCellValue(col, oldValues[col]);
     const lines = oldText === '' ? [value] : oldText.split('\n').concat([value]);
     range.getCell(1, col + 1).setRichTextValue(buildLogRichText(lines));
@@ -286,56 +269,62 @@ function appendLogLine(sheet, rowIndex, status) {
   range.setWrap(true);
 }
 
-/** Создаёт либо дополняет строку истории одного набора учётных данных. */
-function logAccess({ login = '', password = '', snils = '', clientInfo = {}, status }) {
+/** Создаёт строку только для нового открытия сайта. */
+function logPageOpen({ login = '', password = '', snils = '', clientInfo = {} } = {}, sessionId) {
+  if (!String(sessionId || '').trim()) return;
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(LOG_CONFIG.lockWaitMs)) return;
   try {
     const sheet = getLogSheet();
     if (!sheet) return;
-    const payload = { login, password, snils };
-    const rowIndex = findRecentLogRow(sheet, payload);
-    if (rowIndex > 0) {
-      appendLogLine(sheet, rowIndex, status);
-      return;
-    }
+    const rowIndex = sheet.getLastRow() + 1;
     appendPlainLogRow(sheet, [
       formatLogDateTime(new Date()), login, password, snils,
-      clientInfo.ip || '', clientInfo.device || '', clientInfo.browser || '', status || ''
+      clientInfo.ip || '', clientInfo.device || '', clientInfo.browser || '', 'Зашел на сайт'
     ]);
+    rememberSessionLogRow_(sessionId, rowIndex);
   } finally {
     lock.releaseLock();
   }
 }
 
-/** Первое событие посещения сайта. */
-function logPageOpen(payload = {}) {
-  logAccess(Object.assign({}, payload, { status: 'Зашел на сайт' }));
+/** Добавляет событие в строку уже созданной сессии. */
+function logSessionEvent(sessionId, status) {
+  if (!String(sessionId || '').trim()) return;
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(LOG_CONFIG.lockWaitMs)) return;
+  try {
+    const rowIndex = findSessionLogRow_(sessionId);
+    if (rowIndex < 2) return;
+    const sheet = getLogSheet();
+    if (!sheet || rowIndex > sheet.getLastRow()) return;
+    appendLogLine(sheet, rowIndex, status);
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /** Логирует результат авторизации, но не silent-проверки. */
 function logAuthAttempt(payload) {
   if (payload.clientInfo && payload.clientInfo.silent) return;
-  logAccess(payload);
+  logSessionEvent(payload.sessionId, payload.status);
 }
 
-/** Логирует пользовательское действие для текущих данных авторизации. */
-function logUserAction(login, password, snils, status) {
-  logAccess({ login, password, snils, status });
+function logUserAction(sessionId, status) {
+  logSessionEvent(sessionId, status);
 }
 
-/** Логирует нажатие кнопки входа до выполнения серверной авторизации. */
-function logLoginButtonClick(login, password, snils, clientInfo = {}) {
-  logAccess({ login, password, snils, clientInfo, status: 'Нажал: Войти' });
+function logLoginButtonClick(sessionId) {
+  logSessionEvent(sessionId, 'Нажал: Войти');
 }
 
-function logSectionVisit(login, password, snils, section) {
+function logSectionVisit(sessionId, section) {
   const sectionName = APP_CONFIG.SECTION_NAMES[section] || section;
-  logUserAction(login, password, snils, `Перешёл в раздел ${sectionName}`);
+  logSessionEvent(sessionId, `Перешёл в раздел ${sectionName}`);
 }
 
-function logFillFormClick(login, password, snils) {
-  logUserAction(login, password, snils, 'Нажал: Заполнить форму');
+function logFillFormClick(sessionId) {
+  logSessionEvent(sessionId, 'Нажал: Заполнить форму');
 }
 
 /*************************************************
@@ -492,14 +481,14 @@ function logStage(stage, startedAt) {
  * @param {Object} [clientInfo={}] Данные об устройстве.
  * @returns {Object}
  */
-function checkLogin(login, password, clientInfo = {}, snils = '') {
+function checkLogin(login, password, clientInfo = {}, snils = '', sessionId = '') {
   const startedAt = Date.now();
   logStage('Начало checkLogin', startedAt);
 
   const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
 
   if (!sheet) {
-    logAuthAttempt({ login, password, snils, clientInfo, status: 'Лист не найден' });
+    logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Лист не найден' });
     return { error: 'Лист с результатами не найден.' };
   }
 
@@ -522,7 +511,7 @@ function checkLogin(login, password, clientInfo = {}, snils = '') {
     authCols = getAuthColumnIndexes(header);
     allowedCols = getAllowedColumnIndexes(headerColors);
   } catch (_error) {
-    logAuthAttempt({ login, password, snils, clientInfo, status: 'Ошибка конфигурации столбцов' });
+    logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Ошибка конфигурации столбцов' });
     return { error: 'Ошибка структуры таблицы.' };
   }
 
@@ -542,7 +531,7 @@ function checkLogin(login, password, clientInfo = {}, snils = '') {
       if (rowSnils && rowSnils !== expectedSnils) {
         const snilsVisible = Boolean(clientInfo.snilsVisible);
         const snilsStatus = expectedSnils && snilsVisible ? 'Неверный СНИЛС' : 'Требуется ввод СНИЛС';
-        logAuthAttempt({ login, password, snils, clientInfo, status: snilsStatus });
+        logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: snilsStatus });
         logStage(expectedSnils && snilsVisible ? 'Совпадение найдено, СНИЛС неверный' : 'Совпадение найдено, требуется СНИЛС', startedAt);
         return { requiresSnils: true, snilsError: expectedSnils && snilsVisible ? 'invalid' : 'required' };
       }
@@ -550,13 +539,13 @@ function checkLogin(login, password, clientInfo = {}, snils = '') {
       const rowIndex = i + 2;
       const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
       const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
-      logAuthAttempt({ login, password, snils, clientInfo, status: 'Удачный вход' });
+      logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Удачный вход' });
       logStage('Совпадение найдено, данные строки загружены', startedAt);
       return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
     }
   }
 
-  logAuthAttempt({ login, password, snils, clientInfo, status: 'Неудачный вход: ФИО/дата' });
+  logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Неудачный вход: ФИО/дата' });
   logStage('Совпадение не найдено', startedAt);
   return { error: 'Неправильно введены ФИО или дата рождения.' };
 }
@@ -570,7 +559,7 @@ function checkLogin(login, password, clientInfo = {}, snils = '') {
  * @param {Object} [clientInfo={}] Данные клиента.
  * @returns {Object}
  */
-function verifySnils(login, password, snils, clientInfo = {}) {
+function verifySnils(login, password, snils, clientInfo = {}, sessionId = '') {
   const startedAt = Date.now();
   logStage('Начало verifySnils', startedAt);
 
@@ -620,19 +609,19 @@ function verifySnils(login, password, snils, clientInfo = {}) {
         const rowIndex = i + 2;
         const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
         const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
-        logAuthAttempt({ login, password, snils, clientInfo, status: 'Удачный вход без СНИЛС' });
+        logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Удачный вход без СНИЛС' });
         return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
       }
 
       if (rowSnils !== expectedSnils) {
-        logAuthAttempt({ login, password, snils, clientInfo, status: 'Неверный СНИЛС' });
+        logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Неверный СНИЛС' });
         return { error: 'Неверный СНИЛС.' };
       }
 
       const rowIndex = i + 2;
       const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
       const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
-      logAuthAttempt({ login, password, snils, clientInfo, status: 'Удачный вход по СНИЛС' });
+      logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Удачный вход по СНИЛС' });
       logStage('СНИЛС подтвержден, данные строки загружены', startedAt);
       return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
     }
