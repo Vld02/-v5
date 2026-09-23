@@ -199,16 +199,6 @@ function parseLogDateTime(value) {
 }
 
 /**
- * Проверяет, можно ли использовать IP для поиска строки лога.
- * @param {*} value IP из clientInfo.
- * @returns {boolean}
- */
-function isRecognizedIp(value) {
-  const ip = String(value || '').trim().toLowerCase();
-  return Boolean(ip) && ip !== 'не определён' && ip !== 'не определен';
-}
-
-/**
  * Делит строковое значение ячейки на логические строки.
  * @param {*} value Значение ячейки.
  * @returns {string[]}
@@ -216,16 +206,6 @@ function isRecognizedIp(value) {
 function splitLogLines(value) {
   const text = String(value ?? '');
   return text === '' ? [] : text.split('\n');
-}
-
-/**
- * Берет последнюю непустую строку из ячейки лога.
- * @param {*} value Значение ячейки.
- * @returns {string}
- */
-function getLastLogLine(value) {
-  const lines = splitLogLines(value).filter(line => line !== '');
-  return lines.length ? lines[lines.length - 1] : '';
 }
 
 /**
@@ -254,162 +234,108 @@ function buildLogRichText(lines) {
 }
 
 /**
- * Ищет строку открытия сайта: сначала по IP, затем по ФИО, только за последние 30 минут.
+ * Сравнивает набор авторизационных данных, который определяет строку журнала.
+ * @param {Array<*>} row Значения строки листа «Входы».
+ * @param {{login?:string,password?:string,snils?:string}} payload Данные пользователя.
+ * @returns {boolean}
+ */
+function isSameLogIdentity(row, { login = '', password = '', snils = '' }) {
+  return normalizeLogin(row[1]) === normalizeLogin(login) &&
+    String(row[2] ?? '').trim() === String(password ?? '').trim() &&
+    normalizeSnils(row[3]) === normalizeSnils(snils);
+}
+
+/**
+ * Ищет недавнюю строку строго по ФИО, дате рождения и СНИЛС.
+ * IP намеренно не участвует в выборе: один IP может использоваться разными людьми.
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet Лист логов.
- * @param {{login?:string,clientInfo?:Object}} payload Данные для поиска.
+ * @param {{login?:string,password?:string,snils?:string}} payload Данные для поиска.
  * @returns {number} Номер строки или -1.
  */
-function findRecentLogRow(sheet, { login = '', clientInfo = {} }) {
+function findRecentLogRow(sheet, payload) {
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return -1;
 
   const values = sheet.getRange(2, 1, lastRow - 1, LOG_COLUMNS.length).getValues();
   const cutoff = Date.now() - LOG_MAX_AGE_MINUTES * 60 * 1000;
-  const targetIp = String(clientInfo.ip || '').trim();
-  const canUseIp = isRecognizedIp(targetIp);
-  const targetLogin = normalizeLogin(login);
-
   for (let i = values.length - 1; i >= 0; i--) {
-    const row = values[i];
-    const dateValue = parseLogDateTime(row[0]);
-    if (!(dateValue instanceof Date) || Number.isNaN(dateValue.getTime()) || dateValue.getTime() < cutoff) {
-      continue;
-    }
-
-    if (canUseIp && getLastLogLine(row[4]) === targetIp) {
-      return i + 2;
-    }
+    const dateValue = parseLogDateTime(values[i][0]);
+    if (!(dateValue instanceof Date) || Number.isNaN(dateValue.getTime()) || dateValue.getTime() < cutoff) continue;
+    if (isSameLogIdentity(values[i], payload)) return i + 2;
   }
-
-  if (canUseIp || !targetLogin) return -1;
-  for (let i = values.length - 1; i >= 0; i--) {
-    const row = values[i];
-    const dateValue = parseLogDateTime(row[0]);
-    if (!(dateValue instanceof Date) || Number.isNaN(dateValue.getTime()) || dateValue.getTime() < cutoff) {
-      continue;
-    }
-
-    if (normalizeLogin(getLastLogLine(row[1])) === targetLogin) {
-      return i + 2;
-    }
-  }
-
   return -1;
 }
 
 /**
- * Добавляет новую логическую строку к найденной записи, зачеркивая предыдущие данные.
- * Если в одной ячейке появляется новая строка, перенос добавляется во все остальные ячейки строки.
- * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet Лист логов.
- * @param {number} rowIndex Номер строки.
- * @param {string[]} newValues Новые значения по колонкам лога.
+ * Добавляет событие только в историю даты и статуса текущей строки.
+ * Идентификационные данные и сведения о клиенте записываются исключительно при
+ * создании строки и никогда не дублируются переносами.
  */
-function appendLogLine(sheet, rowIndex, newValues) {
+function appendLogLine(sheet, rowIndex, status) {
   const range = sheet.getRange(rowIndex, 1, 1, LOG_COLUMNS.length);
   const oldValues = range.getValues()[0];
-  const richValues = [];
-
-  for (let col = 0; col < LOG_COLUMNS.length; col++) {
+  const updates = [
+    { col: 0, value: formatLogDateTime(new Date()) },
+    { col: 7, value: String(status || '') }
+  ];
+  updates.forEach(({ col, value }) => {
     const oldText = formatLogCellValue(col, oldValues[col]);
-    const oldLines = oldText === '' ? [''] : oldText.split('\n');
-    const nextValue = newValues[col] == null ? '' : String(newValues[col]);
-    const lines = oldLines.length ? oldLines.concat([nextValue]) : [nextValue];
-    richValues.push(buildLogRichText(lines));
-  }
-
-  range.setRichTextValues([richValues]).setWrap(true);
+    const lines = oldText === '' ? [value] : oldText.split('\n').concat([value]);
+    range.getCell(1, col + 1).setRichTextValue(buildLogRichText(lines));
+  });
+  range.setWrap(true);
 }
 
-/**
- * Создает первичную строку при открытии сайта.
- * @param {{login?:string,password?:string,snils?:string,clientInfo?:Object}} payload Данные открытия.
- */
-function logPageOpen({ login = '', password = '', snils = '', clientInfo = {} } = {}) {
-  const sheet = getLogSheet();
-  if (!sheet) return;
-
-  appendPlainLogRow(sheet, [
-    formatLogDateTime(new Date()),
-    login,
-    password,
-    snils,
-    clientInfo.ip || '',
-    clientInfo.device || '',
-    clientInfo.browser || '',
-    ''
-  ]);
-}
-
-/**
- * Пишет результат авторизации в строку открытия сайта, найденную по IP или ФИО за последние 30 минут.
- * @param {{login?:string,password?:string,snils?:string,clientInfo?:Object,status:string}} payload
- */
+/** Создаёт либо дополняет строку истории одного набора учётных данных. */
 function logAccess({ login = '', password = '', snils = '', clientInfo = {}, status }) {
   const lock = LockService.getScriptLock();
-  // Журнал не должен задерживать аутентификацию: при конкурентной записи
-  // пропускаем только эту запись журнала, а не весь запрос пользователя.
   if (!lock.tryLock(LOG_CONFIG.lockWaitMs)) return;
   try {
     const sheet = getLogSheet();
     if (!sheet) return;
-
-    const values = [
-    formatLogDateTime(new Date()),
-    login,
-    password,
-    snils,
-    clientInfo.ip || '',
-    clientInfo.device || '',
-    clientInfo.browser || '',
-    status || ''
-  ];
-  const rowIndex = findRecentLogRow(sheet, { login, clientInfo });
-
-  if (rowIndex > 0) {
-      appendLogLine(sheet, rowIndex, values);
+    const payload = { login, password, snils };
+    const rowIndex = findRecentLogRow(sheet, payload);
+    if (rowIndex > 0) {
+      appendLogLine(sheet, rowIndex, status);
       return;
     }
-
-    appendPlainLogRow(sheet, values);
+    appendPlainLogRow(sheet, [
+      formatLogDateTime(new Date()), login, password, snils,
+      clientInfo.ip || '', clientInfo.device || '', clientInfo.browser || '', status || ''
+    ]);
   } finally {
     lock.releaseLock();
   }
 }
 
+/** Первое событие посещения сайта. */
+function logPageOpen(payload = {}) {
+  logAccess(Object.assign({}, payload, { status: 'Зашел на сайт' }));
+}
 
-/**
- * Логирует попытку входа, пропуская технические фоновые проверки.
- * @param {{login?:string,password?:string,snils?:string,clientInfo?:Object,status:string}} payload
- */
+/** Логирует результат авторизации, но не silent-проверки. */
 function logAuthAttempt(payload) {
   if (payload.clientInfo && payload.clientInfo.silent) return;
   logAccess(payload);
 }
 
-/**
- * Логирует нажатие кнопки входа.
- * @param {string} login Логин пользователя.
- */
-function logLoginButtonClick(login) {
-  logAccess({ login, status: 'Нажал: Войти' });
+/** Логирует пользовательское действие для текущих данных авторизации. */
+function logUserAction(login, password, snils, status) {
+  logAccess({ login, password, snils, status });
 }
 
-/**
- * Логирует переход в раздел.
- * @param {string} login Логин пользователя.
- * @param {string} section Ключ раздела.
- */
-function logSectionVisit(login, section) {
+/** Логирует нажатие кнопки входа до выполнения серверной авторизации. */
+function logLoginButtonClick(login, password, snils, clientInfo = {}) {
+  logAccess({ login, password, snils, clientInfo, status: 'Нажал: Войти' });
+}
+
+function logSectionVisit(login, password, snils, section) {
   const sectionName = APP_CONFIG.SECTION_NAMES[section] || section;
-  logAccess({ login, status: `Перешёл в раздел ${sectionName}` });
+  logUserAction(login, password, snils, `Перешёл в раздел ${sectionName}`);
 }
 
-/**
- * Логирует клик по кнопке заполнения формы тренировки.
- * @param {string} login Логин пользователя.
- */
-function logFillFormClick(login) {
-  logAccess({ login, status: 'Нажал: Заполнить форму' });
+function logFillFormClick(login, password, snils) {
+  logUserAction(login, password, snils, 'Нажал: Заполнить форму');
 }
 
 /*************************************************
