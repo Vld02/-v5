@@ -19,9 +19,11 @@
     --card-bg: rgba(255, 255, 255, 0.92);
     --primary: #1a73e8;
     --border: #d8d8d8;
-    --base-font-size: clamp(1.35rem, 0.95rem + 1.35vw, 2rem);
+    /* Интерфейс сохраняет единый масштаб при любой ширине viewport:
+       сжимается доступная область страницы, а не размеры элементов. */
+    --base-font-size: 1rem;
     --page-max-width: 68rem;
-    --topbar-height: clamp(3.25rem, 7vh, 4.5rem);
+    --topbar-height: 4rem;
     --space-xs: 0.25rem;
     --space-sm: 0.5rem;
     --space-md: 0.75rem;
@@ -34,12 +36,6 @@
 
   html {
     font-size: var(--base-font-size);
-  }
-
-  @media (min-width: 52.0625em) and (pointer: fine) {
-    html {
-      font-size: calc(var(--base-font-size) * 0.47);
-    }
   }
 
   body {
@@ -120,7 +116,7 @@
   .tab-panel.active { display: block; }
   .section-heading { display: none; }
 
-  h2 { text-align: center; font-size: clamp(1.35rem, 1rem + 1vw, 2rem); }
+  h2 { text-align: center; font-size: 1.6rem; }
   label { display: block; margin-top: var(--space-md); }
   input { padding: 0.65em 0.75em; margin: var(--space-sm) 0; width: 100%; box-sizing: border-box; font: inherit; }
   button { padding: 0.7em 1.1em; margin-top: var(--space-md); cursor: pointer; font: inherit; }
@@ -164,11 +160,14 @@
     transition:max-height .5s ease, opacity .5s ease;
   }
   .document-section.open .document-section-content { max-height:500rem; opacity:1; }
-  .cell-edit-shell { position:relative; min-height:2rem; padding-right:calc(1.55rem + var(--space-xs)); }
-  .cell-edit-actions { position:absolute; top:50%; right:calc(-1 * var(--space-sm)); width:1.55rem; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0; transform:translateY(-50%); }
+  .cell-edit-shell { position:relative; min-height:2rem; }
+  .cell-edit-actions { position:absolute; right:0.5rem; bottom:0.35rem; display:flex; align-items:center; gap:var(--space-xs); }
   .cell-edit-btn { width:1.55rem; height:1.55rem; min-width:1.55rem; min-height:1.55rem; max-width:1.55rem; max-height:1.55rem; flex:0 0 1.55rem; padding:0; display:inline-flex; align-items:center; justify-content:center; overflow:visible; color:inherit; line-height:1; }
   .file-status { display:inline-flex; align-items:center; gap:0.35rem; color:#5f6368; }
   .file-status.has-file { color:#137333; }
+  .file-status.is-uploading { color:#5f6368; cursor:progress; }
+  .file-status.is-uploading::before { content:''; width:0.9rem; height:0.9rem; flex:0 0 auto; box-sizing:border-box; border:0.14rem solid currentColor; border-right-color:transparent; border-radius:50%; animation:file-status-spin 0.8s linear infinite; }
+  @keyframes file-status-spin { to { transform:rotate(360deg); } }
   .file-status-link { display:inline-flex; align-items:center; gap:0.35rem; padding:0; border:0; background:transparent; color:inherit; font:inherit; text-decoration:underline; text-underline-offset:0.14em; cursor:pointer; }
   .file-status-link:hover, .file-status-link:focus-visible { color:#0b5d2e; }
   .file-status svg { width:1.15rem; height:1.15rem; stroke:currentColor; stroke-width:2.1; fill:none; }
@@ -178,10 +177,12 @@
   .cell-edit-btn.is-saving { cursor:progress; }
   .cell-edit-btn:disabled { opacity:0.55; cursor:not-allowed; }
   .cell-value-text { white-space:pre-wrap; }
-  .cell-editor { position:relative; min-width:0; }
+  .cell-editor { position:relative; min-width:0; flex:1 1 auto; }
   .cell-value-input, .cell-value-display { width:100%; box-sizing:border-box; margin:0; padding:0.35rem 0.5rem; border:0.05rem solid #c5c5c5; border-radius:0.4rem; outline:none; font:inherit; min-height:2rem; }
   .cell-value-input { background:#fff; }
-  .cell-value-display { display:flex; align-items:center; overflow-wrap:anywhere; border-color:transparent; background:transparent; }
+  .cell-value-display { display:block; overflow-wrap:anywhere; border-color:transparent; background:transparent; }
+  .cell-action-reserve { display:inline-block; width:calc(3.1rem + var(--space-xs)); height:1.55rem; vertical-align:bottom; }
+  .cell-edit-inline { padding-right:calc(3.1rem + var(--space-xs)); }
   .cell-value-input:focus { border-color:#8ab4f8; box-shadow:0 0 0 0.1rem rgba(138,180,248,0.2); }
   .cell-edit-help { position:relative; }
   .cell-help-popover { position:absolute; right:calc(100% + var(--space-xs)); top:0; z-index:80; width:max-content; max-width:min(16rem, 70vw); padding:0.45rem 0.55rem; border:0.05rem solid var(--border); border-radius:var(--radius-sm); background:#fff; box-shadow:0 0.3rem 0.8rem rgba(0,0,0,0.12); font-size:0.85rem; line-height:1.25; opacity:0; visibility:hidden; pointer-events:none; }
@@ -200,7 +201,9 @@
   }
   .auth-feedback {
     position: relative;
-    width: min(28rem, calc(100vw - 5rem));
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: 28rem;
     min-height: 1.4em;
     display: block;
     margin-bottom: 0.1rem;
@@ -255,6 +258,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-wrap: wrap;
     margin: var(--space-lg) 0 var(--space-sm);
     gap: var(--space-md);
   }
@@ -263,6 +267,7 @@
     display: flex;
     justify-content: flex-end;
     align-items: center;
+    flex-wrap: wrap;
     gap: var(--space-sm);
   }
   .training-view-btn {
@@ -606,47 +611,6 @@
     background: #fff;
   }
 
-  @media (max-width: 52em) {
-    :root {
-      --base-font-size: clamp(1.2rem, 3.8vw, 1.75rem);
-      --topbar-height: clamp(3.4rem, 11vw, 4.5rem);
-    }
-
-    .topbar {
-      padding: 0 var(--space-sm);
-    }
-
-    .topbar-tabs {
-      gap: var(--space-xs);
-    }
-
-    .topbar-tab {
-      padding: 0.4em 0.6em;
-    }
-
-    .tabs {
-      top: var(--space-sm);
-      gap: var(--space-sm);
-    }
-
-
-    .page {
-      width: min(var(--page-max-width), calc(100vw - var(--space-sm) * 2));
-      margin: calc(var(--topbar-height) + var(--space-sm)) var(--space-sm) var(--space-sm);
-      padding: var(--space-md);
-    }
-
-    .auth-actions,
-    .training-topbar,
-    .training-controls {
-      align-items: stretch;
-      flex-direction: column;
-    }
-
-    .auth-feedback {
-      width: 100%;
-    }
-  }
   .training-content-view {
     margin-top: var(--space-sm);
   }
@@ -878,7 +842,7 @@
     return editConfigPromise;
   }
 
-  let currentDocsRow = { header: [], serverRow: [], colors: [], fileStates: [], draftValues: {}, draftKey: '' };
+  let currentDocsRow = { header: [], serverRow: [], colors: [], fileStates: [], attachmentUploads: {}, draftValues: {}, draftKey: '' };
   let documentDraftSaveTimer = null;
 
   loadEditConfig().catch(() => {});
@@ -1613,6 +1577,7 @@
       serverRow: [...serverRow],
       colors: [...colors],
       fileStates: [...(response.fileStates || [])],
+      attachmentUploads: {},
       draftValues: { ...draftValues },
       draftKey
     };
@@ -1684,7 +1649,8 @@
     const isFile = rule.special === 'file';
     const mode = isFile ? 'attachment' : 'edit';
     const label = isFile ? 'Прикрепить файл' : 'Редактировать';
-    return `<button type="button" class="attendance-icon-btn cell-edit-btn ${extraClass}" data-col-index="${colIndex}" data-mode="${mode}" title="${label}" aria-label="${label}" ${editable ? '' : 'disabled'}>${iconSvg(isFile ? 'attach' : 'edit')}</button>`;
+    const isUploading = isFile && Boolean(currentDocsRow.attachmentUploads && currentDocsRow.attachmentUploads[colIndex]);
+    return `<button type="button" class="attendance-icon-btn cell-edit-btn ${extraClass}" data-col-index="${colIndex}" data-mode="${mode}" title="${label}" aria-label="${label}" ${editable && !isUploading ? '' : 'disabled'}>${iconSvg(isFile ? 'attach' : 'edit')}</button>`;
   }
 
   function getFieldDescription(rule) {
@@ -1701,7 +1667,7 @@
   }
 
   function renderCellViewActions(colIndex, editable = true, extraClass = '', rule = {}) {
-    return `<div class="cell-edit-actions">${renderCellHelpButton(colIndex, rule)}${renderCellEditButton(colIndex, editable, extraClass, rule)}</div>`;
+    return `<div class="cell-edit-actions">${renderCellEditButton(colIndex, editable, extraClass, rule)}${renderCellHelpButton(colIndex, rule)}</div>`;
   }
 
   function renderCellEditActions(colIndex) {
@@ -1711,12 +1677,15 @@
   function renderCellDisplayMarkup(colIndex, value, editable = true, extraClass = '', rule = {}) {
     const fileState = currentDocsRow.fileStates && currentDocsRow.fileStates[colIndex];
     const hasFile = Boolean(fileState && fileState.hasFile);
+    const isUploading = Boolean(currentDocsRow.attachmentUploads && currentDocsRow.attachmentUploads[colIndex]);
     const fileLabel = hasFile ? 'Файл прикреплён' : 'Нет файла';
     const fileContent = `${iconSvg(hasFile ? 'file' : 'attach')}<span>${fileLabel}</span>`;
     const display = rule.special === 'file'
-      ? `<div class="file-status${hasFile ? ' has-file' : ''}" title="${fileLabel}">${hasFile ? `<button type="button" class="file-status-link file-open-btn" data-col-index="${colIndex}" aria-label="Открыть прикреплённый файл">${fileContent}</button>` : fileContent}</div>`
-      : `<div class="cell-value-text">${escapeHtml(value)}</div>`;
-    return `<div class="cell-edit-shell"><div class="cell-editor"><div class="cell-value-display">${display}</div></div>${renderCellViewActions(colIndex, editable, extraClass, rule)}</div>`;
+      ? isUploading
+        ? '<div class="file-status is-uploading" role="status" aria-live="polite">Загрузка файла…</div>'
+        : `<div class="file-status${hasFile ? ' has-file' : ''}" title="${fileLabel}">${hasFile ? `<button type="button" class="file-status-link file-open-btn" data-col-index="${colIndex}" aria-label="Открыть прикреплённый файл">${fileContent}</button>` : fileContent}</div>`
+      : `<span class="cell-value-text">${escapeHtml(value)}</span>`;
+    return `<div class="cell-edit-shell"><div class="cell-editor"><div class="cell-value-display">${display}<span class="cell-action-reserve" aria-hidden="true"></span></div></div>${renderCellViewActions(colIndex, editable, extraClass, rule)}</div>`;
   }
 
   function renderCellDisplay(cell, colIndex, value) {
@@ -1808,19 +1777,24 @@
           form.remove();
           return;
         }
-        const progressToast = showToast('Загрузка файла…', 'loading', false);
+        if (!currentDocsRow.attachmentUploads) currentDocsRow.attachmentUploads = {};
+        currentDocsRow.attachmentUploads[colIndex] = true;
+        const cell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
+        if (cell) renderCellDisplay(cell, colIndex, currentDocsRow.serverRow[colIndex] ?? '');
         google.script.run
           .withSuccessHandler(response => {
-            closeToast(progressToast);
             form.remove();
+            delete currentDocsRow.attachmentUploads[colIndex];
             if (currentDocsRow.fileStates) currentDocsRow.fileStates[colIndex] = (response && response.fileState) || { hasFile: true };
-            const cell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
-            if (cell) renderCellDisplay(cell, colIndex, currentDocsRow.serverRow[colIndex] ?? '');
+            const resultCell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
+            if (resultCell) renderCellDisplay(resultCell, colIndex, currentDocsRow.serverRow[colIndex] ?? '');
             showToast(`Файл «${(response && response.fileName) || 'документ'}» загружен.`);
           })
           .withFailureHandler(error => {
-            closeToast(progressToast);
             form.remove();
+            delete currentDocsRow.attachmentUploads[colIndex];
+            const resultCell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
+            if (resultCell) renderCellDisplay(resultCell, colIndex, currentDocsRow.serverRow[colIndex] ?? '');
             const message = error && error.message ? error.message : 'Не удалось загрузить файл.';
             showToast(`Ошибка: ${message}`, 'error');
           })
@@ -1883,7 +1857,7 @@
         ? currentDocsRow.draftValues[columnName]
         : serverValue;
       cell.dataset.originalValue = serverValue;
-      cell.innerHTML = `<div class="cell-edit-shell"><div class="cell-editor"><input class="cell-value-input" data-col-index="${colIndex}" value="${escapeHtmlAttr(value)}" /></div>${renderCellEditActions(colIndex)}</div>`;
+      cell.innerHTML = `<div class="cell-edit-shell"><div class="cell-editor"><div class="cell-edit-inline"><input class="cell-value-input" data-col-index="${colIndex}" value="${escapeHtmlAttr(value)}" /></div></div>${renderCellEditActions(colIndex)}</div>`;
       const input = cell.querySelector('input');
       const suggestConfig = rule.special === 'suggest' ? rule.suggestions : null;
       let suggestionOptions = [];
