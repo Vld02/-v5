@@ -820,6 +820,8 @@
     gear: document.getElementById('tab-gear')
   };
   const AUTH_STORAGE_KEYS = CLIENT_CONFIG.storageKeys;
+  // Новый идентификатор при каждой загрузке страницы; не сохраняем его в storage.
+  const LOG_SESSION_ID = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const UI_TIMINGS = CLIENT_CONFIG.timings;
   const NO_GROUP_LABEL = <?!= JSON.stringify(TRAINING_CONFIG.noGroupLabel) ?>;
   const ACTIVE_TAB_STORAGE_KEY = AUTH_STORAGE_KEYS.activeTab;
@@ -1086,11 +1088,30 @@
     return true;
   }
 
+  function logUserMessage(message, type = 'warning') {
+    const text = String(message || '').trim();
+    if (!text) return;
+    const prefix = type === 'error' ? 'Ошибка' : 'Предупреждение';
+    const normalized = text.replace(/^(Ошибка|Предупреждение):\s*/i, '');
+    logUserActionClient(`${prefix}: ${normalized}`);
+  }
+
+  function setErrorMessage(message, type = 'warning') {
+    const text = String(message || '').trim();
+    dom.error.textContent = text;
+    if (text) logUserMessage(text, type);
+  }
+
+  function getAuthMessageType(message) {
+    return /(?:СНИЛС|введите ФИО|дату рождения)/i.test(String(message || '')) ? 'warning' : 'error';
+  }
+
   function showToast(message, type = 'success', autoHide = true) {
     const toast = document.createElement('div');
     toast.className = `toast ${type === 'error' ? 'error' : type === 'loading' ? 'loading' : 'success'}`;
     toast.textContent = message;
     dom.toastContainer.appendChild(toast);
+    if (type === 'error') logUserMessage(message, 'error');
     if (autoHide) setTimeout(() => toast.remove(), CLIENT_CONFIG.timings.toastAutoHideMs);
     return toast;
   }
@@ -1394,7 +1415,7 @@
 
   function handleDocsRequestFailure(error) {
     const message = error && error.message ? error.message : 'Не удалось выполнить аутентификацию.';
-    dom.error.textContent = `Ошибка: ${message}`;
+    setErrorMessage(`Ошибка: ${message}`, 'error');
     stopAuthLoading();
   }
 
@@ -1411,10 +1432,10 @@
     saveAuthInputs(loginVal, dateInput.value, snilsFormatted);
 
     const clientInfo = await getClientInfo();
-    logLoginButtonClick(loginVal, passwordForServer, snilsFormatted, clientInfo);
+    logLoginButtonClick();
 
     if (!loginVal || !passwordForServer) {
-      dom.error.textContent = 'Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.';
+      setErrorMessage('Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.');
       return;
     }
 
@@ -1425,16 +1446,16 @@
     google.script.run
       .withSuccessHandler(response => {
         if (response && response.error) {
-          dom.error.textContent = response.error;
+          setErrorMessage(response.error, getAuthMessageType(response.error));
           stopAuthLoading();
           return;
         }
 
         if (response && response.requiresSnils) {
           startSnilsStep(loginVal, passwordForServer);
-          dom.error.textContent = response.snilsError === 'invalid'
+          setErrorMessage(response.snilsError === 'invalid'
             ? 'Неверный СНИЛС.'
-            : 'Для входа введите СНИЛС.';
+            : 'Для входа введите СНИЛС.');
           return;
         }
 
@@ -1443,7 +1464,7 @@
         showDocsResult(response);
       })
       .withFailureHandler(handleDocsRequestFailure)
-      .checkLogin(loginVal, passwordForServer, clientInfo, snilsFormatted);
+      .checkLogin(loginVal, passwordForServer, clientInfo, snilsFormatted, LOG_SESSION_ID);
   }
 
   async function verifySnilsDocs() {
@@ -1452,11 +1473,10 @@
     if (!authState.login || !authState.password) {
       const loginVal = dom.login.value.trim();
       const passwordForServer = toServerDate(formatDateInput(dom.password.value, { finalizeYear: true }));
-      const clickClientInfo = await getClientInfo();
-      logLoginButtonClick(loginVal, passwordForServer, formatSnilsInput(dom.snils.value), clickClientInfo);
+      logLoginButtonClick();
 
       if (!loginVal || !passwordForServer) {
-        dom.error.textContent = 'Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.';
+        setErrorMessage('Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.');
         return;
       }
       authState.login = loginVal;
@@ -1467,7 +1487,7 @@
     dom.snils.value = snilsFormatted;
 
     if (snilsFormatted.length !== 14) {
-      dom.error.textContent = snilsFormatted ? 'Неверный СНИЛС.' : 'Для входа введите СНИЛС.';
+      setErrorMessage(snilsFormatted ? 'Неверный СНИЛС.' : 'Для входа введите СНИЛС.');
       return;
     }
 
@@ -1478,7 +1498,7 @@
     google.script.run
       .withSuccessHandler(response => {
         if (response && response.error) {
-          dom.error.textContent = response.error;
+          setErrorMessage(response.error, getAuthMessageType(response.error));
           stopAuthLoading();
           return;
         }
@@ -1494,7 +1514,7 @@
         showDocsResult(response);
       })
       .withFailureHandler(handleDocsRequestFailure)
-      .verifySnils(authState.login, authState.password, snilsFormatted, clientInfo);
+      .verifySnils(authState.login, authState.password, snilsFormatted, clientInfo, LOG_SESSION_ID);
   }
 
   async function getClientInfo() {
@@ -1528,20 +1548,12 @@
     google.script.run.checkLogin(loginVal, passwordForServer, { silent: true });
   }
 
-  function getCurrentLogIdentity() {
-    return {
-      login: dom.login.value.trim(),
-      password: toServerDate(formatDateInput(dom.password.value, { finalizeYear: true })),
-      snils: formatSnilsInput(dom.snils.value)
-    };
+  function logUserActionClient(status) {
+    google.script.run.logUserAction(LOG_SESSION_ID, status);
   }
 
-  function logUserActionClient(status, identity = getCurrentLogIdentity()) {
-    google.script.run.logUserAction(identity.login, identity.password, identity.snils, status);
-  }
-
-  function logLoginButtonClick(login, password, snils, clientInfo) {
-    google.script.run.logLoginButtonClick(login, password, snils, clientInfo);
+  function logLoginButtonClick() {
+    google.script.run.logLoginButtonClick(LOG_SESSION_ID);
   }
 
   function getLogFieldName(columnName) {
@@ -1549,13 +1561,11 @@
   }
 
   function logSectionVisitClient(section) {
-    const identity = getCurrentLogIdentity();
-    google.script.run.logSectionVisit(identity.login, identity.password, identity.snils, section);
+    google.script.run.logSectionVisit(LOG_SESSION_ID, section);
   }
 
   function logFillFormClickClient() {
-    const identity = getCurrentLogIdentity();
-    google.script.run.logFillFormClick(identity.login, identity.password, identity.snils);
+    google.script.run.logFillFormClick(LOG_SESSION_ID);
   }
 
   async function logInitialPageOpen() {
@@ -1569,7 +1579,7 @@
       password: passwordForServer,
       snils: snilsFormatted,
       clientInfo
-    });
+    }, LOG_SESSION_ID);
   }
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -1597,7 +1607,7 @@
 
   async function showDocsResult(response) {
     if (response.error) {
-      dom.error.textContent = response.error;
+      setErrorMessage(response.error, 'error');
       stopAuthLoading();
       return;
     }
@@ -1607,7 +1617,7 @@
     try {
       await loadEditConfig();
     } catch (_error) {
-      dom.error.textContent = 'Не удалось загрузить правила редактирования.';
+      setErrorMessage('Не удалось загрузить правила редактирования.', 'error');
       stopAuthLoading();
       return;
     }
@@ -2082,7 +2092,6 @@
     const identityChanged = Boolean(rule.isIdentityField && saveValue !== oldValue);
     if (!isValidFieldValue(saveValue, rule)) return;
     if (identityChanged && !confirm('Вы изменяете данные, используемые для идентификации пользователя.\n\nПосле успешного сохранения следующие запросы будут использовать новое значение.\n\nПродолжить?')) return;
-    const logIdentity = getCurrentLogIdentity();
     btn.disabled = true;
     const cancelBtn = cell.querySelector('.cell-edit-btn[data-mode="cancel"]');
     if (cancelBtn) cancelBtn.disabled = true;
@@ -2100,7 +2109,7 @@
           updateCurrentIdentityAfterSave(currentDocsRow.header[colIndex], saveValue);
           moveCurrentDocumentDraftToCurrentIdentity(previousDraftKey);
         }
-        logUserActionClient(`Сохранено: ${getLogFieldName(currentDocsRow.header[colIndex])}`, logIdentity);
+        logUserActionClient(`Сохранено: ${getLogFieldName(currentDocsRow.header[colIndex])}`);
         showToast('Сохранено');
       })
       .withFailureHandler(error => {
@@ -2110,7 +2119,7 @@
         btn.classList.remove('is-saving');
         btn.setAttribute('aria-label', 'Сохранить');
         const message = error && error.message ? error.message : 'Не удалось сохранить изменения.';
-        logUserActionClient(`Ошибка сохранения: ${getLogFieldName(currentDocsRow.header[colIndex])}`, logIdentity);
+        logUserActionClient(`Ошибка сохранения: ${getLogFieldName(currentDocsRow.header[colIndex])}`);
         showToast(`Ошибка: ${message}`, 'error');
       })
       .updateResultCell(dom.login.value.trim(), dom.password.value.trim(), dom.snils.value.trim(), currentDocsRow.header[colIndex], saveValue);
