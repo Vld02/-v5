@@ -164,8 +164,8 @@
     transition:max-height .5s ease, opacity .5s ease;
   }
   .document-section.open .document-section-content { max-height:500rem; opacity:1; }
-  .cell-edit-shell { position:relative; min-height:2rem; padding-right:calc(1.55rem + var(--space-xs)); }
-  .cell-edit-actions { position:absolute; top:50%; right:calc(-1 * var(--space-sm)); width:1.55rem; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0; transform:translateY(-50%); }
+  .cell-edit-shell { display:flex; align-items:flex-end; min-height:2rem; gap:var(--space-xs); }
+  .cell-edit-actions { display:flex; flex:0 0 auto; align-items:center; gap:var(--space-xs); }
   .cell-edit-btn { width:1.55rem; height:1.55rem; min-width:1.55rem; min-height:1.55rem; max-width:1.55rem; max-height:1.55rem; flex:0 0 1.55rem; padding:0; display:inline-flex; align-items:center; justify-content:center; overflow:visible; color:inherit; line-height:1; }
   .file-status { display:inline-flex; align-items:center; gap:0.35rem; color:#5f6368; }
   .file-status.has-file { color:#137333; }
@@ -181,7 +181,7 @@
   .cell-edit-btn.is-saving { cursor:progress; }
   .cell-edit-btn:disabled { opacity:0.55; cursor:not-allowed; }
   .cell-value-text { white-space:pre-wrap; }
-  .cell-editor { position:relative; min-width:0; }
+  .cell-editor { position:relative; min-width:0; flex:1 1 auto; }
   .cell-value-input, .cell-value-display { width:100%; box-sizing:border-box; margin:0; padding:0.35rem 0.5rem; border:0.05rem solid #c5c5c5; border-radius:0.4rem; outline:none; font:inherit; min-height:2rem; }
   .cell-value-input { background:#fff; }
   .cell-value-display { display:flex; align-items:center; overflow-wrap:anywhere; border-color:transparent; background:transparent; }
