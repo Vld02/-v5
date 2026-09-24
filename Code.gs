@@ -22,7 +22,8 @@ function getClientConfigScript() {
       enrollmentYearOffset: EDIT_CONFIG.rules.YEAR.maxOffset
     },
     responsive: responsiveConfig,
-    documentSections: DOCUMENTS_CONFIG.client.documentSections
+    documentSections: DOCUMENTS_CONFIG.client.documentSections,
+    sectionNames: APP_CONFIG.SECTION_NAMES
   };
   return `window.CLIENT_CONFIG = ${JSON.stringify(clientConfig).replace(/</g, '\\u003c')};`;
 }
