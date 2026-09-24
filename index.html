@@ -1919,7 +1919,7 @@
     }
   }
 
-  document.addEventListener('click', function(e) {
+  document.addEventListener('click', async function(e) {
     const supportsHover = window.matchMedia && window.matchMedia('(hover: hover)').matches;
     if (!supportsHover) {
       const cell = e.target.closest('.item-value');
