@@ -1892,17 +1892,19 @@
       .getDocumentAttachmentContent(dom.login.value.trim(), toServerDate(dom.password.value), dom.snils.value.trim(), columnName);
   }
 
-  function showAttachmentReplacementDialog(onConfirm) {
+  function showAttachmentReplacementDialog(onConfirm, field) {
     const backdrop = document.createElement('div');
     backdrop.className = 'attachment-confirm-backdrop';
     backdrop.innerHTML = `<section class="attachment-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="attachmentConfirmTitle"><h2 id="attachmentConfirmTitle">Заменить прикреплённый файл?</h2><p>При загрузке нового файла предыдущий будет перемещён в корзину.</p><div class="attachment-confirm-actions"><button type="button" data-action="cancel">Отмена</button><button type="button" class="attachment-confirm-primary" data-action="confirm">Продолжить</button></div></section>`;
     const close = () => backdrop.remove();
     backdrop.addEventListener('click', event => {
       if (event.target === backdrop || event.target.closest('[data-action="cancel"]')) {
+        logEventClient('file_replace_cancel', { field });
         close();
         return;
       }
       if (event.target.closest('[data-action="confirm"]')) {
+        logEventClient('file_replace_continue', { field });
         close();
         // Нажатие этой кнопки — пользовательский жест, поэтому браузер разрешит
         // сразу открыть системный выбор файла даже после долгого ожидания.
@@ -1944,6 +1946,7 @@
           form.remove();
           return;
         }
+        logEventClient('file_selected', { fileName: fileInput.files[0].name });
         if (!currentDocsRow.attachmentUploads) currentDocsRow.attachmentUploads = {};
         currentDocsRow.attachmentUploads[colIndex] = true;
         const cell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
@@ -1974,7 +1977,7 @@
 
     const fileState = currentDocsRow.fileStates && currentDocsRow.fileStates[colIndex];
     if (fileState && fileState.hasFile) {
-      showAttachmentReplacementDialog(openFileSelector);
+      showAttachmentReplacementDialog(openFileSelector, getLogFieldName(columnName));
     } else {
       openFileSelector();
     }
@@ -2576,6 +2579,13 @@
     scheduleMatch();
   });
 
+  tbody.addEventListener('focusout', e => {
+    if (!e.target.classList.contains('input')) return;
+    logEventClient('attendance_cell_change', {
+      value: normalizeAttendanceInput(e.target.innerText)
+    });
+  });
+
   tbody.addEventListener('paste', e => {
     if (!e.target.classList.contains('input')) return;
     e.preventDefault();
@@ -2631,7 +2641,9 @@
 
       saveAttendanceDraft();
       scheduleMatch();
+      logEventClient('attendance_paste_click');
     } catch (_) {
+      logEventClient('attendance_paste_error');
       showAttendanceNotice('Не удалось вставить из буфера');
     }
   }
@@ -2655,8 +2667,12 @@
 
     try {
       await navigator.clipboard.writeText(values.join('\n'));
+      logEventClient('attendance_copy_click');
+      logEventClient('attendance_copy_success');
       showAttendanceNotice('Полные ФИО скопированы');
     } catch (_) {
+      logEventClient('attendance_copy_click');
+      logEventClient('attendance_copy_error');
       showAttendanceNotice('Не удалось скопировать в буфер');
     }
   }
@@ -3612,10 +3628,17 @@
       if (fio === selectedValue) btn.classList.add('selected');
 
       btn.addEventListener('click', () => {
+        const previousFio = rowState.selectedFio;
         [...wrap.children].forEach(b => b.classList.remove('selected'));
         btn.classList.add('selected');
         rowState.selectedFio = fio;
         rowState.selectionMode = 'manual';
+
+        if (previousFio && previousFio !== fio) {
+          logEventClient('fio_change', { oldFio: previousFio, fio });
+        } else if (previousFio !== fio) {
+          logEventClient('fio_select', { fio });
+        }
       });
 
       wrap.appendChild(btn);
@@ -3686,6 +3709,7 @@
     });
 
     if (hasUnselectedRows) {
+      logEventClient('user_warning', { message: 'Выберите все ФИО' });
       showAttendanceNotice('Выберите все ФИО');
       return;
     }
