@@ -1093,7 +1093,7 @@
     if (!text) return;
     const prefix = type === 'error' ? 'Ошибка' : 'Предупреждение';
     const normalized = text.replace(/^(Ошибка|Предупреждение):\s*/i, '');
-    logUserResultClient(`${prefix}: ${normalized}`);
+    logEventClient(type === 'error' ? 'user_error' : 'user_warning', { message: normalized });
   }
 
   function setErrorMessage(message, type = 'warning') {
@@ -1632,7 +1632,7 @@
   }
 
   function logFillFormClickClient() {
-    return logUserActionClient('Нажал: Заполнить форму');
+    return logEventClient('attendance_form_click');
   }
 
   async function logInitialPageOpen() {
@@ -1878,7 +1878,7 @@
           for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
           const objectUrl = URL.createObjectURL(new Blob([bytes], { type: file.mimeType || 'application/octet-stream' }));
           openedWindow.location.replace(objectUrl);
-          logUserActionClient(`Открыл файл: ${getLogFieldName(columnName)}`);
+          logEventClient('file_open', { field: getLogFieldName(columnName) });
           setTimeout(() => URL.revokeObjectURL(objectUrl), UI_TIMINGS.attachmentObjectUrlLifetimeMs);
         } catch (error) {
           openedWindow.close();
@@ -1917,7 +1917,7 @@
     const columnName = currentDocsRow.header[colIndex];
     if (!columnName) return;
 
-    logUserActionClient(`Нажал: Прикрепить файл — ${getLogFieldName(columnName)}`);
+    logEventClient('file_attach_click', { field: getLogFieldName(columnName) });
     const openFileSelector = () => {
       const form = document.createElement('form');
       form.style.display = 'none';
@@ -1955,7 +1955,7 @@
             if (currentDocsRow.fileStates) currentDocsRow.fileStates[colIndex] = (response && response.fileState) || { hasFile: true };
             const resultCell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
             if (resultCell) renderCellDisplay(resultCell, colIndex, currentDocsRow.serverRow[colIndex] ?? '');
-            logUserResultClient(`Файл загружен: ${getLogFieldName(columnName)}`);
+            logEventClient('file_upload_success', { field: getLogFieldName(columnName) });
             showToast(`Файл «${(response && response.fileName) || 'документ'}» загружен.`);
           })
           .withFailureHandler(error => {
@@ -1964,7 +1964,7 @@
             const resultCell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
             if (resultCell) renderCellDisplay(resultCell, colIndex, currentDocsRow.serverRow[colIndex] ?? '');
             const message = error && error.message ? error.message : 'Не удалось загрузить файл.';
-            logUserResultClient(`Ошибка загрузки файла: ${getLogFieldName(columnName)}`);
+            logEventClient('file_upload_error', { field: getLogFieldName(columnName) });
             showToast(`Ошибка: ${message}`, 'error');
           })
           .uploadDocumentAttachment(form);
@@ -2031,7 +2031,7 @@
     if (!rule.editable) return;
     if (mode === 'edit') {
       const columnName = currentDocsRow.header[colIndex];
-      logUserActionClient(`Нажал: Редактировать — ${getLogFieldName(columnName)}`);
+      logEventClient('edit_click', { field: getLogFieldName(columnName) });
       cell.classList.remove('is-actions-active');
       lockCellGeometryForEdit(cell);
       const serverValue = String(currentDocsRow.serverRow[colIndex] ?? '');
@@ -2134,16 +2134,16 @@
         }, 0);
       });
       const saveLocalDraftAfterEdit = () => {
-        if (!localDraftSaved && input.value !== valueBeforeEdit) {
-          localDraftSaved = true;
-          setDocumentDraftValue(colIndex, input.value);
-          if (documentDraftSaveTimer) {
-            clearTimeout(documentDraftSaveTimer);
-            documentDraftSaveTimer = null;
-          }
-          writeCurrentDocumentDraft();
-          logLocalDataClient(`Локально сохранено: ${getLogFieldName(columnName)} → ${input.value}`);
+        if (localDraftSaved) return;
+
+        localDraftSaved = true;
+        setDocumentDraftValue(colIndex, input.value);
+        if (documentDraftSaveTimer) {
+          clearTimeout(documentDraftSaveTimer);
+          documentDraftSaveTimer = null;
         }
+        writeCurrentDocumentDraft();
+        logEventClient('draft_saved', { field: getLogFieldName(columnName), value: input.value });
       };
       input._saveLocalDraftAfterEdit = saveLocalDraftAfterEdit;
       input.addEventListener('blur', () => {
@@ -2163,7 +2163,7 @@
       return;
     }
     if (mode === 'cancel') {
-      logUserActionClient(`Нажал: Отмена — ${getLogFieldName(currentDocsRow.header[colIndex])}`);
+      logEventClient('cancel_click', { field: getLogFieldName(currentDocsRow.header[colIndex]) });
       const editInput = cell.querySelector('input');
       editInput?._saveLocalDraftAfterEdit?.();
       const draftValue = editInput?.value ?? cell.dataset.originalValue ?? '';
@@ -2176,6 +2176,7 @@
       renderCellDisplay(cell, colIndex, currentDocsRow.serverRow[colIndex] ?? '');
       return;
     }
+    logEventClient('save_click', { field: getLogFieldName(currentDocsRow.header[colIndex]) });
     const input = cell.querySelector('input');
     const saveValue = (input?.value || '').trim();
     const oldValue = String(currentDocsRow.serverRow[colIndex] ?? '').trim();
@@ -2199,7 +2200,7 @@
           updateCurrentIdentityAfterSave(currentDocsRow.header[colIndex], saveValue);
           moveCurrentDocumentDraftToCurrentIdentity(previousDraftKey);
         }
-        logUserResultClient(`Сохранено на сервере: ${getLogFieldName(currentDocsRow.header[colIndex])} → ${saveValue}`);
+        logEventClient('save_success', { field: getLogFieldName(currentDocsRow.header[colIndex]), value: saveValue });
         showToast('Сохранено');
       })
       .withFailureHandler(error => {
@@ -2209,7 +2210,7 @@
         btn.classList.remove('is-saving');
         btn.setAttribute('aria-label', 'Сохранить');
         const message = error && error.message ? error.message : 'Не удалось сохранить изменения.';
-        logUserResultClient(`Ошибка сохранения: ${getLogFieldName(currentDocsRow.header[colIndex])}`);
+        logEventClient('save_error', { field: getLogFieldName(currentDocsRow.header[colIndex]) });
         showToast(`Ошибка: ${message}`, 'error');
       })
       .updateResultCell(dom.login.value.trim(), dom.password.value.trim(), dom.snils.value.trim(), currentDocsRow.header[colIndex], saveValue);
