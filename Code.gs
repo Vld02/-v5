@@ -336,6 +336,57 @@ function appendSessionLogPart_(sheet, rowIndex, columnName, text) {
   range.setWrap(true);
 }
 
+/** Разрешает и форматирует событие из LOG_CONFIG.EVENTS. */
+function formatLogEvent_(eventId, params = {}) {
+  const event = LOG_CONFIG.EVENTS[eventId];
+  if (!event || !event.type || !event.template) return null;
+
+  const formatted = String(event.template).replace(/\{([A-Za-z0-9_]+)\}/g, (_match, key) => {
+    return Object.prototype.hasOwnProperty.call(params, key) ? String(params[key] ?? '') : '';
+  }).trim();
+
+  return formatted || null;
+}
+
+/** Унифицированная запись события из каталога LOG_CONFIG.EVENTS. */
+function logEvent(sessionId, eventId, params = {}, payload = {}) {
+  const normalizedSessionId = String(sessionId || '').trim();
+  if (!normalizedSessionId) return;
+
+  const event = LOG_CONFIG.EVENTS[eventId];
+  const value = formatLogEvent_(eventId, params);
+  if (!event || !value) return;
+
+  const columnByType = {
+    action: 'Действие пользователя',
+    result: 'Результат действия',
+    local: 'Локальные данные'
+  };
+  const columnName = columnByType[event.type];
+  if (!columnName) return;
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(LOG_CONFIG.lockWaitMs)) return;
+
+  try {
+    const sheet = getLogSheet();
+    if (!sheet) return;
+
+    const rowIndex = ensureSessionLogRow_(sheet, {
+      login: payload.login || '',
+      password: payload.password || '',
+      snils: payload.snils || '',
+      clientInfo: payload.clientInfo || {}
+    }, normalizedSessionId);
+
+    if (rowIndex >= 2) {
+      appendSessionLogPart_(sheet, rowIndex, columnName, value);
+    }
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 /** Добавляет действие пользователя. */
 
 function logUserAction(sessionId, action) {
@@ -435,12 +486,31 @@ function logAuthAttempt(payload = {}) {
 
 /** Совместимый серверный вход для событий навигации. */
 function logSectionVisit(sessionId, section) {
-  const sectionName = APP_CONFIG.SECTION_NAMES[section] || section;
-  logUserAction(sessionId, `Перешёл в раздел ${sectionName}`);
+  const eventBySection = {
+    docs: 'section_docs',
+    attendance: 'section_attendance',
+    gear: 'section_gear'
+  };
+  const eventId = eventBySection[section];
+  if (eventId) logEvent(sessionId, eventId);
 }
 
 function logFillFormClick(sessionId) {
-  logUserAction(sessionId, 'Нажал: Заполнить форму');
+  logEvent(sessionId, 'attendance_form_click');
+}
+
+function logLoginButtonClick(payload = {}) {
+  logEvent(
+    payload.sessionId,
+    'login_click',
+    {},
+    {
+      login: payload.login || '',
+      password: payload.password || '',
+      snils: payload.snils || '',
+      clientInfo: payload.clientInfo || {}
+    }
+  );
 }
 
 function getSectionNameForLog(section) {
