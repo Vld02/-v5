@@ -1432,7 +1432,13 @@
     saveAuthInputs(loginVal, dateInput.value, snilsFormatted);
 
     const clientInfo = await getClientInfo();
-    logLoginButtonClick();
+    clientInfo.snilsVisible = dom.snilsWrap.style.display !== 'none';
+    logLoginButtonClick({
+      login: loginVal,
+      password: passwordForServer,
+      snils: snilsFormatted,
+      clientInfo
+    });
 
     if (!loginVal || !passwordForServer) {
       setErrorMessage('Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.');
@@ -1440,8 +1446,6 @@
     }
 
     startAuthLoading('Аутентификация');
-
-    clientInfo.snilsVisible = dom.snilsWrap.style.display !== 'none';
 
     google.script.run
       .withSuccessHandler(response => {
@@ -1470,11 +1474,21 @@
   async function verifySnilsDocs() {
     dom.error.textContent = '';
 
-    if (!authState.login || !authState.password) {
-      const loginVal = dom.login.value.trim();
-      const passwordForServer = toServerDate(formatDateInput(dom.password.value, { finalizeYear: true }));
-      logLoginButtonClick();
+    const snilsFormatted = formatSnilsInput(dom.snils.value);
+    dom.snils.value = snilsFormatted;
+    const loginVal = authState.login || dom.login.value.trim();
+    const passwordForServer = authState.password
+      || toServerDate(formatDateInput(dom.password.value, { finalizeYear: true }));
+    const clientInfo = await getClientInfo();
+    clientInfo.snilsVisible = true;
+    logLoginButtonClick({
+      login: loginVal,
+      password: passwordForServer,
+      snils: snilsFormatted,
+      clientInfo
+    });
 
+    if (!authState.login || !authState.password) {
       if (!loginVal || !passwordForServer) {
         setErrorMessage('Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.');
         return;
@@ -1483,17 +1497,12 @@
       authState.password = passwordForServer;
     }
 
-    const snilsFormatted = formatSnilsInput(dom.snils.value);
-    dom.snils.value = snilsFormatted;
-
     if (snilsFormatted.length !== 14) {
       setErrorMessage(snilsFormatted ? 'Неверный СНИЛС.' : 'Для входа введите СНИЛС.');
       return;
     }
 
     startAuthLoading('Проверка СНИЛС');
-    const clientInfo = await getClientInfo();
-    clientInfo.snilsVisible = true;
 
     google.script.run
       .withSuccessHandler(response => {
@@ -1552,8 +1561,8 @@
     google.script.run.logUserAction(LOG_SESSION_ID, status);
   }
 
-  function logLoginButtonClick() {
-    google.script.run.logLoginButtonClick(LOG_SESSION_ID);
+  function logLoginButtonClick({ login = '', password = '', snils = '', clientInfo = {} } = {}) {
+    google.script.run.logLoginButtonClick({ login, password, snils, clientInfo, sessionId: LOG_SESSION_ID });
   }
 
   function getLogFieldName(columnName) {
