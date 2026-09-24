@@ -306,24 +306,38 @@ function appendSessionLogPart_(sheet, rowIndex, columnName, text) {
   const columnIndex = LOG_COLUMNS.indexOf(columnName);
   if (columnIndex < 0) return;
 
-  const dateRange = sheet.getRange(rowIndex, 1);
-  const targetRange = sheet.getRange(rowIndex, columnIndex + 1);
+  const width = LOG_COLUMNS.length;
+  const range = sheet.getRange(rowIndex, 1, 1, width);
+  const values = range.getValues()[0];
+  const now = formatLogDateTime(new Date());
 
-  const oldDateText = formatLogCellValue(0, dateRange.getValue());
-  const dateLines = oldDateText === '' ? [] : oldDateText.split('\n');
-  dateLines.push(formatLogDateTime(new Date()));
+  // Каждое событие занимает одну общую строку во всех многострочных
+  // столбцах журнала. В остальных столбцах записывается пустое значение.
+  // Поэтому дата/время, действие, результат и локальные данные всегда
+  // находятся строго друг напротив друга.
+  const linesByColumn = values.map((cellValue, index) => {
+    const formatted = formatLogCellValue(index, cellValue);
+    return formatted === '' ? [] : formatted.split('\n');
+  });
 
-  const oldText = formatLogCellValue(columnIndex, targetRange.getValue());
-  const lines = oldText === '' ? [] : oldText.split('\n');
-  lines.push(value);
+  const currentLineCount = Math.max(...linesByColumn.map(lines => lines.length), 0);
+  linesByColumn.forEach(lines => {
+    while (lines.length < currentLineCount) lines.push('');
+    lines.push('');
+  });
 
-  dateRange.setRichTextValue(buildLogRichText(dateLines));
-  targetRange.setRichTextValue(buildLogRichText(lines));
-  dateRange.setWrap(true);
-  targetRange.setWrap(true);
+  linesByColumn[0][linesByColumn[0].length - 1] = now;
+  linesByColumn[columnIndex][linesByColumn[columnIndex].length - 1] = value;
+
+  for (let i = 0; i < width; i++) {
+    range.getCell(1, i + 1).setRichTextValue(buildLogRichText(linesByColumn[i]));
+  }
+
+  range.setWrap(true);
 }
 
 /** Добавляет действие пользователя. */
+
 function logUserAction(sessionId, action) {
   if (!String(sessionId || '').trim()) return;
 
