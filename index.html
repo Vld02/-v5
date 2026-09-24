@@ -2618,6 +2618,7 @@
   }
 
   async function pasteAttendanceToLastCell() {
+    logEventClient('attendance_paste_click');
     try {
       const text = await navigator.clipboard.readText();
       if (!text.trim()) return;
@@ -2641,7 +2642,6 @@
 
       saveAttendanceDraft();
       scheduleMatch();
-      logEventClient('attendance_paste_click');
     } catch (_) {
       logEventClient('attendance_paste_error');
       showAttendanceNotice('Не удалось вставить из буфера');
@@ -2659,6 +2659,7 @@
   }
 
   async function copyAttendanceFullFio() {
+    logEventClient('attendance_copy_click');
     const values = getAttendanceSelectedValues();
     if (!values.length) {
       showAttendanceNotice('Нет выбранных ФИО для копирования');
@@ -2667,11 +2668,9 @@
 
     try {
       await navigator.clipboard.writeText(values.join('\n'));
-      logEventClient('attendance_copy_click');
       logEventClient('attendance_copy_success');
       showAttendanceNotice('Полные ФИО скопированы');
     } catch (_) {
-      logEventClient('attendance_copy_click');
       logEventClient('attendance_copy_error');
       showAttendanceNotice('Не удалось скопировать в буфер');
     }
