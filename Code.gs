@@ -22,8 +22,7 @@ function getClientConfigScript() {
       enrollmentYearOffset: EDIT_CONFIG.rules.YEAR.maxOffset
     },
     responsive: responsiveConfig,
-    documentSections: DOCUMENTS_CONFIG.client.documentSections,
-    sectionNames: APP_CONFIG.SECTION_NAMES
+    documentSections: DOCUMENTS_CONFIG.client.documentSections
   };
   return `window.CLIENT_CONFIG = ${JSON.stringify(clientConfig).replace(/</g, '\\u003c')};`;
 }
@@ -122,69 +121,110 @@ function getHtmlFile(name) {
 /*************************************************
  * ЛОГИРОВАНИЕ
  *************************************************/
+/**
+ * Подготавливает лист логов и гарантирует наличие актуальных заголовков.
+ * @returns {GoogleAppsScript.Spreadsheet.Sheet | null}
+ */
 function getLogSheet() {
   const sheet = getSheet(CONFIG.LOG_SHEET_NAME, true);
   if (!sheet) return null;
 
   if (sheet.getLastRow() === 0) {
-    sheet.getRange(1, 1, 1, LOG_COLUMNS.length).setNumberFormat('@').setValues([LOG_COLUMNS]);
+    appendSessionLogRow_(sheet, {
+      login: '', password: '', snils: '',
+      clientInfo: {},
+      sessionId: ''
+    }, false);
   } else {
     const width = Math.max(sheet.getLastColumn(), LOG_COLUMNS.length);
     const currentHeader = sheet.getRange(1, 1, 1, width).getValues()[0];
-    const needsHeaderUpdate = LOG_COLUMNS.some(function(title, index) { return currentHeader[index] !== title; });
+    const needsHeaderUpdate = LOG_COLUMNS.some((title, index) => currentHeader[index] !== title);
     if (needsHeaderUpdate) {
-      sheet.getRange(1, 1, 1, LOG_COLUMNS.length).setNumberFormat('@').setValues([LOG_COLUMNS]);
+      sheet.getRange(1, 1, 1, LOG_COLUMNS.length)
+        .setNumberFormat('@')
+        .setValues([LOG_COLUMNS]);
     }
   }
+
   return sheet;
 }
 
+/**
+ * Возвращает дату и время в текстовом виде для многострочного лога.
+ * @param {Date} value Дата.
+ * @returns {string}
+ */
 function formatLogDateTime(value) {
-  return Utilities.formatDate(value, CONFIG.TIMEZONE, CONFIG.DATE_FORMAT + ' HH:mm:ss');
+  return Utilities.formatDate(value, CONFIG.TIMEZONE, `${CONFIG.DATE_FORMAT} HH:mm:ss`);
 }
 
+/**
+ * Форматирует значение ячейки лога.
+ * @param {number} col Индекс колонки.
+ * @param {*} value Значение ячейки.
+ * @returns {string}
+ */
 function formatLogCellValue(col, value) {
-  if (value instanceof Date) return col === 0 ? formatLogDateTime(value) : formatCellValue(value);
-  return String(value == null ? '' : value);
+  if (value instanceof Date) {
+    return col === 0 ? formatLogDateTime(value) : formatCellValue(value);
+  }
+  return String(value ?? '');
 }
 
+/** Делит строку ячейки лога на отдельные события. */
 function splitLogLines(value) {
-  const text = String(value == null ? '' : value);
+  const text = String(value ?? '');
   return text === '' ? [] : text.split('\n');
 }
 
+/** Предыдущие строки зачёркиваются, последняя остаётся обычной. */
 function buildLogRichText(lines) {
   const text = lines.join('\n');
   const builder = SpreadsheetApp.newRichTextValue().setText(text);
   const normalStyle = SpreadsheetApp.newTextStyle().setStrikethrough(false).build();
   const strikeStyle = SpreadsheetApp.newTextStyle().setStrikethrough(true).build();
+
   if (text.length > 0) builder.setTextStyle(0, text.length, normalStyle);
+
   if (lines.length > 1) {
     const previousLength = lines.slice(0, -1).join('\n').length;
     if (previousLength > 0) builder.setTextStyle(0, previousLength, strikeStyle);
   }
+
   return builder.build();
 }
 
+/** Ключ кэша для текущей сессии. */
 function getLogSessionCacheKey_(sessionId) {
-  return 'access-log-session:' + String(sessionId || '').trim();
+  return `access-log-session:${String(sessionId || '').trim()}`;
 }
 
+/** Стабильный идентификатор сессии хранится в заметке первой ячейки строки. */
 function getLogSessionNote_(sessionId) {
-  return LOG_CONFIG.sessionNotePrefix + String(sessionId || '').trim();
+  return `ДБВv5 session: ${String(sessionId || '').trim()}`;
 }
 
+/**
+ * Ищет строку текущей сессии по заметке первой ячейки.
+ * Номер строки из CacheService используется только как ускоряющий кэш
+ * и каждый раз проверяется по заметке. Поэтому вставка строк не ломает
+ * существующую сессию.
+ */
 function findSessionLogRow_(sheet, sessionId) {
   const normalizedSessionId = String(sessionId || '').trim();
   if (!sheet || !normalizedSessionId) return -1;
+
   const cacheKey = getLogSessionCacheKey_(normalizedSessionId);
   const cachedRow = Number(CacheService.getScriptCache().get(cacheKey));
   const expectedNote = getLogSessionNote_(normalizedSessionId);
+
   if (Number.isInteger(cachedRow) && cachedRow > 1 && cachedRow <= sheet.getLastRow()) {
     if (sheet.getRange(cachedRow, 1).getNote() === expectedNote) return cachedRow;
   }
+
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return -1;
+
   const notes = sheet.getRange(2, 1, lastRow - 1, 1).getNotes();
   for (let i = 0; i < notes.length; i++) {
     if (notes[i][0] === expectedNote) {
@@ -193,117 +233,220 @@ function findSessionLogRow_(sheet, sessionId) {
       return rowIndex;
     }
   }
+
   return -1;
 }
 
+/** Номер строки хранится только как оптимизационный кэш. */
 function rememberSessionLogRow_(sessionId, rowIndex) {
   const normalizedSessionId = String(sessionId || '').trim();
   if (!normalizedSessionId || !Number.isInteger(rowIndex) || rowIndex < 2) return;
   CacheService.getScriptCache().put(getLogSessionCacheKey_(normalizedSessionId), String(rowIndex), 21600);
 }
 
-function getConfiguredLogEvent_(eventId, data) {
-  const event = LOG_CONFIG.EVENTS[String(eventId || '').trim()];
-  if (!event || event.enabled === false) return null;
-  const column = LOG_CONFIG.COLUMN_BY_TYPE[event.type];
-  if (!column || LOG_COLUMNS.indexOf(column) < 0) return null;
-  const source = data || {};
-  const text = String(event.template || '').replace(/\{([A-Za-z0-9_]+)\}/g, function(_, key) {
-    return String(source[key] == null ? '' : source[key]).replace(/\r?\n/g, ' ').trim();
-  });
-  return text ? { column: column, text: text } : null;
-}
-
-function appendLogEventLine_(sheet, rowIndex, valuesByColumn) {
-  if (!sheet || rowIndex < 2) return;
-  const width = LOG_COLUMNS.length;
-  const range = sheet.getRange(rowIndex, 1, 1, width);
-  const values = range.getValues()[0];
-  const linesByColumn = values.map(function(value, index) { return splitLogLines(formatLogCellValue(index, value)); });
-  const existingLineCount = Math.max.apply(null, linesByColumn.map(function(lines) { return lines.length; }).concat([0]));
-  linesByColumn.forEach(function(lines) {
-    while (lines.length < existingLineCount) lines.push('');
-    lines.push('');
-  });
-  const lineIndex = existingLineCount;
-  linesByColumn[0][lineIndex] = formatLogDateTime(new Date());
-  Object.keys(valuesByColumn || {}).forEach(function(columnName) {
-    const columnIndex = LOG_COLUMNS.indexOf(columnName);
-    if (columnIndex >= 0) linesByColumn[columnIndex][lineIndex] = String(valuesByColumn[columnName] == null ? '' : valuesByColumn[columnName]);
-  });
-  for (let i = 0; i < width; i++) {
-    range.getCell(1, i + 1).setRichTextValue(buildLogRichText(linesByColumn[i]));
-  }
-  range.setWrap(true);
-}
-
-function appendSessionLogRow_(sheet, payload, addInitialEvent) {
-  const data = payload || {};
-  const sessionId = String(data.sessionId || '').trim();
-  const clientInfo = data.clientInfo || {};
+/**
+ * Создаёт одну строку одной сессии.
+ * Первоначальные реквизиты записываются один раз и не меняются от последующих запросов.
+ */
+function appendSessionLogRow_(sheet, payload = {}, addInitialEvent = true) {
+  const sessionId = String(payload.sessionId || '').trim();
+  const clientInfo = payload.clientInfo || {};
   const rowIndex = sheet.getLastRow() + 1;
-  const values = [formatLogDateTime(new Date()), data.login || '', data.password || '', data.snils || '', clientInfo.ip || '', clientInfo.device || '', clientInfo.browser || '', '', '', ''];
   const range = sheet.getRange(rowIndex, 1, 1, LOG_COLUMNS.length);
+
+  const values = [
+    formatLogDateTime(new Date()),
+    payload.login || '',
+    payload.password || '',
+    payload.snils || '',
+    clientInfo.ip || '',
+    clientInfo.device || '',
+    clientInfo.browser || '',
+    addInitialEvent ? 'Открыл сайт' : '',
+    addInitialEvent ? 'Зашел на сайт' : '',
+    ''
+  ];
+
   range.setNumberFormat('@').setValues([values]).setWrap(true);
-  if (sessionId) range.getCell(1, 1).setNote(getLogSessionNote_(sessionId));
-  if (addInitialEvent) {
-    const action = getConfiguredLogEvent_('page_open_action', {});
-    const result = getConfiguredLogEvent_('page_open_result', {});
-    if (action) range.getCell(1, LOG_COLUMNS.indexOf('Действие пользователя') + 1).setValue(action.text);
-    if (result) range.getCell(1, LOG_COLUMNS.indexOf('Результат действия') + 1).setValue(result.text);
+
+  if (sessionId) {
+    range.getCell(1, 1).setNote(getLogSessionNote_(sessionId));
   }
+
   return rowIndex;
 }
 
-function ensureSessionLogRow_(sheet, payload, sessionId) {
+/**
+ * Гарантирует наличие строки текущей сессии.
+ * Более поздние login/password/SNILS не заменяют первоначальные значения строки.
+ */
+function ensureSessionLogRow_(sheet, payload = {}, sessionId = '') {
   const normalizedSessionId = String(sessionId || '').trim();
   if (!normalizedSessionId || !sheet) return -1;
+
   const existingRow = findSessionLogRow_(sheet, normalizedSessionId);
   if (existingRow >= 2) return existingRow;
-  const rowIndex = appendSessionLogRow_(sheet, Object.assign({}, payload || {}, { sessionId: normalizedSessionId }), true);
+
+  const rowIndex = appendSessionLogRow_(sheet, {
+    ...payload,
+    sessionId: normalizedSessionId
+  }, true);
+
   rememberSessionLogRow_(normalizedSessionId, rowIndex);
   return rowIndex;
 }
 
-function logEvent(sessionId, eventId, data) {
-  const normalizedSessionId = String(sessionId || '').trim();
-  if (!normalizedSessionId) return;
-  const event = getConfiguredLogEvent_(eventId, data || {});
-  if (!event) return;
+/**
+ * Добавляет событие в указанную колонку и создаёт для него отдельную отметку времени.
+ */
+function appendSessionLogPart_(sheet, rowIndex, columnName, text) {
+  const value = String(text || '').trim();
+  if (!sheet || rowIndex < 2 || !value) return;
+
+  const columnIndex = LOG_COLUMNS.indexOf(columnName);
+  if (columnIndex < 0) return;
+
+  const width = LOG_COLUMNS.length;
+  const range = sheet.getRange(rowIndex, 1, 1, width);
+  const values = range.getValues()[0];
+  const now = formatLogDateTime(new Date());
+
+  // Каждое событие занимает одну общую строку во всех многострочных
+  // столбцах журнала. В остальных столбцах записывается пустое значение.
+  // Поэтому дата/время, действие, результат и локальные данные всегда
+  // находятся строго друг напротив друга.
+  const linesByColumn = values.map((cellValue, index) => {
+    const formatted = formatLogCellValue(index, cellValue);
+    return formatted === '' ? [] : formatted.split('\n');
+  });
+
+  const currentLineCount = Math.max(...linesByColumn.map(lines => lines.length), 0);
+  linesByColumn.forEach(lines => {
+    while (lines.length < currentLineCount) lines.push('');
+    lines.push('');
+  });
+
+  linesByColumn[0][linesByColumn[0].length - 1] = now;
+  linesByColumn[columnIndex][linesByColumn[columnIndex].length - 1] = value;
+
+  for (let i = 0; i < width; i++) {
+    range.getCell(1, i + 1).setRichTextValue(buildLogRichText(linesByColumn[i]));
+  }
+
+  range.setWrap(true);
+}
+
+/** Добавляет действие пользователя. */
+
+function logUserAction(sessionId, action) {
+  if (!String(sessionId || '').trim()) return;
+
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(LOG_CONFIG.lockWaitMs)) return;
+
   try {
     const sheet = getLogSheet();
     if (!sheet) return;
-    const rowIndex = ensureSessionLogRow_(sheet, {}, normalizedSessionId);
-    if (rowIndex >= 2) appendLogEventLine_(sheet, rowIndex, { [event.column]: event.text });
+    const rowIndex = ensureSessionLogRow_(sheet, {}, sessionId);
+    if (rowIndex >= 2) appendSessionLogPart_(sheet, rowIndex, 'Действие пользователя', action);
   } finally {
     lock.releaseLock();
   }
 }
 
-function logPageOpen(payload, sessionId) {
-  const normalizedSessionId = String(sessionId || '').trim();
-  if (!normalizedSessionId) return;
+/** Добавляет результат действия / серверного ответа. */
+function logSessionResult(sessionId, result) {
+  if (!String(sessionId || '').trim()) return;
+
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(LOG_CONFIG.lockWaitMs)) return;
+
   try {
     const sheet = getLogSheet();
-    if (!sheet || findSessionLogRow_(sheet, normalizedSessionId) >= 2) return;
-    const rowIndex = appendSessionLogRow_(sheet, Object.assign({}, payload || {}, { sessionId: normalizedSessionId }), true);
+    if (!sheet) return;
+    const rowIndex = ensureSessionLogRow_(sheet, {}, sessionId);
+    if (rowIndex >= 2) appendSessionLogPart_(sheet, rowIndex, 'Результат действия', result);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Добавляет локальное сохранение в отдельную колонку. */
+function logLocalData(sessionId, localData) {
+  if (!String(sessionId || '').trim()) return;
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(LOG_CONFIG.lockWaitMs)) return;
+
+  try {
+    const sheet = getLogSheet();
+    if (!sheet) return;
+    const rowIndex = ensureSessionLogRow_(sheet, {}, sessionId);
+    if (rowIndex >= 2) appendSessionLogPart_(sheet, rowIndex, 'Локальные данные', localData);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Создаёт строку только для нового открытия сайта. */
+function logPageOpen(payload = {}, sessionId = '') {
+  const normalizedSessionId = String(sessionId || '').trim();
+  if (!normalizedSessionId) return;
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(LOG_CONFIG.lockWaitMs)) return;
+
+  try {
+    const sheet = getLogSheet();
+    if (!sheet) return;
+
+    if (findSessionLogRow_(sheet, normalizedSessionId) >= 2) return;
+
+    const rowIndex = appendSessionLogRow_(sheet, {
+      ...payload,
+      sessionId: normalizedSessionId
+    }, true);
+
     rememberSessionLogRow_(normalizedSessionId, rowIndex);
   } finally {
     lock.releaseLock();
   }
 }
 
+/** Логирует результат авторизации, но не silent-проверки. */
+function logAuthAttempt(payload = {}) {
+  if (payload.clientInfo && payload.clientInfo.silent) return;
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(LOG_CONFIG.lockWaitMs)) return;
+
+  try {
+    const sheet = getLogSheet();
+    if (!sheet) return;
+
+    const rowIndex = ensureSessionLogRow_(sheet, payload, payload.sessionId);
+    if (rowIndex >= 2) {
+      appendSessionLogPart_(sheet, rowIndex, 'Результат действия', payload.status);
+    }
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Совместимый серверный вход для событий навигации. */
 function logSectionVisit(sessionId, section) {
-  logEvent(sessionId, 'section_visit', { section: section });
+  const sectionName = APP_CONFIG.SECTION_NAMES[section] || section;
+  logUserAction(sessionId, `Перешёл в раздел ${sectionName}`);
 }
 
 function logFillFormClick(sessionId) {
-  logEvent(sessionId, 'fill_form_click', {});
+  logUserAction(sessionId, 'Нажал: Заполнить форму');
 }
+
+function getSectionNameForLog(section) {
+  return APP_CONFIG.SECTION_NAMES[section] || section;
+}
+
 /*************************************************
  * ДОКУМЕНТЫ: АВТОРИЗАЦИЯ И ПОДГОТОВКА ДАННЫХ
  *************************************************/
@@ -466,7 +609,7 @@ function checkLogin(login, password, clientInfo = {}, snils = '', sessionId = ''
   const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
 
   if (!sheet) {
-    logEvent(sessionId, 'auth_sheet_missing');
+    logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Лист не найден' });
     return { error: 'Лист с результатами не найден.' };
   }
 
@@ -475,7 +618,6 @@ function checkLogin(login, password, clientInfo = {}, snils = '', sessionId = ''
   logStage(`Получены границы листа: rows=${lastRow}, cols=${lastCol}`, startedAt);
 
   if (lastRow < 2 || lastCol < 1) {
-    logEvent(sessionId, 'auth_table_empty');
     return { error: 'Таблица пуста.' };
   }
 
@@ -490,7 +632,7 @@ function checkLogin(login, password, clientInfo = {}, snils = '', sessionId = ''
     authCols = getAuthColumnIndexes(header);
     allowedCols = getAllowedColumnIndexes(headerColors);
   } catch (_error) {
-    logEvent(sessionId, 'auth_config_error');
+    logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Ошибка конфигурации столбцов' });
     return { error: 'Ошибка структуры таблицы.' };
   }
 
@@ -510,7 +652,7 @@ function checkLogin(login, password, clientInfo = {}, snils = '', sessionId = ''
       if (rowSnils && rowSnils !== expectedSnils) {
         const snilsVisible = Boolean(clientInfo.snilsVisible);
         const snilsStatus = expectedSnils && snilsVisible ? 'Неверный СНИЛС' : 'Требуется ввод СНИЛС';
-        logEvent(sessionId, expectedSnils && snilsVisible ? 'auth_invalid_snils' : 'auth_snils_required');
+        logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: snilsStatus });
         logStage(expectedSnils && snilsVisible ? 'Совпадение найдено, СНИЛС неверный' : 'Совпадение найдено, требуется СНИЛС', startedAt);
         return { requiresSnils: true, snilsError: expectedSnils && snilsVisible ? 'invalid' : 'required' };
       }
@@ -518,13 +660,13 @@ function checkLogin(login, password, clientInfo = {}, snils = '', sessionId = ''
       const rowIndex = i + 2;
       const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
       const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
-      logEvent(sessionId, 'auth_success');
+      logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Удачный вход' });
       logStage('Совпадение найдено, данные строки загружены', startedAt);
       return prepareRowForClient(row, header, rowBackgrounds, allowedCols, rowIndex);
     }
   }
 
-  logEvent(sessionId, 'auth_credentials_invalid');
+  logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Неудачный вход: ФИО/дата' });
   logStage('Совпадение не найдено', startedAt);
   return { error: 'Неправильно введены ФИО или дата рождения.' };
 }
@@ -551,7 +693,6 @@ function verifySnils(login, password, snils, clientInfo = {}, sessionId = '') {
   const lastCol = sheet.getLastColumn();
 
   if (lastRow < 2 || lastCol < 1) {
-    logEvent(sessionId, 'auth_table_empty');
     return { error: 'Таблица пуста.' };
   }
 
@@ -564,13 +705,11 @@ function verifySnils(login, password, snils, clientInfo = {}, sessionId = '') {
     authCols = getAuthColumnIndexes(header);
     allowedCols = getAllowedColumnIndexes(headerColors);
   } catch (_error) {
-    logEvent(sessionId, 'auth_structure_error');
     return { error: 'Ошибка структуры таблицы.' };
   }
 
   const snilsCol = getSnilsColumnIndex(header);
   if (snilsCol === -1) {
-    logEvent(sessionId, 'auth_structure_error');
     return { error: 'Ошибка структуры таблицы.' };
   }
 
@@ -591,19 +730,19 @@ function verifySnils(login, password, snils, clientInfo = {}, sessionId = '') {
         const rowIndex = i + 2;
         const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
         const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
-        logEvent(sessionId, 'auth_success_no_snils');
+        logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Удачный вход без СНИЛС' });
         return prepareRowForClient(row, header, rowBackgrounds, allowedCols, rowIndex);
       }
 
       if (rowSnils !== expectedSnils) {
-        logEvent(sessionId, 'auth_invalid_snils');
+        logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Неверный СНИЛС' });
         return { error: 'Неверный СНИЛС.' };
       }
 
       const rowIndex = i + 2;
       const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
       const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
-      logEvent(sessionId, 'auth_success_snils');
+      logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Удачный вход по СНИЛС' });
       logStage('СНИЛС подтвержден, данные строки загружены', startedAt);
       return prepareRowForClient(row, header, rowBackgrounds, allowedCols, rowIndex);
     }
