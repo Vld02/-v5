@@ -1093,7 +1093,7 @@
     if (!text) return;
     const prefix = type === 'error' ? 'Ошибка' : 'Предупреждение';
     const normalized = text.replace(/^(Ошибка|Предупреждение):\s*/i, '');
-    logUserActionClient(`${prefix}: ${normalized}`);
+    logUserResultClient(`${prefix}: ${normalized}`);
   }
 
   function setErrorMessage(message, type = 'warning') {
@@ -1433,7 +1433,7 @@
 
     const clientInfo = await getClientInfo();
     clientInfo.snilsVisible = dom.snilsWrap.style.display !== 'none';
-    logLoginButtonClick({
+    await logLoginButtonClick({
       login: loginVal,
       password: passwordForServer,
       snils: snilsFormatted,
@@ -1481,7 +1481,7 @@
       || toServerDate(formatDateInput(dom.password.value, { finalizeYear: true }));
     const clientInfo = await getClientInfo();
     clientInfo.snilsVisible = true;
-    logLoginButtonClick({
+    await logLoginButtonClick({
       login: loginVal,
       password: passwordForServer,
       snils: snilsFormatted,
@@ -1557,12 +1557,65 @@
     google.script.run.checkLogin(loginVal, passwordForServer, { silent: true });
   }
 
-  function logUserActionClient(status) {
-    google.script.run.logUserAction(LOG_SESSION_ID, status);
+  // Все события журнала проходят через одну очередь.
+  // Это сохраняет порядок: действие -> локальное сохранение -> следующее действие.
+  let logQueue = Promise.resolve();
+
+  function enqueueLog(task) {
+    const run = logQueue.then(() => task());
+    logQueue = run.catch(() => {});
+    return run.catch(() => {});
   }
 
-  function logLoginButtonClick({ login = '', password = '', snils = '', clientInfo = {} } = {}) {
-    google.script.run.logLoginButtonClick({ login, password, snils, clientInfo, sessionId: LOG_SESSION_ID });
+  function logUserActionClient(action) {
+    const text = String(action || '').trim();
+    if (!text) return Promise.resolve();
+
+    return enqueueLog(() => new Promise(resolve => {
+      google.script.run
+        .withSuccessHandler(() => resolve())
+        .withFailureHandler(() => resolve())
+        .logUserAction(LOG_SESSION_ID, text);
+    }));
+  }
+
+  function logUserResultClient(result) {
+    const text = String(result || '').trim();
+    if (!text) return Promise.resolve();
+
+    return enqueueLog(() => new Promise(resolve => {
+      google.script.run
+        .withSuccessHandler(() => resolve())
+        .withFailureHandler(() => resolve())
+        .logSessionResult(LOG_SESSION_ID, text);
+    }));
+  }
+
+  function logLocalDataClient(localData) {
+    const text = String(localData || '').trim();
+    if (!text) return Promise.resolve();
+
+    return enqueueLog(() => new Promise(resolve => {
+      google.script.run
+        .withSuccessHandler(() => resolve())
+        .withFailureHandler(() => resolve())
+        .logLocalData(LOG_SESSION_ID, text);
+    }));
+  }
+
+  function logLoginButtonClick(payload = {}) {
+    return enqueueLog(() => new Promise(resolve => {
+      google.script.run
+        .withSuccessHandler(() => resolve())
+        .withFailureHandler(() => resolve())
+        .logLoginButtonClick({
+          login: payload.login || '',
+          password: payload.password || '',
+          snils: payload.snils || '',
+          clientInfo: payload.clientInfo || {},
+          sessionId: LOG_SESSION_ID
+        });
+    }));
   }
 
   function getLogFieldName(columnName) {
@@ -1570,11 +1623,16 @@
   }
 
   function logSectionVisitClient(section) {
-    google.script.run.logSectionVisit(LOG_SESSION_ID, section);
+    return enqueueLog(() => new Promise(resolve => {
+      google.script.run
+        .withSuccessHandler(() => resolve())
+        .withFailureHandler(() => resolve())
+        .logSectionVisit(LOG_SESSION_ID, section);
+    }));
   }
 
   function logFillFormClickClient() {
-    google.script.run.logFillFormClick(LOG_SESSION_ID);
+    return logUserActionClient('Нажал: Заполнить форму');
   }
 
   async function logInitialPageOpen() {
@@ -1583,12 +1641,17 @@
     const snilsFormatted = formatSnilsInput(dom.snils.value);
     const clientInfo = await getClientInfo();
 
-    google.script.run.logPageOpen({
-      login: loginVal,
-      password: passwordForServer,
-      snils: snilsFormatted,
-      clientInfo
-    }, LOG_SESSION_ID);
+    return enqueueLog(() => new Promise(resolve => {
+      google.script.run
+        .withSuccessHandler(() => resolve())
+        .withFailureHandler(() => resolve())
+        .logPageOpen({
+          login: loginVal,
+          password: passwordForServer,
+          snils: snilsFormatted,
+          clientInfo
+        }, LOG_SESSION_ID);
+    }));
   }
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -1892,7 +1955,7 @@
             if (currentDocsRow.fileStates) currentDocsRow.fileStates[colIndex] = (response && response.fileState) || { hasFile: true };
             const resultCell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
             if (resultCell) renderCellDisplay(resultCell, colIndex, currentDocsRow.serverRow[colIndex] ?? '');
-            logUserActionClient(`Файл загружен: ${getLogFieldName(columnName)}`);
+            logUserResultClient(`Файл загружен: ${getLogFieldName(columnName)}`);
             showToast(`Файл «${(response && response.fileName) || 'документ'}» загружен.`);
           })
           .withFailureHandler(error => {
@@ -1901,7 +1964,7 @@
             const resultCell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
             if (resultCell) renderCellDisplay(resultCell, colIndex, currentDocsRow.serverRow[colIndex] ?? '');
             const message = error && error.message ? error.message : 'Не удалось загрузить файл.';
-            logUserActionClient(`Ошибка загрузки файла: ${getLogFieldName(columnName)}`);
+            logUserResultClient(`Ошибка загрузки файла: ${getLogFieldName(columnName)}`);
             showToast(`Ошибка: ${message}`, 'error');
           })
           .uploadDocumentAttachment(form);
@@ -2079,8 +2142,7 @@
             documentDraftSaveTimer = null;
           }
           writeCurrentDocumentDraft();
-          const recordLabel = currentDocsRow.sourceRowIndex ? `Запись №${currentDocsRow.sourceRowIndex}` : 'Текущая запись';
-          logUserActionClient(`Локально сохранено: ${recordLabel} — ${getLogFieldName(columnName)} → ${input.value}`);
+          logLocalDataClient(`Локально сохранено: ${getLogFieldName(columnName)} → ${input.value}`);
         }
       };
       input._saveLocalDraftAfterEdit = saveLocalDraftAfterEdit;
@@ -2137,8 +2199,7 @@
           updateCurrentIdentityAfterSave(currentDocsRow.header[colIndex], saveValue);
           moveCurrentDocumentDraftToCurrentIdentity(previousDraftKey);
         }
-        const recordLabel = currentDocsRow.sourceRowIndex ? `Запись №${currentDocsRow.sourceRowIndex}` : 'Текущая запись';
-        logUserActionClient(`Сохранено на сервере: ${recordLabel} — ${getLogFieldName(currentDocsRow.header[colIndex])} → ${saveValue}`);
+        logUserResultClient(`Сохранено на сервере: ${getLogFieldName(currentDocsRow.header[colIndex])} → ${saveValue}`);
         showToast('Сохранено');
       })
       .withFailureHandler(error => {
@@ -2148,7 +2209,7 @@
         btn.classList.remove('is-saving');
         btn.setAttribute('aria-label', 'Сохранить');
         const message = error && error.message ? error.message : 'Не удалось сохранить изменения.';
-        logUserActionClient(`Ошибка сохранения: ${getLogFieldName(currentDocsRow.header[colIndex])}`);
+        logUserResultClient(`Ошибка сохранения: ${getLogFieldName(currentDocsRow.header[colIndex])}`);
         showToast(`Ошибка: ${message}`, 'error');
       })
       .updateResultCell(dom.login.value.trim(), dom.password.value.trim(), dom.snils.value.trim(), currentDocsRow.header[colIndex], saveValue);
