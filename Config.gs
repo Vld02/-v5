@@ -80,6 +80,65 @@ const LOG_CONFIG = Object.freeze({
     'Дата/время', 'Логин', 'Пароль', 'СНИЛС', 'IP', 'Устройство', 'Браузер',
     'Действие пользователя', 'Результат действия', 'Локальные данные'
   ]),
+  EVENTS: Object.freeze({
+    // Общие действия сайта:
+    page_open: Object.freeze({ type: 'action', template: 'Открыл сайт' }),
+    section_docs: Object.freeze({ type: 'action', template: 'Перешёл в раздел — Документы' }),
+    section_attendance: Object.freeze({ type: 'action', template: 'Перешёл в раздел — Посещаемость' }),
+    section_gear: Object.freeze({ type: 'action', template: 'Перешёл в раздел — Снаряжение' }),
+
+    // Авторизация:
+    login_click: Object.freeze({ type: 'action', template: 'Нажал: Войти' }),
+    login_success_without_snils: Object.freeze({ type: 'result', template: 'Удачный вход без СНИЛС' }),
+    login_success_with_snils: Object.freeze({ type: 'result', template: 'Удачный вход по СНИЛС' }),
+    login_snils_required: Object.freeze({ type: 'result', template: 'Требуется ввод СНИЛС' }),
+    login_invalid_snils: Object.freeze({ type: 'result', template: 'Неверный СНИЛС' }),
+    login_failed_credentials: Object.freeze({ type: 'result', template: 'Неудачный вход: ФИО/дата' }),
+    login_sheet_missing: Object.freeze({ type: 'result', template: 'Лист не найден' }),
+    login_config_error: Object.freeze({ type: 'result', template: 'Ошибка конфигурации столбцов' }),
+    user_warning: Object.freeze({ type: 'result', template: 'Предупреждение: {message}' }),
+    user_error: Object.freeze({ type: 'result', template: 'Ошибка: {message}' }),
+
+    // Документы: редактирование:
+    edit_click: Object.freeze({ type: 'action', template: 'Нажал: Редактировать — {field}' }),
+    save_click: Object.freeze({ type: 'action', template: 'Нажал: Сохранить — {field}' }),
+    cancel_click: Object.freeze({ type: 'action', template: 'Нажал: Отмена — {field}' }),
+
+    // Документы: локальные данные:
+    draft_saved: Object.freeze({ type: 'local', template: 'Локально сохранено: {field} → {value}' }),
+
+    // Документы: серверное сохранение:
+    save_success: Object.freeze({ type: 'result', template: 'Сохранено на сервере: {field} → {value}' }),
+    save_error: Object.freeze({ type: 'result', template: 'Ошибка сохранения: {field}' }),
+
+    // Документы: файлы:
+    file_open: Object.freeze({ type: 'action', template: 'Открыл файл — {field}' }),
+    file_open_error: Object.freeze({ type: 'result', template: 'Ошибка открытия файла — {field}' }),
+    file_attach_click: Object.freeze({ type: 'action', template: 'Нажал: Прикрепить файл — {field}' }),
+    file_selected: Object.freeze({ type: 'action', template: 'Выбрал файл — {fileName}' }),
+    file_upload_success: Object.freeze({ type: 'result', template: 'Файл загружен: {field}' }),
+    file_upload_error: Object.freeze({ type: 'result', template: 'Ошибка загрузки файла: {field}' }),
+    file_replace_continue: Object.freeze({ type: 'action', template: 'Продолжил замену файла — {field}' }),
+    file_replace_cancel: Object.freeze({ type: 'action', template: 'Отменил замену файла — {field}' }),
+
+    // Посещаемость: работа с ячейками:
+    attendance_cell_change: Object.freeze({ type: 'action', template: 'Заполнил ячейку — {value}' }),
+
+    // Посещаемость: выбор ФИО:
+    fio_select: Object.freeze({ type: 'action', template: 'Выбрал ФИО — {fio}' }),
+    fio_change: Object.freeze({ type: 'action', template: 'Изменил выбор ФИО — {oldFio} → {fio}' }),
+
+    // Посещаемость: буфер обмена:
+    attendance_paste_click: Object.freeze({ type: 'action', template: 'Нажал: Вставить из буфера' }),
+    attendance_paste_error: Object.freeze({ type: 'result', template: 'Ошибка вставки из буфера' }),
+    attendance_copy_click: Object.freeze({ type: 'action', template: 'Нажал: Скопировать полное ФИО' }),
+    attendance_copy_success: Object.freeze({ type: 'result', template: 'Полные ФИО скопированы' }),
+    attendance_copy_error: Object.freeze({ type: 'result', template: 'Ошибка копирования ФИО' }),
+
+    // Посещаемость: заполнение тренировки:
+    attendance_form_click: Object.freeze({ type: 'action', template: 'Нажал: Заполнить тренировку' }),
+    attendance_form_open: Object.freeze({ type: 'result', template: 'Открыл форму заполнения тренировки' })
+  }),
   // Ожидание записи журнала, миллисекунд:
   lockWaitMs: 1000
 });
