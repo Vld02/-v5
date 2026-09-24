@@ -254,6 +254,34 @@ function rememberSessionLogRow_(sessionId, rowIndex) {
   CacheService.getScriptCache().put(getLogSessionCacheKey_(sessionId), String(rowIndex), 21600);
 }
 
+/**
+ * Возвращает строку для попытки входа. При изменении реквизитов создаёт
+ * новую строку и привязывает к ней текущую сессию браузера.
+ */
+function getAuthAttemptLogRow_(sheet, { login = '', password = '', snils = '', clientInfo = {} } = {}, sessionId) {
+  const normalizedSessionId = String(sessionId || '').trim();
+  if (!normalizedSessionId) return -1;
+
+  const credentials = [login, password, snils].map(value => String(value ?? ''));
+  const rowIndex = findSessionLogRow_(normalizedSessionId);
+
+  if (rowIndex >= 2 && rowIndex <= sheet.getLastRow()) {
+    const currentCredentials = sheet.getRange(rowIndex, 2, 1, 3).getValues()[0]
+      .map(value => String(value ?? ''));
+    if (credentials.every((value, index) => value === currentCredentials[index])) {
+      return rowIndex;
+    }
+  }
+
+  const newRowIndex = sheet.getLastRow() + 1;
+  appendPlainLogRow(sheet, [
+    formatLogDateTime(new Date()), ...credentials,
+    clientInfo.ip || '', clientInfo.device || '', clientInfo.browser || '', ''
+  ]);
+  rememberSessionLogRow_(normalizedSessionId, newRowIndex);
+  return newRowIndex;
+}
+
 /** Добавляет событие только в историю даты и статуса текущей строки. */
 function appendLogLine(sheet, rowIndex, status) {
   const range = sheet.getRange(rowIndex, 1, 1, LOG_COLUMNS.length);
@@ -307,15 +335,35 @@ function logSessionEvent(sessionId, status) {
 /** Логирует результат авторизации, но не silent-проверки. */
 function logAuthAttempt(payload) {
   if (payload.clientInfo && payload.clientInfo.silent) return;
-  logSessionEvent(payload.sessionId, payload.status);
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(LOG_CONFIG.lockWaitMs)) return;
+  try {
+    const sheet = getLogSheet();
+    if (!sheet) return;
+    const rowIndex = getAuthAttemptLogRow_(sheet, payload, payload.sessionId);
+    if (rowIndex < 2) return;
+    appendLogLine(sheet, rowIndex, payload.status);
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function logUserAction(sessionId, status) {
   logSessionEvent(sessionId, status);
 }
 
-function logLoginButtonClick(sessionId) {
-  logSessionEvent(sessionId, 'Нажал: Войти');
+function logLoginButtonClick(payload = {}) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(LOG_CONFIG.lockWaitMs)) return;
+  try {
+    const sheet = getLogSheet();
+    if (!sheet) return;
+    const rowIndex = getAuthAttemptLogRow_(sheet, payload, payload.sessionId);
+    if (rowIndex < 2) return;
+    appendLogLine(sheet, rowIndex, 'Нажал: Войти');
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function logSectionVisit(sessionId, section) {
@@ -448,8 +496,9 @@ function formatAuthPasswordValue_(value) {
  * @param {string[]} backgrounds Цвета ячеек строки.
  * @param {number[]} allowedCols Индексы разрешенных колонок.
  */
-function prepareRowForClient(row, header, backgrounds, allowedCols) {
+function prepareRowForClient(row, header, backgrounds, allowedCols, sourceRowIndex = null) {
   return {
+    sourceRowIndex,
     header: allowedCols.map(i => header[i]),
     row: allowedCols.map(i => formatCellValue(row[i])),
     colors: allowedCols.map(i => backgrounds[i]),
@@ -541,7 +590,7 @@ function checkLogin(login, password, clientInfo = {}, snils = '', sessionId = ''
       const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
       logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Удачный вход' });
       logStage('Совпадение найдено, данные строки загружены', startedAt);
-      return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
+      return prepareRowForClient(row, header, rowBackgrounds, allowedCols, rowIndex);
     }
   }
 
@@ -610,7 +659,7 @@ function verifySnils(login, password, snils, clientInfo = {}, sessionId = '') {
         const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
         const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
         logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Удачный вход без СНИЛС' });
-        return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
+        return prepareRowForClient(row, header, rowBackgrounds, allowedCols, rowIndex);
       }
 
       if (rowSnils !== expectedSnils) {
@@ -623,7 +672,7 @@ function verifySnils(login, password, snils, clientInfo = {}, sessionId = '') {
       const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
       logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Удачный вход по СНИЛС' });
       logStage('СНИЛС подтвержден, данные строки загружены', startedAt);
-      return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
+      return prepareRowForClient(row, header, rowBackgrounds, allowedCols, rowIndex);
     }
   }
 
