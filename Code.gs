@@ -660,7 +660,7 @@ function checkLogin(login, password, clientInfo = {}, snils = '', sessionId = ''
       const rowIndex = i + 2;
       const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
       const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
-      logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Удачный вход' });
+      logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: rowSnils ? 'Удачный вход по СНИЛС' : 'Удачный вход без СНИЛС' });
       logStage('Совпадение найдено, данные строки загружены', startedAt);
       return prepareRowForClient(row, header, rowBackgrounds, allowedCols, rowIndex);
     }
