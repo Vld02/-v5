@@ -1572,7 +1572,7 @@
   }
 
   function logSectionVisitClient(section) {
-    const sectionNames = { docs: 'ДБВv5 Документы', attendance: 'ДБВv5 Посещаемость', gear: 'ДБВv5 Снаряжение' };
+    const sectionNames = CLIENT_CONFIG.sectionNames || {};
     return logEventClient('section_visit', { section: sectionNames[section] || section });
   }
 
