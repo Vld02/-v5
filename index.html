@@ -1572,7 +1572,8 @@
   }
 
   function logSectionVisitClient(section) {
-    return logEventClient('section_visit', { section: section });
+    const sectionNames = { docs: 'ДБВv5 Документы', attendance: 'ДБВv5 Посещаемость', gear: 'ДБВv5 Снаряжение' };
+    return logEventClient('section_visit', { section: sectionNames[section] || section });
   }
 
   function logFillFormClickClient() {
@@ -2125,6 +2126,7 @@
     if (cancelBtn) cancelBtn.disabled = true;
     btn.classList.add('is-saving');
     btn.setAttribute('aria-label', 'Сохранение');
+    await logEventClient('save_click', { field: getLogFieldName(currentDocsRow.header[colIndex]) });
     google.script.run
       .withSuccessHandler(response => {
         currentDocsRow.serverRow[colIndex] = saveValue;
@@ -2150,7 +2152,6 @@
         logEventClient('save_error', { field: getLogFieldName(currentDocsRow.header[colIndex]) });
         showToast(`Ошибка: ${message}`, 'error');
       })
-    await logEventClient('save_click', { field: getLogFieldName(currentDocsRow.header[colIndex]) });
       .updateResultCell(dom.login.value.trim(), dom.password.value.trim(), dom.snils.value.trim(), currentDocsRow.header[colIndex], saveValue);
   });
 
