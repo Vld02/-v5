@@ -3721,7 +3721,8 @@
 
     const prefillValue = encodeURIComponent(values.join('\n'));
     const url = `${CLIENT_CONFIG.urls.attendanceForm}=${prefillValue}`;
-    window.open(url, '_blank');
+    const formWindow = window.open(url, '_blank');
+    if (formWindow) logEventClient('attendance_form_open');
   }
 </script>
 </body>
