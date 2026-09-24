@@ -877,7 +877,7 @@
     return editConfigPromise;
   }
 
-  let currentDocsRow = { header: [], serverRow: [], colors: [], fileStates: [], attachmentUploads: {}, draftValues: {}, draftKey: '' };
+  let currentDocsRow = { header: [], serverRow: [], sourceRowIndex: null, colors: [], fileStates: [], attachmentUploads: {}, draftValues: {}, draftKey: '' };
   let documentDraftSaveTimer = null;
 
   loadEditConfig().catch(() => {});
@@ -1642,6 +1642,7 @@
     currentDocsRow = {
       header: [...header],
       serverRow: [...serverRow],
+      sourceRowIndex: response.sourceRowIndex || null,
       colors: [...colors],
       fileStates: [...(response.fileStates || [])],
       attachmentUploads: {},
@@ -1979,6 +1980,8 @@
       cell.dataset.originalValue = serverValue;
       cell.innerHTML = `<div class="cell-edit-shell"><div class="cell-editor"><div class="cell-edit-inline"><input class="cell-value-input" data-col-index="${colIndex}" value="${escapeHtmlAttr(value)}" /></div></div>${renderCellEditActions(colIndex)}</div>`;
       const input = cell.querySelector('input');
+      const valueBeforeEdit = input.value;
+      let localDraftSaved = false;
       const suggestConfig = rule.special === 'suggest' ? rule.suggestions : null;
       let suggestionOptions = [];
       let activeSuggestionIndex = -1;
@@ -2001,7 +2004,6 @@
           opt.addEventListener('mousedown', event => {
             event.preventDefault();
             input.value = item;
-            setDocumentDraftValue(colIndex, input.value);
             validate();
             dropSuggestionList();
             input.focus();
@@ -2017,7 +2019,6 @@
       if (rule.special === 'date') input.addEventListener('blur', function() {
         const formatted = formatDateInput(input.value, { finalizeYear: true });
         if (formatted !== input.value) input.value = formatted;
-        setDocumentDraftValue(colIndex, input.value);
         validate();
       });
       input.focus();
@@ -2033,7 +2034,6 @@
       input.addEventListener('input', () => {
         const prepared = applyInputSpecial(input.value, rule);
         if (prepared !== input.value) input.value = prepared;
-        setDocumentDraftValue(colIndex, input.value);
         validate();
         renderSuggestionList();
       });
@@ -2070,7 +2070,24 @@
           saveBtn.click();
         }, 0);
       });
-      input.addEventListener('blur', () => setTimeout(dropSuggestionList, UI_TIMINGS.suggestionBlurDelayMs));
+      const saveLocalDraftAfterEdit = () => {
+        if (!localDraftSaved && input.value !== valueBeforeEdit) {
+          localDraftSaved = true;
+          setDocumentDraftValue(colIndex, input.value);
+          if (documentDraftSaveTimer) {
+            clearTimeout(documentDraftSaveTimer);
+            documentDraftSaveTimer = null;
+          }
+          writeCurrentDocumentDraft();
+          const recordLabel = currentDocsRow.sourceRowIndex ? `Запись №${currentDocsRow.sourceRowIndex}` : 'Текущая запись';
+          logUserActionClient(`Локально сохранено: ${recordLabel} — ${getLogFieldName(columnName)} → ${input.value}`);
+        }
+      };
+      input._saveLocalDraftAfterEdit = saveLocalDraftAfterEdit;
+      input.addEventListener('blur', () => {
+        saveLocalDraftAfterEdit();
+        setTimeout(dropSuggestionList, UI_TIMINGS.suggestionBlurDelayMs);
+      });
       validate();
       if (suggestConfig) {
         google.script.run
@@ -2085,7 +2102,9 @@
     }
     if (mode === 'cancel') {
       logUserActionClient(`Нажал: Отмена — ${getLogFieldName(currentDocsRow.header[colIndex])}`);
-      const draftValue = cell.querySelector('input')?.value ?? cell.dataset.originalValue ?? '';
+      const editInput = cell.querySelector('input');
+      editInput?._saveLocalDraftAfterEdit?.();
+      const draftValue = editInput?.value ?? cell.dataset.originalValue ?? '';
       const existing = cell.querySelector('.cell-suggest-list');
       if (existing) existing.remove();
       delete cell.dataset.originalValue;
@@ -2118,7 +2137,8 @@
           updateCurrentIdentityAfterSave(currentDocsRow.header[colIndex], saveValue);
           moveCurrentDocumentDraftToCurrentIdentity(previousDraftKey);
         }
-        logUserActionClient(`Сохранено: ${getLogFieldName(currentDocsRow.header[colIndex])}`);
+        const recordLabel = currentDocsRow.sourceRowIndex ? `Запись №${currentDocsRow.sourceRowIndex}` : 'Текущая запись';
+        logUserActionClient(`Сохранено на сервере: ${recordLabel} — ${getLogFieldName(currentDocsRow.header[colIndex])} → ${saveValue}`);
         showToast('Сохранено');
       })
       .withFailureHandler(error => {

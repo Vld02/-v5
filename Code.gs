@@ -496,8 +496,9 @@ function formatAuthPasswordValue_(value) {
  * @param {string[]} backgrounds Цвета ячеек строки.
  * @param {number[]} allowedCols Индексы разрешенных колонок.
  */
-function prepareRowForClient(row, header, backgrounds, allowedCols) {
+function prepareRowForClient(row, header, backgrounds, allowedCols, sourceRowIndex = null) {
   return {
+    sourceRowIndex,
     header: allowedCols.map(i => header[i]),
     row: allowedCols.map(i => formatCellValue(row[i])),
     colors: allowedCols.map(i => backgrounds[i]),
@@ -589,7 +590,7 @@ function checkLogin(login, password, clientInfo = {}, snils = '', sessionId = ''
       const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
       logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Удачный вход' });
       logStage('Совпадение найдено, данные строки загружены', startedAt);
-      return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
+      return prepareRowForClient(row, header, rowBackgrounds, allowedCols, rowIndex);
     }
   }
 
@@ -658,7 +659,7 @@ function verifySnils(login, password, snils, clientInfo = {}, sessionId = '') {
         const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
         const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
         logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Удачный вход без СНИЛС' });
-        return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
+        return prepareRowForClient(row, header, rowBackgrounds, allowedCols, rowIndex);
       }
 
       if (rowSnils !== expectedSnils) {
@@ -671,7 +672,7 @@ function verifySnils(login, password, snils, clientInfo = {}, sessionId = '') {
       const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
       logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Удачный вход по СНИЛС' });
       logStage('СНИЛС подтвержден, данные строки загружены', startedAt);
-      return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
+      return prepareRowForClient(row, header, rowBackgrounds, allowedCols, rowIndex);
     }
   }
 
