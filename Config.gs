@@ -77,15 +77,13 @@ const RESPONSIVE_CONFIG = Object.freeze({
 const LOG_CONFIG = Object.freeze({
   // Столбцы журнала:
   COLUMNS: Object.freeze([
-    'Дата/время входа', 'Логин', 'Пароль', 'СНИЛС', 'IP', 'Устройство', 'Браузер', 'Статус входа'
+    'Дата/время', 'Логин', 'Пароль', 'СНИЛС', 'IP', 'Устройство', 'Браузер',
+    'Действие пользователя', 'Результат действия', 'Локальные данные'
   ]),
-  // Время объединения записей, минут:
-  MAX_AGE_MINUTES: 30,
   // Ожидание записи журнала, миллисекунд:
   lockWaitMs: 1000
 });
 const LOG_COLUMNS = LOG_CONFIG.COLUMNS;
-const LOG_MAX_AGE_MINUTES = LOG_CONFIG.MAX_AGE_MINUTES;
 
 // Общие настройки интерфейса браузера:
 const GENERAL_CLIENT_CONFIG = Object.freeze({
