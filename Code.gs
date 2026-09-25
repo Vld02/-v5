@@ -269,6 +269,183 @@ function appendLogLine(sheet, rowIndex, status) {
   range.setWrap(true);
 }
 
+/**
+ * Добавляет скрытые метаданные к строке логического события.
+ * Метаданные диапазона остаются связанными со строкой после вставки строк
+ * выше неё, поэтому номер строки нигде не выступает идентификатором события.
+ */
+function addLogicalEventMetadata_(range, key, value) {
+  range.addDeveloperMetadata(key, String(value), SpreadsheetApp.DeveloperMetadataVisibility.PROJECT);
+}
+
+/** Находит диапазон строки по постоянному внутреннему ID логического события. */
+function findLogicalEventRange_(sheet, eventId) {
+  const metadata = sheet.createDeveloperMetadataFinder()
+    .withKey(LOGICAL_EVENT_LOG_CONFIG.eventIdMetadataKey)
+    .withValue(String(eventId || ''))
+    .find();
+  if (metadata.length !== 1) return null;
+
+  const location = metadata[0].getLocation();
+  return location && location.getRange ? location.getRange() : null;
+}
+
+/** Проверяет, было ли логическое событие завершено. */
+function isLogicalEventCompleted_(range, eventId) {
+  return range.getDeveloperMetadata().some(metadata =>
+    metadata.getKey() === LOGICAL_EVENT_LOG_CONFIG.stateMetadataKey &&
+    metadata.getValue() === `${eventId}:${LOGICAL_EVENT_LOG_CONFIG.completedState}`
+  );
+}
+
+/**
+ * Создаёт независимое логическое событие и возвращает его постоянный ID.
+ * Созданная строка содержит действие; ID и ID сессии существуют только в
+ * метаданных диапазона и не добавляются в видимые столбцы журнала.
+ *
+ * @param {string} sessionId ID сессии страницы.
+ * @param {string} action Текст самостоятельного пользовательского действия.
+ * @returns {string} Внутренний ID события или пустая строка при ошибке записи.
+ */
+function createLogicalLogEvent(sessionId, action) {
+  if (!String(sessionId || '').trim() || !String(action || '').trim()) return '';
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(LOG_CONFIG.lockWaitMs)) return '';
+  try {
+    const sheet = getLogSheet();
+    if (!sheet) return '';
+
+    const eventId = Utilities.getUuid();
+    const rowIndex = sheet.getLastRow() + 1;
+    appendPlainLogRow(sheet, [
+      formatLogDateTime(new Date()), '', '', '', '', '', '', `Действие: ${String(action).trim()}`
+    ]);
+    const range = sheet.getRange(rowIndex, 1, 1, LOG_COLUMNS.length);
+    addLogicalEventMetadata_(range, LOGICAL_EVENT_LOG_CONFIG.eventIdMetadataKey, eventId);
+    addLogicalEventMetadata_(range, LOGICAL_EVENT_LOG_CONFIG.sessionIdMetadataKey, String(sessionId).trim());
+    return eventId;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Дописывает результат в ранее созданное логическое событие. */
+function appendLogicalLogResult(eventId, result) {
+  return appendLogicalLogPart_(eventId, 'Результат', result);
+}
+
+/** Дописывает локальные данные в ранее созданное логическое событие. */
+function appendLogicalLogLocalData(eventId, localData) {
+  return appendLogicalLogPart_(eventId, 'Локальные данные', localData);
+}
+
+/** Находит событие по ID и добавляет к нему часть без использования номера строки как ID. */
+function appendLogicalLogPart_(eventId, label, value) {
+  if (!String(eventId || '').trim() || !String(value || '').trim()) return false;
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(LOG_CONFIG.lockWaitMs)) return false;
+  try {
+    const sheet = getLogSheet();
+    if (!sheet) return false;
+    const range = findLogicalEventRange_(sheet, eventId);
+    if (!range || isLogicalEventCompleted_(range, eventId)) return false;
+    // Номер строки используется только как текущее местоположение найденного
+    // по метаданным диапазона, а не как постоянный идентификатор события.
+    appendLogLine(sheet, range.getRow(), `${label}: ${String(value).trim()}`);
+    return true;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Завершает логическое событие и запрещает последующие дописывания в него. */
+function completeLogicalLogEvent(eventId) {
+  if (!String(eventId || '').trim()) return false;
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(LOG_CONFIG.lockWaitMs)) return false;
+  try {
+    const sheet = getLogSheet();
+    if (!sheet) return false;
+    const range = findLogicalEventRange_(sheet, eventId);
+    if (!range || isLogicalEventCompleted_(range, eventId)) return false;
+    addLogicalEventMetadata_(
+      range,
+      LOGICAL_EVENT_LOG_CONFIG.stateMetadataKey,
+      `${eventId}:${LOGICAL_EVENT_LOG_CONFIG.completedState}`
+    );
+    return true;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Ручной технический тест этапа 2. Не вызывается сайтом и не подключён к
+ * пользовательским действиям. Он создаёт два события первой сессии и одно
+ * второй, вставляет строку над первым и проверяет связь по метаданным.
+ */
+function runLogicalLogEventTechnicalTest() {
+  const suffix = Utilities.getUuid();
+  const firstSessionId = `logical-log-test-session-a-${suffix}`;
+  const secondSessionId = `logical-log-test-session-b-${suffix}`;
+  const firstEventId = createLogicalLogEvent(firstSessionId, 'Техническое действие');
+  if (!firstEventId || !appendLogicalLogResult(firstEventId, 'Технический результат')) {
+    throw new Error('Не удалось создать событие или дописать результат.');
+  }
+
+  const sheet = getLogSheet();
+  const firstRangeBeforeInsert = findLogicalEventRange_(sheet, firstEventId);
+  if (!firstRangeBeforeInsert) throw new Error('Не найдено созданное событие.');
+  sheet.insertRowBefore(firstRangeBeforeInsert.getRow());
+
+  if (!appendLogicalLogLocalData(firstEventId, 'Технические локальные данные')) {
+    throw new Error('Вставка строки нарушила связь с событием.');
+  }
+  if (!completeLogicalLogEvent(firstEventId) || appendLogicalLogResult(firstEventId, 'Не должно быть записано')) {
+    throw new Error('Завершение события работает неверно.');
+  }
+
+  const nextEventId = createLogicalLogEvent(firstSessionId, 'Следующее техническое действие');
+  const secondSessionEventId = createLogicalLogEvent(secondSessionId, 'Действие второй сессии');
+  if (!nextEventId || !secondSessionEventId || nextEventId === firstEventId || secondSessionEventId === firstEventId) {
+    throw new Error('Новые события не получили независимые ID.');
+  }
+
+  const firstRange = findLogicalEventRange_(sheet, firstEventId);
+  const nextRange = findLogicalEventRange_(sheet, nextEventId);
+  const secondSessionRange = findLogicalEventRange_(sheet, secondSessionEventId);
+  const firstStatus = String(firstRange.getCell(1, 8).getValue());
+  const firstSessionMetadata = firstRange.getDeveloperMetadata().find(metadata =>
+    metadata.getKey() === LOGICAL_EVENT_LOG_CONFIG.sessionIdMetadataKey
+  );
+  const secondSessionMetadata = secondSessionRange.getDeveloperMetadata().find(metadata =>
+    metadata.getKey() === LOGICAL_EVENT_LOG_CONFIG.sessionIdMetadataKey
+  );
+  if (
+    !firstStatus.includes('Действие: Техническое действие') ||
+    !firstStatus.includes('Результат: Технический результат') ||
+    !firstStatus.includes('Локальные данные: Технические локальные данные') ||
+    !firstSessionMetadata || firstSessionMetadata.getValue() !== firstSessionId ||
+    !secondSessionMetadata || secondSessionMetadata.getValue() !== secondSessionId ||
+    firstRange.getRow() === nextRange.getRow() || firstRange.getRow() === secondSessionRange.getRow() ||
+    nextRange.getRow() === secondSessionRange.getRow()
+  ) {
+    throw new Error('Технический тест логических событий завершился с неверными данными.');
+  }
+
+  return {
+    firstEventId,
+    firstEventRow: firstRange.getRow(),
+    nextEventId,
+    nextEventRow: nextRange.getRow(),
+    secondSessionEventId,
+    secondSessionEventRow: secondSessionRange.getRow()
+  };
+}
+
 /** Создаёт строку только для нового открытия сайта. */
 function logPageOpen({ login = '', password = '', snils = '', clientInfo = {} } = {}, sessionId) {
   if (!String(sessionId || '').trim()) return;
