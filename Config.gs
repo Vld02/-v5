@@ -77,7 +77,9 @@ const RESPONSIVE_CONFIG = Object.freeze({
 const LOG_CONFIG = Object.freeze({
   // Столбцы журнала:
   COLUMNS: Object.freeze([
-    'Дата/время входа', 'Логин', 'Пароль', 'СНИЛС', 'IP', 'Устройство', 'Браузер', 'Статус входа'
+    'Дата/время', 'Логин', 'Пароль', 'СНИЛС', 'IP',
+    'Устройство', 'Браузер', 'Действие пользователя',
+    'Результат действия', 'Локальные данные'
   ]),
   // Время объединения записей, минут:
   MAX_AGE_MINUTES: 30,
@@ -86,6 +88,87 @@ const LOG_CONFIG = Object.freeze({
 });
 const LOG_COLUMNS = LOG_CONFIG.COLUMNS;
 const LOG_MAX_AGE_MINUTES = LOG_CONFIG.MAX_AGE_MINUTES;
+
+/*************************************************
+ * КОНФИГУРАЦИЯ ЛОГИЧЕСКИХ СОБЫТИЙ ЖУРНАЛА «ВХОДЫ»
+ *
+ * Конфигурация используется поэтапно: подключённые сценарии создают
+ * логические события, а остальные продолжают работать по прежнему пути
+ * до их перевода на новый механизм.
+ *************************************************/
+const USER_LOG_EVENT_TYPES = Object.freeze({
+  ACTION: 'action',
+  RESULT: 'result',
+  LOCAL_DATA: 'local_data'
+});
+
+const USER_LOG_EVENT_SOURCES = Object.freeze({
+  CLIENT: 'index.html',
+  SERVER: 'Code.gs'
+});
+
+const USER_LOG_EVENT_RULES = Object.freeze({
+  CREATE: 'create_new_event',
+  JOIN: 'join_current_event'
+});
+
+/**
+ * Единая видимая структура пользовательского журнала без столбца внутреннего ID.
+ */
+const USER_LOG_COLUMNS = LOG_CONFIG.COLUMNS;
+
+/**
+ * Описание событий нового пользовательского журнала.
+ *
+ * parameters — допустимые подстановки шаблона {parameter}.
+ * joinToEventTypes — типы текущего события, к которым разрешено присоединить
+ * результат или локальные данные. Пустой список означает создание новой строки.
+ */
+const USER_LOG_EVENTS = Object.freeze({
+  page_open: Object.freeze({ id: 'page_open', name: 'Открытие страницы', type: USER_LOG_EVENT_TYPES.ACTION, source: USER_LOG_EVENT_SOURCES.CLIENT, template: 'Открыл страницу', parameters: Object.freeze([]), rule: USER_LOG_EVENT_RULES.CREATE, joinToEventTypes: Object.freeze([]), enabled: true }),
+  section_docs: Object.freeze({ id: 'section_docs', name: 'Переход в раздел «Документы»', type: USER_LOG_EVENT_TYPES.ACTION, source: USER_LOG_EVENT_SOURCES.CLIENT, template: 'Перешёл в раздел «Документы»', parameters: Object.freeze([]), rule: USER_LOG_EVENT_RULES.CREATE, joinToEventTypes: Object.freeze([]), enabled: true }),
+  section_attendance: Object.freeze({ id: 'section_attendance', name: 'Переход в раздел «Посещаемость»', type: USER_LOG_EVENT_TYPES.ACTION, source: USER_LOG_EVENT_SOURCES.CLIENT, template: 'Перешёл в раздел «Посещаемость»', parameters: Object.freeze([]), rule: USER_LOG_EVENT_RULES.CREATE, joinToEventTypes: Object.freeze([]), enabled: true }),
+  section_gear: Object.freeze({ id: 'section_gear', name: 'Переход в раздел «Снаряжение»', type: USER_LOG_EVENT_TYPES.ACTION, source: USER_LOG_EVENT_SOURCES.CLIENT, template: 'Перешёл в раздел «Снаряжение»', parameters: Object.freeze([]), rule: USER_LOG_EVENT_RULES.CREATE, joinToEventTypes: Object.freeze([]), enabled: true }),
+
+  login_click: Object.freeze({ id: 'login_click', name: 'Нажатие «Войти»', type: USER_LOG_EVENT_TYPES.ACTION, source: USER_LOG_EVENT_SOURCES.CLIENT, template: 'Нажал «Войти»', parameters: Object.freeze([]), rule: USER_LOG_EVENT_RULES.CREATE, joinToEventTypes: Object.freeze([]), enabled: true }),
+  login_success_without_snils: Object.freeze({ id: 'login_success_without_snils', name: 'Успешный вход без СНИЛС', type: USER_LOG_EVENT_TYPES.RESULT, source: USER_LOG_EVENT_SOURCES.SERVER, template: 'Вход выполнен без СНИЛС', parameters: Object.freeze([]), rule: USER_LOG_EVENT_RULES.JOIN, joinToEventTypes: Object.freeze([USER_LOG_EVENT_TYPES.ACTION]), enabled: true }),
+  login_success_with_snils: Object.freeze({ id: 'login_success_with_snils', name: 'Успешный вход со СНИЛС', type: USER_LOG_EVENT_TYPES.RESULT, source: USER_LOG_EVENT_SOURCES.SERVER, template: 'Вход выполнен со СНИЛС', parameters: Object.freeze([]), rule: USER_LOG_EVENT_RULES.JOIN, joinToEventTypes: Object.freeze([USER_LOG_EVENT_TYPES.ACTION]), enabled: true }),
+  login_snils_required: Object.freeze({ id: 'login_snils_required', name: 'Требуется СНИЛС', type: USER_LOG_EVENT_TYPES.RESULT, source: USER_LOG_EVENT_SOURCES.SERVER, template: 'Требуется СНИЛС', parameters: Object.freeze([]), rule: USER_LOG_EVENT_RULES.JOIN, joinToEventTypes: Object.freeze([USER_LOG_EVENT_TYPES.ACTION]), enabled: true }),
+  login_invalid_snils: Object.freeze({ id: 'login_invalid_snils', name: 'Неверный СНИЛС', type: USER_LOG_EVENT_TYPES.RESULT, source: USER_LOG_EVENT_SOURCES.SERVER, template: 'Неверный СНИЛС', parameters: Object.freeze([]), rule: USER_LOG_EVENT_RULES.JOIN, joinToEventTypes: Object.freeze([USER_LOG_EVENT_TYPES.ACTION]), enabled: true }),
+  login_failed_credentials: Object.freeze({ id: 'login_failed_credentials', name: 'Неверные учётные данные', type: USER_LOG_EVENT_TYPES.RESULT, source: USER_LOG_EVENT_SOURCES.SERVER, template: 'Неверные ФИО или дата рождения', parameters: Object.freeze([]), rule: USER_LOG_EVENT_RULES.JOIN, joinToEventTypes: Object.freeze([USER_LOG_EVENT_TYPES.ACTION]), enabled: true }),
+  login_sheet_missing: Object.freeze({ id: 'login_sheet_missing', name: 'Лист авторизации не найден', type: USER_LOG_EVENT_TYPES.RESULT, source: USER_LOG_EVENT_SOURCES.SERVER, template: 'Лист авторизации не найден', parameters: Object.freeze([]), rule: USER_LOG_EVENT_RULES.JOIN, joinToEventTypes: Object.freeze([USER_LOG_EVENT_TYPES.ACTION]), enabled: true }),
+  login_config_error: Object.freeze({ id: 'login_config_error', name: 'Ошибка конфигурации авторизации', type: USER_LOG_EVENT_TYPES.RESULT, source: USER_LOG_EVENT_SOURCES.SERVER, template: 'Ошибка конфигурации авторизации: {message}', parameters: Object.freeze(['message']), rule: USER_LOG_EVENT_RULES.JOIN, joinToEventTypes: Object.freeze([USER_LOG_EVENT_TYPES.ACTION]), enabled: true }),
+
+  user_warning: Object.freeze({ id: 'user_warning', name: 'Предупреждение пользователю', type: USER_LOG_EVENT_TYPES.RESULT, source: USER_LOG_EVENT_SOURCES.CLIENT, template: 'Предупреждение: {message}', parameters: Object.freeze(['message']), rule: USER_LOG_EVENT_RULES.JOIN, joinToEventTypes: Object.freeze([USER_LOG_EVENT_TYPES.ACTION]), enabled: true }),
+  user_error: Object.freeze({ id: 'user_error', name: 'Ошибка для пользователя', type: USER_LOG_EVENT_TYPES.RESULT, source: USER_LOG_EVENT_SOURCES.CLIENT, template: 'Ошибка: {message}', parameters: Object.freeze(['message']), rule: USER_LOG_EVENT_RULES.JOIN, joinToEventTypes: Object.freeze([USER_LOG_EVENT_TYPES.ACTION]), enabled: true }),
+
+  edit_click: Object.freeze({ id: 'edit_click', name: 'Начало редактирования документа', type: USER_LOG_EVENT_TYPES.ACTION, source: USER_LOG_EVENT_SOURCES.CLIENT, template: 'Нажал «Редактировать»: {field}', parameters: Object.freeze(['field']), rule: USER_LOG_EVENT_RULES.CREATE, joinToEventTypes: Object.freeze([]), enabled: true }),
+  save_click: Object.freeze({ id: 'save_click', name: 'Сохранение документа', type: USER_LOG_EVENT_TYPES.ACTION, source: USER_LOG_EVENT_SOURCES.CLIENT, template: 'Нажал «Сохранить»: {field}', parameters: Object.freeze(['field']), rule: USER_LOG_EVENT_RULES.CREATE, joinToEventTypes: Object.freeze([]), enabled: true }),
+  cancel_click: Object.freeze({ id: 'cancel_click', name: 'Отмена редактирования', type: USER_LOG_EVENT_TYPES.ACTION, source: USER_LOG_EVENT_SOURCES.CLIENT, template: 'Нажал «Отмена»: {field}', parameters: Object.freeze(['field']), rule: USER_LOG_EVENT_RULES.CREATE, joinToEventTypes: Object.freeze([]), enabled: true }),
+  draft_saved: Object.freeze({ id: 'draft_saved', name: 'Черновик сохранён локально', type: USER_LOG_EVENT_TYPES.LOCAL_DATA, source: USER_LOG_EVENT_SOURCES.CLIENT, template: 'Черновик сохранён: {field}', parameters: Object.freeze(['field']), rule: USER_LOG_EVENT_RULES.JOIN, joinToEventTypes: Object.freeze([USER_LOG_EVENT_TYPES.ACTION]), enabled: true }),
+  save_success: Object.freeze({ id: 'save_success', name: 'Документ сохранён', type: USER_LOG_EVENT_TYPES.RESULT, source: USER_LOG_EVENT_SOURCES.SERVER, template: 'Сохранено: {field}', parameters: Object.freeze(['field']), rule: USER_LOG_EVENT_RULES.JOIN, joinToEventTypes: Object.freeze([USER_LOG_EVENT_TYPES.ACTION]), enabled: true }),
+  save_error: Object.freeze({ id: 'save_error', name: 'Ошибка сохранения документа', type: USER_LOG_EVENT_TYPES.RESULT, source: USER_LOG_EVENT_SOURCES.SERVER, template: 'Не сохранено: {field}; {message}', parameters: Object.freeze(['field', 'message']), rule: USER_LOG_EVENT_RULES.JOIN, joinToEventTypes: Object.freeze([USER_LOG_EVENT_TYPES.ACTION]), enabled: true }),
+
+  file_open: Object.freeze({ id: 'file_open', name: 'Открытие файла', type: USER_LOG_EVENT_TYPES.ACTION, source: USER_LOG_EVENT_SOURCES.CLIENT, template: 'Открыл файл: {field}', parameters: Object.freeze(['field']), rule: USER_LOG_EVENT_RULES.CREATE, joinToEventTypes: Object.freeze([]), enabled: true }),
+  file_open_error: Object.freeze({ id: 'file_open_error', name: 'Ошибка открытия файла', type: USER_LOG_EVENT_TYPES.RESULT, source: USER_LOG_EVENT_SOURCES.SERVER, template: 'Не открыт файл: {field}; {message}', parameters: Object.freeze(['field', 'message']), rule: USER_LOG_EVENT_RULES.JOIN, joinToEventTypes: Object.freeze([USER_LOG_EVENT_TYPES.ACTION]), enabled: true }),
+  file_attach_click: Object.freeze({ id: 'file_attach_click', name: 'Нажатие прикрепления файла', type: USER_LOG_EVENT_TYPES.ACTION, source: USER_LOG_EVENT_SOURCES.CLIENT, template: 'Нажал «Прикрепить файл»: {field}', parameters: Object.freeze(['field']), rule: USER_LOG_EVENT_RULES.CREATE, joinToEventTypes: Object.freeze([]), enabled: true }),
+  file_selected: Object.freeze({ id: 'file_selected', name: 'Файл выбран локально', type: USER_LOG_EVENT_TYPES.LOCAL_DATA, source: USER_LOG_EVENT_SOURCES.CLIENT, template: 'Выбран файл: {fileName}', parameters: Object.freeze(['fileName']), rule: USER_LOG_EVENT_RULES.JOIN, joinToEventTypes: Object.freeze([USER_LOG_EVENT_TYPES.ACTION]), enabled: true }),
+  file_upload_success: Object.freeze({ id: 'file_upload_success', name: 'Файл загружен', type: USER_LOG_EVENT_TYPES.RESULT, source: USER_LOG_EVENT_SOURCES.SERVER, template: 'Файл загружен: {fileName}', parameters: Object.freeze(['fileName']), rule: USER_LOG_EVENT_RULES.JOIN, joinToEventTypes: Object.freeze([USER_LOG_EVENT_TYPES.ACTION]), enabled: true }),
+  file_upload_error: Object.freeze({ id: 'file_upload_error', name: 'Ошибка загрузки файла', type: USER_LOG_EVENT_TYPES.RESULT, source: USER_LOG_EVENT_SOURCES.SERVER, template: 'Файл не загружен: {fileName}; {message}', parameters: Object.freeze(['fileName', 'message']), rule: USER_LOG_EVENT_RULES.JOIN, joinToEventTypes: Object.freeze([USER_LOG_EVENT_TYPES.ACTION]), enabled: true }),
+  file_replace_continue: Object.freeze({ id: 'file_replace_continue', name: 'Подтверждение замены файла', type: USER_LOG_EVENT_TYPES.ACTION, source: USER_LOG_EVENT_SOURCES.CLIENT, template: 'Продолжил замену файла: {field}', parameters: Object.freeze(['field']), rule: USER_LOG_EVENT_RULES.CREATE, joinToEventTypes: Object.freeze([]), enabled: true }),
+  file_replace_cancel: Object.freeze({ id: 'file_replace_cancel', name: 'Отмена замены файла', type: USER_LOG_EVENT_TYPES.ACTION, source: USER_LOG_EVENT_SOURCES.CLIENT, template: 'Отменил замену файла: {field}', parameters: Object.freeze(['field']), rule: USER_LOG_EVENT_RULES.CREATE, joinToEventTypes: Object.freeze([]), enabled: true }),
+
+  attendance_cell_change: Object.freeze({ id: 'attendance_cell_change', name: 'Изменение ячейки посещаемости', type: USER_LOG_EVENT_TYPES.ACTION, source: USER_LOG_EVENT_SOURCES.CLIENT, template: 'Изменил посещаемость: {date}, {athlete}', parameters: Object.freeze(['date', 'athlete']), rule: USER_LOG_EVENT_RULES.CREATE, joinToEventTypes: Object.freeze([]), enabled: true }),
+  fio_select: Object.freeze({ id: 'fio_select', name: 'Выбор ФИО', type: USER_LOG_EVENT_TYPES.ACTION, source: USER_LOG_EVENT_SOURCES.CLIENT, template: 'Выбрал ФИО: {fio}', parameters: Object.freeze(['fio']), rule: USER_LOG_EVENT_RULES.CREATE, joinToEventTypes: Object.freeze([]), enabled: true }),
+  fio_change: Object.freeze({ id: 'fio_change', name: 'Изменение ФИО', type: USER_LOG_EVENT_TYPES.ACTION, source: USER_LOG_EVENT_SOURCES.CLIENT, template: 'Изменил ФИО: {fio}', parameters: Object.freeze(['fio']), rule: USER_LOG_EVENT_RULES.CREATE, joinToEventTypes: Object.freeze([]), enabled: true }),
+  attendance_paste_click: Object.freeze({ id: 'attendance_paste_click', name: 'Вставка посещаемости', type: USER_LOG_EVENT_TYPES.ACTION, source: USER_LOG_EVENT_SOURCES.CLIENT, template: 'Нажал «Вставить посещаемость»', parameters: Object.freeze([]), rule: USER_LOG_EVENT_RULES.CREATE, joinToEventTypes: Object.freeze([]), enabled: true }),
+  attendance_paste_error: Object.freeze({ id: 'attendance_paste_error', name: 'Ошибка вставки посещаемости', type: USER_LOG_EVENT_TYPES.RESULT, source: USER_LOG_EVENT_SOURCES.CLIENT, template: 'Не вставлена посещаемость: {message}', parameters: Object.freeze(['message']), rule: USER_LOG_EVENT_RULES.JOIN, joinToEventTypes: Object.freeze([USER_LOG_EVENT_TYPES.ACTION]), enabled: true }),
+  attendance_copy_click: Object.freeze({ id: 'attendance_copy_click', name: 'Копирование посещаемости', type: USER_LOG_EVENT_TYPES.ACTION, source: USER_LOG_EVENT_SOURCES.CLIENT, template: 'Нажал «Копировать посещаемость»', parameters: Object.freeze([]), rule: USER_LOG_EVENT_RULES.CREATE, joinToEventTypes: Object.freeze([]), enabled: true }),
+  attendance_copy_success: Object.freeze({ id: 'attendance_copy_success', name: 'Посещаемость скопирована', type: USER_LOG_EVENT_TYPES.RESULT, source: USER_LOG_EVENT_SOURCES.CLIENT, template: 'Посещаемость скопирована', parameters: Object.freeze([]), rule: USER_LOG_EVENT_RULES.JOIN, joinToEventTypes: Object.freeze([USER_LOG_EVENT_TYPES.ACTION]), enabled: true }),
+  attendance_copy_error: Object.freeze({ id: 'attendance_copy_error', name: 'Ошибка копирования посещаемости', type: USER_LOG_EVENT_TYPES.RESULT, source: USER_LOG_EVENT_SOURCES.CLIENT, template: 'Не скопирована посещаемость: {message}', parameters: Object.freeze(['message']), rule: USER_LOG_EVENT_RULES.JOIN, joinToEventTypes: Object.freeze([USER_LOG_EVENT_TYPES.ACTION]), enabled: true }),
+  attendance_form_click: Object.freeze({ id: 'attendance_form_click', name: 'Нажатие формы посещаемости', type: USER_LOG_EVENT_TYPES.ACTION, source: USER_LOG_EVENT_SOURCES.CLIENT, template: 'Нажал «Заполнить форму»', parameters: Object.freeze([]), rule: USER_LOG_EVENT_RULES.CREATE, joinToEventTypes: Object.freeze([]), enabled: true }),
+  attendance_form_open: Object.freeze({ id: 'attendance_form_open', name: 'Форма посещаемости открыта', type: USER_LOG_EVENT_TYPES.RESULT, source: USER_LOG_EVENT_SOURCES.CLIENT, template: 'Форма посещаемости открыта', parameters: Object.freeze([]), rule: USER_LOG_EVENT_RULES.JOIN, joinToEventTypes: Object.freeze([USER_LOG_EVENT_TYPES.ACTION]), enabled: true })
+});
 
 // Общие настройки интерфейса браузера:
 const GENERAL_CLIENT_CONFIG = Object.freeze({
