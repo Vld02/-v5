@@ -877,7 +877,7 @@
     return editConfigPromise;
   }
 
-  let currentDocsRow = { header: [], serverRow: [], colors: [], fileStates: [], attachmentUploads: {}, draftValues: {}, draftKey: '' };
+  let currentDocsRow = { header: [], serverRow: [], colors: [], fileStates: [], attachmentUploads: {}, draftValues: {}, draftKey: '', editEventPromises: {} };
   let documentDraftSaveTimer = null;
 
   loadEditConfig().catch(() => {});
@@ -1580,6 +1580,45 @@
     return queuedEvent;
   }
 
+  function appendAndCompleteLogicalEventClient(logicalEventId, eventId, params = {}) {
+    if (!logicalEventId) return Promise.resolve(false);
+    return new Promise(resolve => {
+      google.script.run
+        .withSuccessHandler(written => {
+          if (!written) {
+            resolve(false);
+            return;
+          }
+          google.script.run
+            .withSuccessHandler(() => resolve(true))
+            .withFailureHandler(() => resolve(false))
+            .completeLogicalLogEvent(logicalEventId);
+        })
+        .withFailureHandler(() => resolve(false))
+        .appendConfiguredLogicalEventPart(logicalEventId, eventId, params);
+    });
+  }
+
+  async function finishDocumentEditor(cell, colIndex) {
+    const columnName = currentDocsRow.header[colIndex];
+    const input = cell.querySelector('input');
+    const value = String(input?.value ?? cell.dataset.originalValue ?? '').trim();
+    const eventPromise = currentDocsRow.editEventPromises[columnName];
+    const logicalEventId = eventPromise ? await eventPromise : '';
+    await appendAndCompleteLogicalEventClient(logicalEventId, 'draft_saved', {
+      field: getLogFieldName(columnName),
+      value
+    });
+    delete currentDocsRow.editEventPromises[columnName];
+
+    const existing = cell.querySelector('.cell-suggest-list');
+    if (existing) existing.remove();
+    delete cell.dataset.originalValue;
+    setDocumentDraftValue(colIndex, value);
+    unlockCellGeometryAfterEdit(cell);
+    renderCellDisplay(cell, colIndex, currentDocsRow.serverRow[colIndex] ?? '');
+  }
+
   function getLogFieldName(columnName) {
     return String(columnName || '').replace(/\s*\([^()]+\)$/, '').trim() || String(columnName || '');
   }
@@ -1661,7 +1700,8 @@
       fileStates: [...(response.fileStates || [])],
       attachmentUploads: {},
       draftValues: { ...draftValues },
-      draftKey
+      draftKey,
+      editEventPromises: {}
     };
 
     let html = '';
@@ -1934,7 +1974,7 @@
     }
   }
 
-  document.addEventListener('click', function(e) {
+  document.addEventListener('click', async function(e) {
     const supportsHover = window.matchMedia && window.matchMedia('(hover: hover)').matches;
     if (!supportsHover) {
       const cell = e.target.closest('.item-value');
@@ -1984,8 +2024,15 @@
     }
     if (!rule.editable) return;
     if (mode === 'edit') {
+      const activeInput = document.querySelector('.item-value .cell-value-input');
+      const activeCell = activeInput && activeInput.closest('.item-value');
+      if (activeCell && activeCell !== cell) {
+        await finishDocumentEditor(activeCell, Number(activeInput.dataset.colIndex));
+      }
       const columnName = currentDocsRow.header[colIndex];
-      void enqueueLogicalEventClient('edit_click', { field: getLogFieldName(columnName) });
+      currentDocsRow.editEventPromises[columnName] = enqueueLogicalEventClient('edit_click', {
+        field: getLogFieldName(columnName)
+      });
       cell.classList.remove('is-actions-active');
       lockCellGeometryForEdit(cell);
       const serverValue = String(currentDocsRow.serverRow[colIndex] ?? '');
@@ -2102,15 +2149,9 @@
       return;
     }
     if (mode === 'cancel') {
-      void enqueueLogicalEventClient('cancel_click', { field: getLogFieldName(currentDocsRow.header[colIndex]) });
-      const draftValue = cell.querySelector('input')?.value ?? cell.dataset.originalValue ?? '';
-      const existing = cell.querySelector('.cell-suggest-list');
-      if (existing) existing.remove();
-      delete cell.dataset.originalValue;
-      setDocumentDraftValue(colIndex, draftValue);
-      // После выхода из редактирования снова показываем значение из таблицы.
-      unlockCellGeometryAfterEdit(cell);
-      renderCellDisplay(cell, colIndex, currentDocsRow.serverRow[colIndex] ?? '');
+      const field = getLogFieldName(currentDocsRow.header[colIndex]);
+      await finishDocumentEditor(cell, colIndex);
+      await enqueueLogicalEventClient('cancel_click', { field });
       return;
     }
     const input = cell.querySelector('input');
@@ -2119,7 +2160,9 @@
     const identityChanged = Boolean(rule.isIdentityField && saveValue !== oldValue);
     if (!isValidFieldValue(saveValue, rule)) return;
     if (identityChanged && !confirm('Вы изменяете данные, используемые для идентификации пользователя.\n\nПосле успешного сохранения следующие запросы будут использовать новое значение.\n\nПродолжить?')) return;
-    void enqueueLogicalEventClient('save_click', { field: getLogFieldName(currentDocsRow.header[colIndex]) });
+    const field = getLogFieldName(currentDocsRow.header[colIndex]);
+    await finishDocumentEditor(cell, colIndex);
+    await enqueueLogicalEventClient('save_click', { field });
     btn.disabled = true;
     const cancelBtn = cell.querySelector('.cell-edit-btn[data-mode="cancel"]');
     if (cancelBtn) cancelBtn.disabled = true;
