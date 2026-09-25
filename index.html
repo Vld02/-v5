@@ -1091,8 +1091,7 @@
   // Generic messages are independent events only when no concrete result exists.
   function logUserMessage(message, type = 'warning') {
     const normalized = String(message || '').replace(/^(Ошибка|Предупреждение):\s*/i, '').trim();
-    // A generic notice without an originating event is intentionally not written here;
-    // concrete callers attach its configured result to their action.
+    if (normalized) google.script.run.createConfiguredStandaloneMessage(type === 'error' ? 'user_error' : 'user_warning', { message: normalized }, LOG_SESSION_ID);
   }
 
   function setErrorMessage(message, type = 'warning', shouldLog = true) {
@@ -1150,10 +1149,10 @@
     return starts.concat(includes).map(item => item.value).slice(0, 10);
   }
 
-  function switchTab(key) {
+  function switchTab(key, { userInitiated = true } = {}) {
     if (!tabPanels[key]) return;
     const currentTab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
-    if (currentTab !== key) {
+    if (userInitiated && currentTab !== key) {
       const sectionEventId = {
         docs: 'section_docs',
         attendance: 'section_attendance',
@@ -1179,7 +1178,7 @@
 
   const savedTab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
   if (savedTab && tabPanels[savedTab]) {
-    switchTab(savedTab);
+    switchTab(savedTab, { userInitiated: false });
   }
 
   /*************************************************
@@ -1482,7 +1481,8 @@
       const loginVal = dom.login.value.trim();
       const passwordForServer = toServerDate(formatDateInput(dom.password.value, { finalizeYear: true }));
       if (!loginVal || !passwordForServer) {
-        setErrorMessage('Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.');
+        await appendConfiguredEventClient(logicalEventId, 'user_warning', { message: 'Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.' });
+        setErrorMessage('Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.', 'warning', false);
         return;
       }
       authState.login = loginVal;
@@ -1493,7 +1493,9 @@
     dom.snils.value = snilsFormatted;
 
     if (snilsFormatted.length !== 14) {
-      setErrorMessage(snilsFormatted ? 'Неверный СНИЛС.' : 'Для входа введите СНИЛС.');
+      const message = snilsFormatted ? 'Неверный СНИЛС.' : 'Для входа введите СНИЛС.';
+      await appendConfiguredEventClient(logicalEventId, 'user_warning', { message });
+      setErrorMessage(message, 'warning', false);
       return;
     }
 
@@ -1600,6 +1602,9 @@
     const value = String(input?.value ?? cell.dataset.originalValue ?? '').trim();
     const eventPromise = currentDocsRow.editEventPromises[columnName];
     const logicalEventId = eventPromise ? await eventPromise : '';
+    // Persist the user draft before writing the local-save log entry.
+    setDocumentDraftValue(colIndex, value);
+    writeCurrentDocumentDraft();
     await appendAndCompleteLogicalEventClient(logicalEventId, 'draft_saved', {
       field: getLogFieldName(columnName),
       value
@@ -1609,7 +1614,6 @@
     const existing = cell.querySelector('.cell-suggest-list');
     if (existing) existing.remove();
     delete cell.dataset.originalValue;
-    setDocumentDraftValue(colIndex, value);
     unlockCellGeometryAfterEdit(cell);
     renderCellDisplay(cell, colIndex, currentDocsRow.serverRow[colIndex] ?? '');
   }
@@ -1839,15 +1843,18 @@
     cell.setAttribute('style', style);
   }
 
-  function openAttachmentFile(colIndex) {
+  async function openAttachmentFile(colIndex) {
     const columnName = currentDocsRow.header[colIndex];
-    void enqueueLogicalEventClient('file_open', { field: getLogFieldName(columnName) });
+    const fileEventPromise = enqueueLogicalEventClient('file_open', { field: getLogFieldName(columnName) });
     const openedWindow = window.open('', '_blank');
     if (!openedWindow) {
+      const fileEventId = await fileEventPromise;
+      await appendConfiguredEventClient(fileEventId, 'file_open_error', { field: getLogFieldName(columnName) });
       showToast('Браузер заблокировал открытие файла. Разрешите всплывающие окна для сайта.', 'error');
       return;
     }
     openedWindow.document.title = 'Загрузка файла…';
+    const fileEventId = await fileEventPromise;
     google.script.run
       .withSuccessHandler(file => {
         try {
@@ -1857,13 +1864,16 @@
           const objectUrl = URL.createObjectURL(new Blob([bytes], { type: file.mimeType || 'application/octet-stream' }));
           openedWindow.location.replace(objectUrl);
           setTimeout(() => URL.revokeObjectURL(objectUrl), UI_TIMINGS.attachmentObjectUrlLifetimeMs);
+          google.script.run.completeLogicalLogEvent(fileEventId);
         } catch (error) {
           openedWindow.close();
+          void appendConfiguredEventClient(fileEventId, 'file_open_error', { field: getLogFieldName(columnName) });
           showToast(`Ошибка: ${error.message || 'Не удалось открыть файл.'}`, 'error');
         }
       })
       .withFailureHandler(error => {
         openedWindow.close();
+        void appendConfiguredEventClient(fileEventId, 'file_open_error', { field: getLogFieldName(columnName) });
         showToast(`Ошибка: ${(error && error.message) || 'Не удалось открыть файл.'}`, 'error');
       })
       .getDocumentAttachmentContent(dom.login.value.trim(), toServerDate(dom.password.value), dom.snils.value.trim(), columnName);
@@ -2591,7 +2601,7 @@
     const eventId = await enqueueLogicalEventClient('attendance_paste_click');
     try {
       const text = await navigator.clipboard.readText();
-      if (!text.trim()) return;
+      if (!text.trim()) { google.script.run.completeLogicalLogEvent(eventId); return; }
 
       let targetRow = tbody.lastElementChild;
       if (!targetRow || targetRow.cells[0].innerText.trim()) {
@@ -2600,7 +2610,7 @@
       }
 
       const lines = text.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
-      if (!lines.length) return;
+      if (!lines.length) { google.script.run.completeLogicalLogEvent(eventId); return; }
 
       targetRow.cells[0].innerText = lines[0];
       let row = targetRow;
@@ -2612,6 +2622,7 @@
 
       saveAttendanceDraft();
       scheduleMatch();
+      google.script.run.completeLogicalLogEvent(eventId);
     } catch (_) {
       await appendConfiguredEventClient(eventId, 'attendance_paste_error');
       showAttendanceNotice('Не удалось вставить из буфера');
@@ -2632,6 +2643,7 @@
     const eventId = await enqueueLogicalEventClient('attendance_copy_click');
     const values = getAttendanceSelectedValues();
     if (!values.length) {
+      await appendConfiguredEventClient(eventId, 'user_warning', { message: 'Нет выбранных ФИО для копирования' });
       showAttendanceNotice('Нет выбранных ФИО для копирования');
       return;
     }

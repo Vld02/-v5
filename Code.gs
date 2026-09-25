@@ -476,6 +476,16 @@ function runLogicalLogEventTechnicalTest() {
   };
 }
 
+
+/** Creates a standalone configured warning/error when no user action owns it. */
+function createConfiguredStandaloneMessage(eventId, params = {}, sessionId = '') {
+  const event = LOG_EVENT_CONFIG.EVENTS[eventId];
+  if (!event || !event.enabled || !['user_warning', 'user_error'].includes(event.id)) return '';
+  const id = createLogicalLogEvent(sessionId || Utilities.getUuid(), renderLogEventTemplate_(event, params));
+  if (id) completeLogicalLogEvent(id);
+  return id;
+}
+
 /** Writes one configured authentication result to the originating login event. */
 function logAuthResult_(logicalEventId, resultEventId, clientInfo = {}, _legacyPayload = {}) {
   if (clientInfo && clientInfo.silent) return false;
@@ -652,6 +662,7 @@ function checkLogin(login, password, clientInfo = {}, snils = '', sessionId = ''
   logStage(`Получены границы листа: rows=${lastRow}, cols=${lastCol}`, startedAt);
 
   if (lastRow < 2 || lastCol < 1) {
+    logAuthResult_(logicalEventId, 'login_config_error', clientInfo);
     return { error: 'Таблица пуста.' };
   }
 
@@ -731,6 +742,7 @@ function verifySnils(login, password, snils, clientInfo = {}, sessionId = '', lo
   const lastCol = sheet.getLastColumn();
 
   if (lastRow < 2 || lastCol < 1) {
+    logAuthResult_(logicalEventId, 'login_config_error', clientInfo);
     return { error: 'Таблица пуста.' };
   }
 
