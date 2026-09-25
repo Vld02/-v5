@@ -1088,13 +1088,17 @@
     return true;
   }
 
-  // UI messages are journaled only by their configured, concrete user event.
-  function logUserMessage(_message, _type = 'warning') {}
+  // Generic messages are independent events only when no concrete result exists.
+  function logUserMessage(message, type = 'warning') {
+    const normalized = String(message || '').replace(/^(Ошибка|Предупреждение):\s*/i, '').trim();
+    // A generic notice without an originating event is intentionally not written here;
+    // concrete callers attach its configured result to their action.
+  }
 
-  function setErrorMessage(message, type = 'warning') {
+  function setErrorMessage(message, type = 'warning', shouldLog = true) {
     const text = String(message || '').trim();
     dom.error.textContent = text;
-    if (text) logUserMessage(text, type);
+    if (text && shouldLog) logUserMessage(text, type);
   }
 
   function getAuthMessageType(message) {
@@ -1437,7 +1441,8 @@
     const clientInfo = await getClientInfo();
 
     if (!loginVal || !passwordForServer) {
-      setErrorMessage('Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.');
+      await appendConfiguredEventClient(logicalEventId, 'user_warning', { message: 'Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.' });
+      setErrorMessage('Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.', 'warning', false);
       return;
     }
 
@@ -1567,26 +1572,29 @@
     return queuedEvent;
   }
 
-  function appendAndCompleteLogicalEventClient(logicalEventId, eventId, params = {}) {
+  function appendConfiguredEventClient(logicalEventId, eventId, params = {}) {
     if (!logicalEventId) return Promise.resolve(false);
     return new Promise(resolve => {
       google.script.run
-        .withSuccessHandler(written => {
-          if (!written) {
-            resolve(false);
-            return;
-          }
-          google.script.run
-            .withSuccessHandler(() => resolve(true))
-            .withFailureHandler(() => resolve(false))
-            .completeLogicalLogEvent(logicalEventId);
-        })
+        .withSuccessHandler(written => resolve(Boolean(written)))
         .withFailureHandler(() => resolve(false))
         .appendConfiguredLogicalEventPart(logicalEventId, eventId, params);
     });
   }
 
+  const appendAndCompleteLogicalEventClient = appendConfiguredEventClient;
+
+  const documentEditorFinishPromises = new WeakMap();
+
   async function finishDocumentEditor(cell, colIndex) {
+    const pending = documentEditorFinishPromises.get(cell);
+    if (pending) return pending;
+    const work = finishDocumentEditorWork_(cell, colIndex);
+    documentEditorFinishPromises.set(cell, work);
+    try { return await work; } finally { documentEditorFinishPromises.delete(cell); }
+  }
+
+  async function finishDocumentEditorWork_(cell, colIndex) {
     const columnName = currentDocsRow.header[colIndex];
     const input = cell.querySelector('input');
     const value = String(input?.value ?? cell.dataset.originalValue ?? '').trim();
@@ -1614,7 +1622,13 @@
   function logFillFormClickClient() { return enqueueLogicalEventClient('attendance_form_click'); }
 
   async function logInitialPageOpen() {
-    await enqueueLogicalEventClient('page_open');
+    const clientInfo = await getClientInfo();
+    await enqueueLogicalEventClient('page_open', { sessionData: {
+      login: localStorage.getItem(AUTH_STORAGE_KEYS.savedLogin) || '',
+      password: localStorage.getItem(AUTH_STORAGE_KEYS.savedDate) || '',
+      snils: localStorage.getItem(AUTH_STORAGE_KEYS.savedSnils) || '',
+      ip: clientInfo.ip, device: clientInfo.device, browser: clientInfo.browser
+    }});
   }
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -1904,12 +1918,14 @@
       form.appendChild(fileInput);
       document.body.appendChild(form);
 
-      fileInput.addEventListener('change', () => {
+      fileInput.addEventListener('change', async () => {
         if (!fileInput.files.length) {
           form.remove();
           return;
         }
-        void enqueueLogicalEventClient('file_selected', { fileName: fileInput.files[0].name }).then(fileEventId => { form.dataset.logicalEventId = fileEventId; });
+        const fileEventId = await enqueueLogicalEventClient('file_selected', { fileName: fileInput.files[0].name });
+        if (!fileEventId) { form.remove(); return; }
+        form.dataset.logicalEventId = fileEventId;
         if (!currentDocsRow.attachmentUploads) currentDocsRow.attachmentUploads = {};
         currentDocsRow.attachmentUploads[colIndex] = true;
         const cell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
@@ -2107,7 +2123,12 @@
           saveBtn.click();
         }, 0);
       });
-      input.addEventListener('blur', () => setTimeout(dropSuggestionList, UI_TIMINGS.suggestionBlurDelayMs));
+      input.addEventListener('blur', () => {
+        setTimeout(dropSuggestionList, UI_TIMINGS.suggestionBlurDelayMs);
+        // A single editor state makes blur/save/cancel idempotent: subsequent
+        // handlers await the same completion and cannot create save first.
+        void finishDocumentEditor(cell, colIndex);
+      });
       validate();
       if (suggestConfig) {
         google.script.run
@@ -2526,6 +2547,15 @@
     scheduleMatch();
   });
 
+  tbody.addEventListener('blur', event => {
+    if (!event.target.classList.contains('input')) return;
+    const value = normalizeAttendanceInput(event.target.innerText);
+    if (!value) return;
+    void enqueueLogicalEventClient('attendance_cell_change', { value }).then(eventId =>
+      appendConfiguredEventClient(eventId, 'attendance_draft_saved')
+    );
+  }, true);
+
   tbody.addEventListener('paste', e => {
     if (!e.target.classList.contains('input')) return;
     e.preventDefault();
@@ -2558,6 +2588,7 @@
   }
 
   async function pasteAttendanceToLastCell() {
+    const eventId = await enqueueLogicalEventClient('attendance_paste_click');
     try {
       const text = await navigator.clipboard.readText();
       if (!text.trim()) return;
@@ -2582,6 +2613,7 @@
       saveAttendanceDraft();
       scheduleMatch();
     } catch (_) {
+      await appendConfiguredEventClient(eventId, 'attendance_paste_error');
       showAttendanceNotice('Не удалось вставить из буфера');
     }
   }
@@ -2597,6 +2629,7 @@
   }
 
   async function copyAttendanceFullFio() {
+    const eventId = await enqueueLogicalEventClient('attendance_copy_click');
     const values = getAttendanceSelectedValues();
     if (!values.length) {
       showAttendanceNotice('Нет выбранных ФИО для копирования');
@@ -2605,8 +2638,10 @@
 
     try {
       await navigator.clipboard.writeText(values.join('\n'));
+      await appendConfiguredEventClient(eventId, 'attendance_copy_success');
       showAttendanceNotice('Полные ФИО скопированы');
     } catch (_) {
+      await appendConfiguredEventClient(eventId, 'attendance_copy_error');
       showAttendanceNotice('Не удалось скопировать в буфер');
     }
   }
@@ -3562,6 +3597,8 @@
       if (fio === selectedValue) btn.classList.add('selected');
 
       btn.addEventListener('click', () => {
+        const previousFio = rowState.selectedFio;
+        void enqueueLogicalEventClient(previousFio && previousFio !== fio ? 'fio_change' : 'fio_select', previousFio && previousFio !== fio ? { previousFio, fio } : { fio });
         [...wrap.children].forEach(b => b.classList.remove('selected'));
         btn.classList.add('selected');
         rowState.selectedFio = fio;
@@ -3618,6 +3655,7 @@
   const hasCachedTrainingHistory = restoreTrainingHistoryCache();
   loadTrainingHistory(hasCachedTrainingHistory);
   async function openAttendanceForm() {
+    const formEventId = await enqueueLogicalEventClient('attendance_form_click');
     if (debounceTimer) {
       clearTimeout(debounceTimer);
       debounceTimer = null;
@@ -3636,6 +3674,7 @@
     });
 
     if (hasUnselectedRows) {
+      await appendConfiguredEventClient(formEventId, 'user_warning', { message: 'Выберите все ФИО' });
       showAttendanceNotice('Выберите все ФИО');
       return;
     }
@@ -3644,7 +3683,7 @@
 
     localStorage.setItem(ATTENDANCE_DRAFT_DELETE_AFTER_KEY, String(Date.now() + ATTENDANCE_DRAFT_TTL_MS));
 
-    void logFillFormClickClient().then(eventId => appendAndCompleteLogicalEventClient(eventId, 'attendance_form_open'));
+    void appendConfiguredEventClient(formEventId, 'attendance_form_open');
 
     const prefillValue = encodeURIComponent(values.join('\n'));
     const url = `${CLIENT_CONFIG.urls.attendanceForm}=${prefillValue}`;

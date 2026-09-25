@@ -234,42 +234,6 @@ function buildLogRichText(lines) {
 }
 
 /**
- * Возвращает ключ временного сопоставления строки и идентификатора сессии.
- * Идентификатор создаётся браузером на каждую загрузку страницы и не хранится
- * в колонках листа, чтобы сохранить исходную структуру из восьми столбцов.
- */
-function getLogSessionCacheKey_(sessionId) {
-  return `access-log-session:${String(sessionId || '').trim()}`;
-}
-
-/** Ищет строку, созданную для текущей сессии браузера. */
-function findSessionLogRow_(sessionId) {
-  const value = CacheService.getScriptCache().get(getLogSessionCacheKey_(sessionId));
-  const rowIndex = Number(value);
-  return Number.isInteger(rowIndex) && rowIndex > 1 ? rowIndex : -1;
-}
-
-/** Запоминает строку сессии на срок, достаточный для активной работы страницы. */
-function rememberSessionLogRow_(sessionId, rowIndex) {
-  CacheService.getScriptCache().put(getLogSessionCacheKey_(sessionId), String(rowIndex), 21600);
-}
-
-/** Добавляет событие только в историю даты и статуса текущей строки. */
-function appendLogLine(sheet, rowIndex, status) {
-  const range = sheet.getRange(rowIndex, 1, 1, LOG_COLUMNS.length);
-  const oldValues = range.getValues()[0];
-  [
-    { col: 0, value: formatLogDateTime(new Date()) },
-    { col: 7, value: String(status || '') }
-  ].forEach(({ col, value }) => {
-    const oldText = formatLogCellValue(col, oldValues[col]);
-    const lines = oldText === '' ? [value] : oldText.split('\n').concat([value]);
-    range.getCell(1, col + 1).setRichTextValue(buildLogRichText(lines));
-  });
-  range.setWrap(true);
-}
-
-/**
  * Добавляет скрытые метаданные к строке логического события.
  * Метаданные диапазона остаются связанными со строкой после вставки строк
  * выше неё, поэтому номер строки нигде не выступает идентификатором события.
@@ -407,14 +371,27 @@ function createConfiguredLogicalEvent(sessionId, eventId, params = {}) {
   const logicalEventId = createLogicalLogEvent(sessionId, renderLogEventTemplate_(event, params));
   const sheet = logicalEventId && getLogSheet();
   const range = sheet && findLogicalEventRange_(sheet, logicalEventId);
-  if (range) { addLogicalEventMetadata_(range, 'logical-log-action-id', event.id); if (event.completeAfterWrite) completeLogicalLogEvent(logicalEventId); }
+  if (range) {
+    addLogicalEventMetadata_(range, 'logical-log-action-id', event.id);
+    // Only page_open records immutable session context in the visible row.
+    if (event.id === 'page_open') {
+      const info = params.sessionData || {};
+      range.getCell(1, 2).setValue(String(info.login || ''));
+      range.getCell(1, 3).setValue(String(info.password || ''));
+      range.getCell(1, 4).setValue(String(info.snils || ''));
+      range.getCell(1, 5).setValue(String(info.ip || ''));
+      range.getCell(1, 6).setValue(String(info.device || ''));
+      range.getCell(1, 7).setValue(String(info.browser || ''));
+    }
+    if (event.completeAfterWrite) completeLogicalLogEvent(logicalEventId);
+  }
   return logicalEventId;
 }
 
 /** Дописывает результат или локальные данные по ID события из Config.gs. */
 function appendConfiguredLogicalEventPart(eventId, partEventId, params = {}) {
   const event = LOG_EVENT_CONFIG.EVENTS[partEventId];
-  if (!event || !event.enabled || event.mode !== LOG_EVENT_CONFIG.RULES.ATTACH_TO_EVENT || !event.parentEvent) return false;
+  if (!event || !event.enabled || event.mode !== LOG_EVENT_CONFIG.RULES.ATTACH_TO_EVENT) return false;
   const sheet = getLogSheet();
   const range = sheet && findLogicalEventRange_(sheet, eventId);
   if (!range || isLogicalEventCompleted_(range, eventId)) return false;
@@ -422,7 +399,7 @@ function appendConfiguredLogicalEventPart(eventId, partEventId, params = {}) {
   const parent = range.getDeveloperMetadata().find(item => item.getKey() === 'logical-log-action-id');
   // Both IDs must be present; the requested child must belong to this exact action,
   // never just to the last action of the same kind.
-  if (!session || !session.getValue() || !parent || parent.getValue() !== event.parentEvent) return false;
+  if (!session || !session.getValue() || (event.parentEvent && (!parent || parent.getValue() !== event.parentEvent))) return false;
   const value = renderLogEventTemplate_(event, params);
   const written = event.type === LOG_EVENT_CONFIG.EVENT_TYPES.RESULT
     ? appendLogicalLogResult(eventId, value)
@@ -497,6 +474,12 @@ function runLogicalLogEventTechnicalTest() {
     secondSessionEventId,
     secondSessionEventRow: secondSessionRange.getRow()
   };
+}
+
+/** Writes one configured authentication result to the originating login event. */
+function logAuthResult_(logicalEventId, resultEventId, clientInfo = {}, _legacyPayload = {}) {
+  if (clientInfo && clientInfo.silent) return false;
+  return appendConfiguredLogicalEventPart(logicalEventId, resultEventId);
 }
 
 /*************************************************

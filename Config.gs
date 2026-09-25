@@ -79,13 +79,10 @@ const LOG_CONFIG = Object.freeze({
   COLUMNS: Object.freeze([
     'Дата/время', 'Логин', 'Пароль', 'СНИЛС', 'IP', 'Устройство', 'Браузер', 'Действие пользователя', 'Результат действия', 'Локальные данные'
   ]),
-  // Время объединения записей, минут:
-  MAX_AGE_MINUTES: 30,
   // Ожидание записи журнала, миллисекунд:
   lockWaitMs: 1000
 });
 const LOG_COLUMNS = LOG_CONFIG.COLUMNS;
-const LOG_MAX_AGE_MINUTES = LOG_CONFIG.MAX_AGE_MINUTES;
 
 // Технические настройки внутренней связи логического события со строкой
 // журнала. Метаданные диапазона не образуют видимого столбца и перемещаются
@@ -155,7 +152,8 @@ const LOG_EVENT_CONFIG = Object.freeze({
     file_replace_cancel: Object.freeze({ id: 'file_replace_cancel', name: 'Отмена замены файла', type: 'action', source: 'index.html', template: 'Отменил замену файла — {field}', params: Object.freeze(['field']), mode: 'create_new_event', parentEvent: null, enabled: true, completeAfterWrite: true}),
 
     // Посещаемость.
-    attendance_cell_change: Object.freeze({ id: 'attendance_cell_change', name: 'Заполнение ячейки посещаемости', type: 'action', source: 'index.html', template: 'Заполнил ячейку — {value}', params: Object.freeze(['value']), mode: 'create_new_event', parentEvent: null, enabled: true, completeAfterWrite: true}),
+    attendance_cell_change: Object.freeze({ id: 'attendance_cell_change', name: 'Заполнение ячейки посещаемости', type: 'action', source: 'index.html', template: 'Заполнил ячейку — {value}', params: Object.freeze(['value']), mode: 'create_new_event', parentEvent: null, enabled: true, completeAfterWrite: false}),
+    attendance_draft_saved: Object.freeze({ id: 'attendance_draft_saved', name: 'Локальное сохранение посещаемости', type: 'local_data', source: 'index.html', template: 'Локально сохранено: посещаемость', params: Object.freeze([]), mode: 'attach_to_event', parentEvent: 'attendance_cell_change', enabled: true, completeAfterWrite: true}),
     fio_select: Object.freeze({ id: 'fio_select', name: 'Выбор полного ФИО', type: 'action', source: 'index.html', template: 'Выбрал ФИО — {fio}', params: Object.freeze(['fio']), mode: 'create_new_event', parentEvent: null, enabled: true, completeAfterWrite: true}),
     fio_change: Object.freeze({ id: 'fio_change', name: 'Изменение выбранного полного ФИО', type: 'action', source: 'index.html', template: 'Изменил выбор ФИО — {previousFio} → {fio}', params: Object.freeze(['previousFio', 'fio']), mode: 'create_new_event', parentEvent: null, enabled: true, completeAfterWrite: true}),
     attendance_paste_click: Object.freeze({ id: 'attendance_paste_click', name: 'Нажатие «Вставить из буфера»', type: 'action', source: 'index.html', template: 'Нажал: Вставить из буфера', params: Object.freeze([]), mode: 'create_new_event', parentEvent: null, enabled: true, completeAfterWrite: false}),
