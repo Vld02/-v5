@@ -1358,49 +1358,69 @@ function runFieldOnSaveAction_(fieldConfig, sheet, header, rowIndex, historyTime
  * @param {string} value
  * @returns {{ok:boolean}}
  */
-function updateResultCell(login, password, snils, columnName, value) {
-  const validation = validateEditableFieldValue_(columnName, value);
-  const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
-  if (!sheet) throw new Error('Лист с результатами не найден.');
+function updateResultCell(login, password, snils, columnName, value, logicalEventId = '') {
+  try {
+    const validation = validateEditableFieldValue_(columnName, value);
+    const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
+    if (!sheet) throw new Error('Лист с результатами не найден.');
 
-  const lastRow = sheet.getLastRow();
-  const lastCol = sheet.getLastColumn();
-  if (lastRow < 2 || lastCol < 1) throw new Error('Таблица пуста.');
+    const lastRow = sheet.getLastRow();
+    const lastCol = sheet.getLastColumn();
+    if (lastRow < 2 || lastCol < 1) throw new Error('Таблица пуста.');
 
-  const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
-  const targetCol = header.indexOf(String(columnName || ''));
-  if (targetCol === -1) throw new Error('Колонка не найдена.');
+    const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+    const targetCol = header.indexOf(String(columnName || ''));
+    if (targetCol === -1) throw new Error('Колонка не найдена.');
 
-  const authCols = getAuthColumnIndexes(header);
-  const snilsCol = getSnilsColumnIndex(header);
-  const rowCount = lastRow - 1;
-  const { logins, passwords, snilsValues } = loadAuthColumns(sheet, rowCount, authCols, snilsCol);
+    const authCols = getAuthColumnIndexes(header);
+    const snilsCol = getSnilsColumnIndex(header);
+    const rowCount = lastRow - 1;
+    const { logins, passwords, snilsValues } = loadAuthColumns(sheet, rowCount, authCols, snilsCol);
 
-  const normalizedLogin = normalizeLogin(login);
-  const normalizedSnils = normalizeSnils(snils);
+    const normalizedLogin = normalizeLogin(login);
+    const normalizedSnils = normalizeSnils(snils);
 
-  for (let i = 0; i < rowCount; i++) {
-    const rowLogin = normalizeLogin(logins[i][0]);
-    const rowPassword = formatAuthPasswordValue_(passwords[i][0]).trim();
-    if (rowLogin !== normalizedLogin || rowPassword !== String(password || '').trim()) continue;
+    for (let i = 0; i < rowCount; i++) {
+      const rowLogin = normalizeLogin(logins[i][0]);
+      const rowPassword = formatAuthPasswordValue_(passwords[i][0]).trim();
+      if (rowLogin !== normalizedLogin || rowPassword !== String(password || '').trim()) continue;
 
-    const rowSnils = normalizeSnils(snilsValues[i][0]);
-    if (rowSnils && normalizedSnils && rowSnils !== normalizedSnils) continue;
+      const rowSnils = normalizeSnils(snilsValues[i][0]);
+      if (rowSnils && normalizedSnils && rowSnils !== normalizedSnils) continue;
 
-    const rowIndex = i + 2;
+      const rowIndex = i + 2;
 
-    const cell = sheet.getRange(rowIndex, targetCol + 1);
-    const oldValue = formatCellValue(cell.getValue()).trim();
-    const identityChanged = Boolean(validation.fieldConfig.isIdentityField && oldValue !== validation.value);
-    const historyTimestamp = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, `${CONFIG.DATE_FORMAT} HH:mm:ss`);
-    const changed = setValueWithSiteEditNote_(cell, validation.value, historyTimestamp, {
-  isDate: validation.rule.special === 'date'
-});
-    const onSaveChanged = changed ? runFieldOnSaveAction_(validation.fieldConfig, sheet, header, rowIndex, historyTimestamp) : false;
-    return { ok: true, identityChanged: changed && identityChanged, changed, onSaveChanged };
+      const cell = sheet.getRange(rowIndex, targetCol + 1);
+      const oldValue = formatCellValue(cell.getValue()).trim();
+      const identityChanged = Boolean(validation.fieldConfig.isIdentityField && oldValue !== validation.value);
+      const historyTimestamp = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, `${CONFIG.DATE_FORMAT} HH:mm:ss`);
+      const changed = setValueWithSiteEditNote_(cell, validation.value, historyTimestamp, {
+        isDate: validation.rule.special === 'date'
+      });
+      const onSaveChanged = changed ? runFieldOnSaveAction_(validation.fieldConfig, sheet, header, rowIndex, historyTimestamp) : false;
+      appendSaveResult_(logicalEventId, 'save_success', columnName, validation.value);
+      return { ok: true, identityChanged: changed && identityChanged, changed, onSaveChanged };
+    }
+
+    throw new Error('Строка для обновления не найдена.');
+  } catch (error) {
+    appendSaveResult_(logicalEventId, 'save_error', columnName);
+    throw error;
   }
+}
 
-  throw new Error('Строка для обновления не найдена.');
+/** Дописывает итог серверного сохранения к уже созданному действию «Сохранить». */
+function appendSaveResult_(logicalEventId, eventId, columnName, value = '') {
+  if (!String(logicalEventId || '').trim()) return;
+  try {
+    const params = { field: String(columnName || '').replace(/\s*\([^()]+\)$/, '').trim() };
+    if (eventId === 'save_success') params.value = value;
+    if (appendConfiguredLogicalEventPart(logicalEventId, eventId, params)) {
+      completeLogicalLogEvent(logicalEventId);
+    }
+  } catch (error) {
+    Logger.log(`Не удалось записать результат сохранения: ${error.message}`);
+  }
 }
 
 /**

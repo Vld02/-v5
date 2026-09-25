@@ -2162,7 +2162,7 @@
     if (identityChanged && !confirm('Вы изменяете данные, используемые для идентификации пользователя.\n\nПосле успешного сохранения следующие запросы будут использовать новое значение.\n\nПродолжить?')) return;
     const field = getLogFieldName(currentDocsRow.header[colIndex]);
     await finishDocumentEditor(cell, colIndex);
-    await enqueueLogicalEventClient('save_click', { field });
+    const saveEventId = await enqueueLogicalEventClient('save_click', { field });
     btn.disabled = true;
     const cancelBtn = cell.querySelector('.cell-edit-btn[data-mode="cancel"]');
     if (cancelBtn) cancelBtn.disabled = true;
@@ -2180,7 +2180,6 @@
           updateCurrentIdentityAfterSave(currentDocsRow.header[colIndex], saveValue);
           moveCurrentDocumentDraftToCurrentIdentity(previousDraftKey);
         }
-        logUserActionClient(`Сохранено: ${getLogFieldName(currentDocsRow.header[colIndex])}`);
         showToast('Сохранено');
       })
       .withFailureHandler(error => {
@@ -2190,10 +2189,9 @@
         btn.classList.remove('is-saving');
         btn.setAttribute('aria-label', 'Сохранить');
         const message = error && error.message ? error.message : 'Не удалось сохранить изменения.';
-        logUserActionClient(`Ошибка сохранения: ${getLogFieldName(currentDocsRow.header[colIndex])}`);
         showToast(`Ошибка: ${message}`, 'error');
       })
-      .updateResultCell(dom.login.value.trim(), dom.password.value.trim(), dom.snils.value.trim(), currentDocsRow.header[colIndex], saveValue);
+      .updateResultCell(dom.login.value.trim(), dom.password.value.trim(), dom.snils.value.trim(), currentDocsRow.header[colIndex], saveValue, saveEventId);
   });
 
   document.addEventListener('click', function(e) {
