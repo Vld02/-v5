@@ -1431,8 +1431,8 @@
     dom.snils.value = snilsFormatted;
     saveAuthInputs(loginVal, dateInput.value, snilsFormatted);
 
+    const logicalEventId = await createLogicalEventClient('login_click');
     const clientInfo = await getClientInfo();
-    logLoginButtonClick();
 
     if (!loginVal || !passwordForServer) {
       setErrorMessage('Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.');
@@ -1464,17 +1464,16 @@
         showDocsResult(response);
       })
       .withFailureHandler(handleDocsRequestFailure)
-      .checkLogin(loginVal, passwordForServer, clientInfo, snilsFormatted, LOG_SESSION_ID);
+      .checkLogin(loginVal, passwordForServer, clientInfo, snilsFormatted, LOG_SESSION_ID, logicalEventId);
   }
 
   async function verifySnilsDocs() {
     dom.error.textContent = '';
+    const logicalEventId = await createLogicalEventClient('login_click');
 
     if (!authState.login || !authState.password) {
       const loginVal = dom.login.value.trim();
       const passwordForServer = toServerDate(formatDateInput(dom.password.value, { finalizeYear: true }));
-      logLoginButtonClick();
-
       if (!loginVal || !passwordForServer) {
         setErrorMessage('Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.');
         return;
@@ -1514,7 +1513,7 @@
         showDocsResult(response);
       })
       .withFailureHandler(handleDocsRequestFailure)
-      .verifySnils(authState.login, authState.password, snilsFormatted, clientInfo, LOG_SESSION_ID);
+      .verifySnils(authState.login, authState.password, snilsFormatted, clientInfo, LOG_SESSION_ID, logicalEventId);
   }
 
   async function getClientInfo() {
@@ -1554,6 +1553,15 @@
 
   function logLoginButtonClick() {
     google.script.run.logLoginButtonClick(LOG_SESSION_ID);
+  }
+
+  function createLogicalEventClient(eventId, params = {}) {
+    return new Promise(resolve => {
+      google.script.run
+        .withSuccessHandler(logicalEventId => resolve(String(logicalEventId || '')))
+        .withFailureHandler(() => resolve(''))
+        .createConfiguredLogicalEvent(LOG_SESSION_ID, eventId, params);
+    });
   }
 
   function getLogFieldName(columnName) {

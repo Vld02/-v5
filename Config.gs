@@ -87,6 +87,89 @@ const LOG_CONFIG = Object.freeze({
 const LOG_COLUMNS = LOG_CONFIG.COLUMNS;
 const LOG_MAX_AGE_MINUTES = LOG_CONFIG.MAX_AGE_MINUTES;
 
+// Технические настройки внутренней связи логического события со строкой
+// журнала. Метаданные диапазона не образуют видимого столбца и перемещаются
+// вместе со строкой при её вставке или перемещении в таблице.
+const LOGICAL_EVENT_LOG_CONFIG = Object.freeze({
+  eventIdMetadataKey: 'logical-log-event-id',
+  sessionIdMetadataKey: 'logical-log-session-id',
+  stateMetadataKey: 'logical-log-event-state',
+  completedState: 'completed'
+});
+
+// Конфигурация логических событий пользовательского журнала.
+//
+// На этапе подготовки эта декларация только описывает будущие события и не
+// участвует в текущем механизме записи журнала. Идентификатор логического
+// события намеренно не является номером строки листа: его будет создавать
+// отдельный механизм журналирования на следующем этапе.
+const LOG_EVENT_CONFIG = Object.freeze({
+  EVENT_TYPES: Object.freeze({
+    ACTION: 'action',
+    RESULT: 'result',
+    LOCAL_DATA: 'local_data'
+  }),
+  SOURCES: Object.freeze({
+    CLIENT: 'index.html',
+    SERVER: 'Code.gs'
+  }),
+  RULES: Object.freeze({
+    CREATE_NEW: 'create_new_event',
+    ATTACH_TO_CURRENT: 'attach_to_current_event'
+  }),
+  EVENTS: Object.freeze({
+    // Общие события.
+    page_open: Object.freeze({ id: 'page_open', name: 'Открыл страницу', type: 'action', source: 'index.html', template: 'Открыл страницу', templateParams: Object.freeze([]), rule: 'create_new_event', attachToEventType: null, enabled: true }),
+    section_docs: Object.freeze({ id: 'section_docs', name: 'Переход в раздел «Документы»', type: 'action', source: 'index.html', template: 'Перешёл в раздел — Документы', templateParams: Object.freeze([]), rule: 'create_new_event', attachToEventType: null, enabled: true }),
+    section_attendance: Object.freeze({ id: 'section_attendance', name: 'Переход в раздел «Посещаемость»', type: 'action', source: 'index.html', template: 'Перешёл в раздел — Посещаемость', templateParams: Object.freeze([]), rule: 'create_new_event', attachToEventType: null, enabled: true }),
+    section_gear: Object.freeze({ id: 'section_gear', name: 'Переход в раздел «Снаряжение»', type: 'action', source: 'index.html', template: 'Перешёл в раздел — Снаряжение', templateParams: Object.freeze([]), rule: 'create_new_event', attachToEventType: null, enabled: true }),
+
+    // Авторизация. Успешными вариантами являются только два события ниже.
+    login_click: Object.freeze({ id: 'login_click', name: 'Нажатие кнопки «Войти»', type: 'action', source: 'index.html', template: 'Нажал: Войти', templateParams: Object.freeze([]), rule: 'create_new_event', attachToEventType: null, enabled: true }),
+    login_success_without_snils: Object.freeze({ id: 'login_success_without_snils', name: 'Удачный вход без СНИЛС', type: 'result', source: 'Code.gs', template: 'Удачный вход без СНИЛС', templateParams: Object.freeze([]), rule: 'attach_to_current_event', attachToEventType: 'action', enabled: true }),
+    login_success_with_snils: Object.freeze({ id: 'login_success_with_snils', name: 'Удачный вход по СНИЛС', type: 'result', source: 'Code.gs', template: 'Удачный вход по СНИЛС', templateParams: Object.freeze([]), rule: 'attach_to_current_event', attachToEventType: 'action', enabled: true }),
+    login_snils_required: Object.freeze({ id: 'login_snils_required', name: 'Требуется ввод СНИЛС', type: 'result', source: 'Code.gs', template: 'Требуется ввод СНИЛС', templateParams: Object.freeze([]), rule: 'attach_to_current_event', attachToEventType: 'action', enabled: true }),
+    login_invalid_snils: Object.freeze({ id: 'login_invalid_snils', name: 'Неверный СНИЛС', type: 'result', source: 'Code.gs', template: 'Неверный СНИЛС', templateParams: Object.freeze([]), rule: 'attach_to_current_event', attachToEventType: 'action', enabled: true }),
+    login_failed_credentials: Object.freeze({ id: 'login_failed_credentials', name: 'Неверные ФИО или дата рождения', type: 'result', source: 'Code.gs', template: 'Неудачный вход: ФИО/дата', templateParams: Object.freeze([]), rule: 'attach_to_current_event', attachToEventType: 'action', enabled: true }),
+    login_sheet_missing: Object.freeze({ id: 'login_sheet_missing', name: 'Лист авторизации не найден', type: 'result', source: 'Code.gs', template: 'Лист не найден', templateParams: Object.freeze([]), rule: 'attach_to_current_event', attachToEventType: 'action', enabled: true }),
+    login_config_error: Object.freeze({ id: 'login_config_error', name: 'Ошибка конфигурации авторизации', type: 'result', source: 'Code.gs', template: 'Ошибка конфигурации столбцов', templateParams: Object.freeze([]), rule: 'attach_to_current_event', attachToEventType: 'action', enabled: true }),
+
+    // Пользовательские сообщения.
+    user_warning: Object.freeze({ id: 'user_warning', name: 'Предупреждение пользователю', type: 'result', source: 'index.html', template: 'Предупреждение: {message}', templateParams: Object.freeze(['message']), rule: 'attach_to_current_event', attachToEventType: 'action', enabled: true }),
+    user_error: Object.freeze({ id: 'user_error', name: 'Ошибка пользователю', type: 'result', source: 'index.html', template: 'Ошибка: {message}', templateParams: Object.freeze(['message']), rule: 'attach_to_current_event', attachToEventType: 'action', enabled: true }),
+
+    // Документы.
+    edit_click: Object.freeze({ id: 'edit_click', name: 'Нажатие «Редактировать»', type: 'action', source: 'index.html', template: 'Нажал: Редактировать — {field}', templateParams: Object.freeze(['field']), rule: 'create_new_event', attachToEventType: null, enabled: true }),
+    save_click: Object.freeze({ id: 'save_click', name: 'Нажатие «Сохранить»', type: 'action', source: 'index.html', template: 'Нажал: Сохранить — {field}', templateParams: Object.freeze(['field']), rule: 'create_new_event', attachToEventType: null, enabled: true }),
+    cancel_click: Object.freeze({ id: 'cancel_click', name: 'Нажатие «Отмена»', type: 'action', source: 'index.html', template: 'Нажал: Отмена — {field}', templateParams: Object.freeze(['field']), rule: 'create_new_event', attachToEventType: null, enabled: true }),
+    draft_saved: Object.freeze({ id: 'draft_saved', name: 'Локальное сохранение редактора', type: 'local_data', source: 'index.html', template: 'Локально сохранено: {field} → {value}', templateParams: Object.freeze(['field', 'value']), rule: 'attach_to_current_event', attachToEventType: 'action', enabled: true }),
+    save_success: Object.freeze({ id: 'save_success', name: 'Документ сохранён на сервере', type: 'result', source: 'Code.gs', template: 'Сохранено на сервере: {field} → {value}', templateParams: Object.freeze(['field', 'value']), rule: 'attach_to_current_event', attachToEventType: 'action', enabled: true }),
+    save_error: Object.freeze({ id: 'save_error', name: 'Ошибка сохранения документа', type: 'result', source: 'Code.gs', template: 'Ошибка сохранения: {field}', templateParams: Object.freeze(['field']), rule: 'attach_to_current_event', attachToEventType: 'action', enabled: true }),
+
+    // Файлы.
+    file_open: Object.freeze({ id: 'file_open', name: 'Открытие файла', type: 'action', source: 'index.html', template: 'Открыл файл — {field}', templateParams: Object.freeze(['field']), rule: 'create_new_event', attachToEventType: null, enabled: true }),
+    file_open_error: Object.freeze({ id: 'file_open_error', name: 'Ошибка открытия файла', type: 'result', source: 'index.html', template: 'Ошибка открытия файла — {field}', templateParams: Object.freeze(['field']), rule: 'attach_to_current_event', attachToEventType: 'action', enabled: true }),
+    file_attach_click: Object.freeze({ id: 'file_attach_click', name: 'Нажатие «Прикрепить файл»', type: 'action', source: 'index.html', template: 'Нажал: Прикрепить файл — {field}', templateParams: Object.freeze(['field']), rule: 'create_new_event', attachToEventType: null, enabled: true }),
+    file_selected: Object.freeze({ id: 'file_selected', name: 'Выбор файла', type: 'action', source: 'index.html', template: 'Выбрал файл — {fileName}', templateParams: Object.freeze(['fileName']), rule: 'create_new_event', attachToEventType: null, enabled: true }),
+    file_upload_success: Object.freeze({ id: 'file_upload_success', name: 'Файл загружен', type: 'result', source: 'Code.gs', template: 'Файл загружен: {field}', templateParams: Object.freeze(['field']), rule: 'attach_to_current_event', attachToEventType: 'action', enabled: true }),
+    file_upload_error: Object.freeze({ id: 'file_upload_error', name: 'Ошибка загрузки файла', type: 'result', source: 'Code.gs', template: 'Ошибка загрузки файла: {field}', templateParams: Object.freeze(['field']), rule: 'attach_to_current_event', attachToEventType: 'action', enabled: true }),
+    file_replace_continue: Object.freeze({ id: 'file_replace_continue', name: 'Продолжение замены файла', type: 'action', source: 'index.html', template: 'Продолжил замену файла — {field}', templateParams: Object.freeze(['field']), rule: 'create_new_event', attachToEventType: null, enabled: true }),
+    file_replace_cancel: Object.freeze({ id: 'file_replace_cancel', name: 'Отмена замены файла', type: 'action', source: 'index.html', template: 'Отменил замену файла — {field}', templateParams: Object.freeze(['field']), rule: 'create_new_event', attachToEventType: null, enabled: true }),
+
+    // Посещаемость.
+    attendance_cell_change: Object.freeze({ id: 'attendance_cell_change', name: 'Заполнение ячейки посещаемости', type: 'action', source: 'index.html', template: 'Заполнил ячейку — {value}', templateParams: Object.freeze(['value']), rule: 'create_new_event', attachToEventType: null, enabled: true }),
+    fio_select: Object.freeze({ id: 'fio_select', name: 'Выбор полного ФИО', type: 'action', source: 'index.html', template: 'Выбрал ФИО — {fio}', templateParams: Object.freeze(['fio']), rule: 'create_new_event', attachToEventType: null, enabled: true }),
+    fio_change: Object.freeze({ id: 'fio_change', name: 'Изменение выбранного полного ФИО', type: 'action', source: 'index.html', template: 'Изменил выбор ФИО — {previousFio} → {fio}', templateParams: Object.freeze(['previousFio', 'fio']), rule: 'create_new_event', attachToEventType: null, enabled: true }),
+    attendance_paste_click: Object.freeze({ id: 'attendance_paste_click', name: 'Нажатие «Вставить из буфера»', type: 'action', source: 'index.html', template: 'Нажал: Вставить из буфера', templateParams: Object.freeze([]), rule: 'create_new_event', attachToEventType: null, enabled: true }),
+    attendance_paste_error: Object.freeze({ id: 'attendance_paste_error', name: 'Ошибка вставки из буфера', type: 'result', source: 'index.html', template: 'Ошибка вставки из буфера', templateParams: Object.freeze([]), rule: 'attach_to_current_event', attachToEventType: 'action', enabled: true }),
+    attendance_copy_click: Object.freeze({ id: 'attendance_copy_click', name: 'Нажатие «Скопировать полное ФИО»', type: 'action', source: 'index.html', template: 'Нажал: Скопировать полное ФИО', templateParams: Object.freeze([]), rule: 'create_new_event', attachToEventType: null, enabled: true }),
+    attendance_copy_success: Object.freeze({ id: 'attendance_copy_success', name: 'Полные ФИО скопированы', type: 'result', source: 'index.html', template: 'Полные ФИО скопированы', templateParams: Object.freeze([]), rule: 'attach_to_current_event', attachToEventType: 'action', enabled: true }),
+    attendance_copy_error: Object.freeze({ id: 'attendance_copy_error', name: 'Ошибка копирования ФИО', type: 'result', source: 'index.html', template: 'Ошибка копирования ФИО', templateParams: Object.freeze([]), rule: 'attach_to_current_event', attachToEventType: 'action', enabled: true }),
+    attendance_form_click: Object.freeze({ id: 'attendance_form_click', name: 'Нажатие «Заполнить тренировку»', type: 'action', source: 'index.html', template: 'Нажал: Заполнить тренировку', templateParams: Object.freeze([]), rule: 'create_new_event', attachToEventType: null, enabled: true }),
+    attendance_form_open: Object.freeze({ id: 'attendance_form_open', name: 'Открытие формы заполнения тренировки', type: 'result', source: 'index.html', template: 'Открыл форму заполнения тренировки', templateParams: Object.freeze([]), rule: 'attach_to_current_event', attachToEventType: 'action', enabled: true })
+  })
+});
+
 // Общие настройки интерфейса браузера:
 const GENERAL_CLIENT_CONFIG = Object.freeze({
   // Уникальные ключи для сохранения данных сайта в браузере:
