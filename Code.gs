@@ -191,6 +191,42 @@ function createLogicalLogEvent_(sessionId, { login = '', password = '', snils = 
   return { id: eventId, sessionId: normalizedSessionId };
 }
 
+/** Подставляет разрешённые параметры в шаблон события журнала. */
+function renderUserLogEventTemplate_(eventId, parameters = {}) {
+  const event = USER_LOG_EVENTS[eventId];
+  if (!event || !event.enabled) throw new Error(`Событие журнала «${eventId}» не настроено.`);
+  return event.template.replace(/\{([^{}]+)\}/g, (_, name) => String(parameters[name] ?? ''));
+}
+
+/** Дописывает результат авторизации к уже созданному нажатию «Войти». */
+function appendLoginEventResult_(eventId, resultEventId, parameters = {}, sessionId = '') {
+  if (!eventId) return;
+  appendLogicalLogResult_(eventId, renderUserLogEventTemplate_(resultEventId, parameters));
+  finishLogicalLogEvent_(sessionId, eventId);
+}
+
+/** Создаёт клиентское действие или дописывает локальные данные в указанное событие. */
+function logClientLogicalEvent({ sessionId = '', eventId = '', eventName = '', parameters = {} } = {}) {
+  const event = USER_LOG_EVENTS[eventName];
+  if (!event || !event.enabled || event.source !== USER_LOG_EVENT_SOURCES.CLIENT) return '';
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(LOG_CONFIG.lockWaitMs)) return '';
+  try {
+    const text = renderUserLogEventTemplate_(eventName, parameters);
+    if (event.type === USER_LOG_EVENT_TYPES.LOCAL_DATA) {
+      if (!eventId) return '';
+      appendLogicalLogLocalData_(eventId, text);
+      return eventId;
+    }
+    const logicalEvent = createLogicalLogEvent_(sessionId);
+    writeLogicalLogAction_(logicalEvent.id, text);
+    finishLogicalLogEvent_(sessionId, logicalEvent.id);
+    return logicalEvent.id;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 /** Записывает действие пользователя в созданное событие. */
 function writeLogicalLogAction_(eventId, action, targetSheet = null) {
   appendLogicalLogEventValue_(eventId, 8, action, targetSheet);
@@ -468,7 +504,7 @@ function logLoginButtonClick({ sessionId = '', login = '', password = '', snils 
   try {
     const event = createLogicalLogEvent_(sessionId, { login, password, snils, clientInfo });
     writeLogicalLogAction_(event.id, USER_LOG_EVENTS.login_click.template);
-    finishLogicalLogEvent_(sessionId, event.id);
+    return event.id;
   } finally {
     lock.releaseLock();
   }
@@ -637,14 +673,14 @@ function logStage(stage, startedAt) {
  * @param {Object} [clientInfo={}] Данные об устройстве.
  * @returns {Object}
  */
-function checkLogin(login, password, clientInfo = {}, snils = '', sessionId = '') {
+function checkLogin(login, password, clientInfo = {}, snils = '', sessionId = '', loginEventId = '') {
   const startedAt = Date.now();
   logStage('Начало checkLogin', startedAt);
 
   const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
 
   if (!sheet) {
-    logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Лист не найден' });
+    appendLoginEventResult_(loginEventId, 'login_sheet_missing', {}, sessionId);
     return { error: 'Лист с результатами не найден.' };
   }
 
@@ -653,6 +689,7 @@ function checkLogin(login, password, clientInfo = {}, snils = '', sessionId = ''
   logStage(`Получены границы листа: rows=${lastRow}, cols=${lastCol}`, startedAt);
 
   if (lastRow < 2 || lastCol < 1) {
+    appendLoginEventResult_(loginEventId, 'login_config_error', { message: 'Таблица пуста' }, sessionId);
     return { error: 'Таблица пуста.' };
   }
 
@@ -667,7 +704,7 @@ function checkLogin(login, password, clientInfo = {}, snils = '', sessionId = ''
     authCols = getAuthColumnIndexes(header);
     allowedCols = getAllowedColumnIndexes(headerColors);
   } catch (_error) {
-    logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Ошибка конфигурации столбцов' });
+    appendLoginEventResult_(loginEventId, 'login_config_error', { message: 'Ошибка структуры таблицы' }, sessionId);
     return { error: 'Ошибка структуры таблицы.' };
   }
 
@@ -686,8 +723,7 @@ function checkLogin(login, password, clientInfo = {}, snils = '', sessionId = ''
       const rowSnils = snilsValues ? normalizeSnils(snilsValues[i][0]) : '';
       if (rowSnils && rowSnils !== expectedSnils) {
         const snilsVisible = Boolean(clientInfo.snilsVisible);
-        const snilsStatus = expectedSnils && snilsVisible ? 'Неверный СНИЛС' : 'Требуется ввод СНИЛС';
-        logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: snilsStatus });
+        appendLoginEventResult_(loginEventId, expectedSnils && snilsVisible ? 'login_invalid_snils' : 'login_snils_required', {}, sessionId);
         logStage(expectedSnils && snilsVisible ? 'Совпадение найдено, СНИЛС неверный' : 'Совпадение найдено, требуется СНИЛС', startedAt);
         return { requiresSnils: true, snilsError: expectedSnils && snilsVisible ? 'invalid' : 'required' };
       }
@@ -695,13 +731,13 @@ function checkLogin(login, password, clientInfo = {}, snils = '', sessionId = ''
       const rowIndex = i + 2;
       const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
       const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
-      logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Удачный вход' });
+      appendLoginEventResult_(loginEventId, 'login_success_without_snils', {}, sessionId);
       logStage('Совпадение найдено, данные строки загружены', startedAt);
       return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
     }
   }
 
-  logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Неудачный вход: ФИО/дата' });
+  appendLoginEventResult_(loginEventId, 'login_failed_credentials', {}, sessionId);
   logStage('Совпадение не найдено', startedAt);
   return { error: 'Неправильно введены ФИО или дата рождения.' };
 }
@@ -715,12 +751,13 @@ function checkLogin(login, password, clientInfo = {}, snils = '', sessionId = ''
  * @param {Object} [clientInfo={}] Данные клиента.
  * @returns {Object}
  */
-function verifySnils(login, password, snils, clientInfo = {}, sessionId = '') {
+function verifySnils(login, password, snils, clientInfo = {}, sessionId = '', loginEventId = '') {
   const startedAt = Date.now();
   logStage('Начало verifySnils', startedAt);
 
   const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
   if (!sheet) {
+    appendLoginEventResult_(loginEventId, 'login_sheet_missing', {}, sessionId);
     return { error: 'Лист с результатами не найден.' };
   }
 
@@ -728,6 +765,7 @@ function verifySnils(login, password, snils, clientInfo = {}, sessionId = '') {
   const lastCol = sheet.getLastColumn();
 
   if (lastRow < 2 || lastCol < 1) {
+    appendLoginEventResult_(loginEventId, 'login_config_error', { message: 'Таблица пуста' }, sessionId);
     return { error: 'Таблица пуста.' };
   }
 
@@ -740,11 +778,13 @@ function verifySnils(login, password, snils, clientInfo = {}, sessionId = '') {
     authCols = getAuthColumnIndexes(header);
     allowedCols = getAllowedColumnIndexes(headerColors);
   } catch (_error) {
+    appendLoginEventResult_(loginEventId, 'login_config_error', { message: 'Ошибка структуры таблицы' }, sessionId);
     return { error: 'Ошибка структуры таблицы.' };
   }
 
   const snilsCol = getSnilsColumnIndex(header);
   if (snilsCol === -1) {
+    appendLoginEventResult_(loginEventId, 'login_config_error', { message: 'Не настроен столбец СНИЛС' }, sessionId);
     return { error: 'Ошибка структуры таблицы.' };
   }
 
@@ -765,24 +805,25 @@ function verifySnils(login, password, snils, clientInfo = {}, sessionId = '') {
         const rowIndex = i + 2;
         const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
         const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
-        logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Удачный вход без СНИЛС' });
+        appendLoginEventResult_(loginEventId, 'login_success_without_snils', {}, sessionId);
         return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
       }
 
       if (rowSnils !== expectedSnils) {
-        logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Неверный СНИЛС' });
+        appendLoginEventResult_(loginEventId, 'login_invalid_snils', {}, sessionId);
         return { error: 'Неверный СНИЛС.' };
       }
 
       const rowIndex = i + 2;
       const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
       const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
-      logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Удачный вход по СНИЛС' });
+      appendLoginEventResult_(loginEventId, 'login_success_with_snils', {}, sessionId);
       logStage('СНИЛС подтвержден, данные строки загружены', startedAt);
       return prepareRowForClient(row, header, rowBackgrounds, allowedCols);
     }
   }
 
+  appendLoginEventResult_(loginEventId, 'login_failed_credentials', {}, sessionId);
   return { error: 'Неправильно введены ФИО или дата рождения.' };
 }
 
