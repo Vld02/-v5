@@ -877,7 +877,7 @@
     return editConfigPromise;
   }
 
-  let currentDocsRow = { header: [], serverRow: [], sourceRowIndex: null, colors: [], fileStates: [], attachmentUploads: {}, draftValues: {}, draftKey: '' };
+  let currentDocsRow = { header: [], serverRow: [], colors: [], fileStates: [], attachmentUploads: {}, draftValues: {}, draftKey: '' };
   let documentDraftSaveTimer = null;
 
   loadEditConfig().catch(() => {});
@@ -1093,7 +1093,7 @@
     if (!text) return;
     const prefix = type === 'error' ? 'Ошибка' : 'Предупреждение';
     const normalized = text.replace(/^(Ошибка|Предупреждение):\s*/i, '');
-    logEventClient(type === 'error' ? 'user_error' : 'user_warning', { message: normalized });
+    logUserActionClient(`${prefix}: ${normalized}`);
   }
 
   function setErrorMessage(message, type = 'warning') {
@@ -1432,13 +1432,7 @@
     saveAuthInputs(loginVal, dateInput.value, snilsFormatted);
 
     const clientInfo = await getClientInfo();
-    clientInfo.snilsVisible = dom.snilsWrap.style.display !== 'none';
-    await logLoginButtonClick({
-      login: loginVal,
-      password: passwordForServer,
-      snils: snilsFormatted,
-      clientInfo
-    });
+    logLoginButtonClick();
 
     if (!loginVal || !passwordForServer) {
       setErrorMessage('Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.');
@@ -1446,6 +1440,8 @@
     }
 
     startAuthLoading('Аутентификация');
+
+    clientInfo.snilsVisible = dom.snilsWrap.style.display !== 'none';
 
     google.script.run
       .withSuccessHandler(response => {
@@ -1474,21 +1470,11 @@
   async function verifySnilsDocs() {
     dom.error.textContent = '';
 
-    const snilsFormatted = formatSnilsInput(dom.snils.value);
-    dom.snils.value = snilsFormatted;
-    const loginVal = authState.login || dom.login.value.trim();
-    const passwordForServer = authState.password
-      || toServerDate(formatDateInput(dom.password.value, { finalizeYear: true }));
-    const clientInfo = await getClientInfo();
-    clientInfo.snilsVisible = true;
-    await logLoginButtonClick({
-      login: loginVal,
-      password: passwordForServer,
-      snils: snilsFormatted,
-      clientInfo
-    });
-
     if (!authState.login || !authState.password) {
+      const loginVal = dom.login.value.trim();
+      const passwordForServer = toServerDate(formatDateInput(dom.password.value, { finalizeYear: true }));
+      logLoginButtonClick();
+
       if (!loginVal || !passwordForServer) {
         setErrorMessage('Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.');
         return;
@@ -1497,12 +1483,17 @@
       authState.password = passwordForServer;
     }
 
+    const snilsFormatted = formatSnilsInput(dom.snils.value);
+    dom.snils.value = snilsFormatted;
+
     if (snilsFormatted.length !== 14) {
       setErrorMessage(snilsFormatted ? 'Неверный СНИЛС.' : 'Для входа введите СНИЛС.');
       return;
     }
 
     startAuthLoading('Проверка СНИЛС');
+    const clientInfo = await getClientInfo();
+    clientInfo.snilsVisible = true;
 
     google.script.run
       .withSuccessHandler(response => {
@@ -1557,65 +1548,12 @@
     google.script.run.checkLogin(loginVal, passwordForServer, { silent: true });
   }
 
-  // Все события журнала проходят через одну очередь.
-  // Это сохраняет порядок: действие -> локальное сохранение -> следующее действие.
-  let logQueue = Promise.resolve();
-
-  function enqueueLog(task) {
-    const run = logQueue.then(() => task());
-    logQueue = run.catch(() => {});
-    return run.catch(() => {});
+  function logUserActionClient(status) {
+    google.script.run.logUserAction(LOG_SESSION_ID, status);
   }
 
-  function logUserActionClient(action) {
-    const text = String(action || '').trim();
-    if (!text) return Promise.resolve();
-
-    return enqueueLog(() => new Promise(resolve => {
-      google.script.run
-        .withSuccessHandler(() => resolve())
-        .withFailureHandler(() => resolve())
-        .logUserAction(LOG_SESSION_ID, text);
-    }));
-  }
-
-  function logUserResultClient(result) {
-    const text = String(result || '').trim();
-    if (!text) return Promise.resolve();
-
-    return enqueueLog(() => new Promise(resolve => {
-      google.script.run
-        .withSuccessHandler(() => resolve())
-        .withFailureHandler(() => resolve())
-        .logSessionResult(LOG_SESSION_ID, text);
-    }));
-  }
-
-  function logLocalDataClient(localData) {
-    const text = String(localData || '').trim();
-    if (!text) return Promise.resolve();
-
-    return enqueueLog(() => new Promise(resolve => {
-      google.script.run
-        .withSuccessHandler(() => resolve())
-        .withFailureHandler(() => resolve())
-        .logLocalData(LOG_SESSION_ID, text);
-    }));
-  }
-
-  function logLoginButtonClick(payload = {}) {
-    return enqueueLog(() => new Promise(resolve => {
-      google.script.run
-        .withSuccessHandler(() => resolve())
-        .withFailureHandler(() => resolve())
-        .logLoginButtonClick({
-          login: payload.login || '',
-          password: payload.password || '',
-          snils: payload.snils || '',
-          clientInfo: payload.clientInfo || {},
-          sessionId: LOG_SESSION_ID
-        });
-    }));
+  function logLoginButtonClick() {
+    google.script.run.logLoginButtonClick(LOG_SESSION_ID);
   }
 
   function getLogFieldName(columnName) {
@@ -1623,16 +1561,11 @@
   }
 
   function logSectionVisitClient(section) {
-    return enqueueLog(() => new Promise(resolve => {
-      google.script.run
-        .withSuccessHandler(() => resolve())
-        .withFailureHandler(() => resolve())
-        .logSectionVisit(LOG_SESSION_ID, section);
-    }));
+    google.script.run.logSectionVisit(LOG_SESSION_ID, section);
   }
 
   function logFillFormClickClient() {
-    return logEventClient('attendance_form_click');
+    google.script.run.logFillFormClick(LOG_SESSION_ID);
   }
 
   async function logInitialPageOpen() {
@@ -1641,17 +1574,12 @@
     const snilsFormatted = formatSnilsInput(dom.snils.value);
     const clientInfo = await getClientInfo();
 
-    return enqueueLog(() => new Promise(resolve => {
-      google.script.run
-        .withSuccessHandler(() => resolve())
-        .withFailureHandler(() => resolve())
-        .logPageOpen({
-          login: loginVal,
-          password: passwordForServer,
-          snils: snilsFormatted,
-          clientInfo
-        }, LOG_SESSION_ID);
-    }));
+    google.script.run.logPageOpen({
+      login: loginVal,
+      password: passwordForServer,
+      snils: snilsFormatted,
+      clientInfo
+    }, LOG_SESSION_ID);
   }
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -1705,7 +1633,6 @@
     currentDocsRow = {
       header: [...header],
       serverRow: [...serverRow],
-      sourceRowIndex: response.sourceRowIndex || null,
       colors: [...colors],
       fileStates: [...(response.fileStates || [])],
       attachmentUploads: {},
@@ -1878,7 +1805,7 @@
           for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
           const objectUrl = URL.createObjectURL(new Blob([bytes], { type: file.mimeType || 'application/octet-stream' }));
           openedWindow.location.replace(objectUrl);
-          logEventClient('file_open', { field: getLogFieldName(columnName) });
+          logUserActionClient(`Открыл файл: ${getLogFieldName(columnName)}`);
           setTimeout(() => URL.revokeObjectURL(objectUrl), UI_TIMINGS.attachmentObjectUrlLifetimeMs);
         } catch (error) {
           openedWindow.close();
@@ -1892,19 +1819,17 @@
       .getDocumentAttachmentContent(dom.login.value.trim(), toServerDate(dom.password.value), dom.snils.value.trim(), columnName);
   }
 
-  function showAttachmentReplacementDialog(onConfirm, field) {
+  function showAttachmentReplacementDialog(onConfirm) {
     const backdrop = document.createElement('div');
     backdrop.className = 'attachment-confirm-backdrop';
     backdrop.innerHTML = `<section class="attachment-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="attachmentConfirmTitle"><h2 id="attachmentConfirmTitle">Заменить прикреплённый файл?</h2><p>При загрузке нового файла предыдущий будет перемещён в корзину.</p><div class="attachment-confirm-actions"><button type="button" data-action="cancel">Отмена</button><button type="button" class="attachment-confirm-primary" data-action="confirm">Продолжить</button></div></section>`;
     const close = () => backdrop.remove();
     backdrop.addEventListener('click', event => {
       if (event.target === backdrop || event.target.closest('[data-action="cancel"]')) {
-        logEventClient('file_replace_cancel', { field });
         close();
         return;
       }
       if (event.target.closest('[data-action="confirm"]')) {
-        logEventClient('file_replace_continue', { field });
         close();
         // Нажатие этой кнопки — пользовательский жест, поэтому браузер разрешит
         // сразу открыть системный выбор файла даже после долгого ожидания.
@@ -1919,7 +1844,7 @@
     const columnName = currentDocsRow.header[colIndex];
     if (!columnName) return;
 
-    logEventClient('file_attach_click', { field: getLogFieldName(columnName) });
+    logUserActionClient(`Нажал: Прикрепить файл — ${getLogFieldName(columnName)}`);
     const openFileSelector = () => {
       const form = document.createElement('form');
       form.style.display = 'none';
@@ -1946,7 +1871,6 @@
           form.remove();
           return;
         }
-        logEventClient('file_selected', { fileName: fileInput.files[0].name });
         if (!currentDocsRow.attachmentUploads) currentDocsRow.attachmentUploads = {};
         currentDocsRow.attachmentUploads[colIndex] = true;
         const cell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
@@ -1958,7 +1882,7 @@
             if (currentDocsRow.fileStates) currentDocsRow.fileStates[colIndex] = (response && response.fileState) || { hasFile: true };
             const resultCell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
             if (resultCell) renderCellDisplay(resultCell, colIndex, currentDocsRow.serverRow[colIndex] ?? '');
-            logEventClient('file_upload_success', { field: getLogFieldName(columnName) });
+            logUserActionClient(`Файл загружен: ${getLogFieldName(columnName)}`);
             showToast(`Файл «${(response && response.fileName) || 'документ'}» загружен.`);
           })
           .withFailureHandler(error => {
@@ -1967,7 +1891,7 @@
             const resultCell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
             if (resultCell) renderCellDisplay(resultCell, colIndex, currentDocsRow.serverRow[colIndex] ?? '');
             const message = error && error.message ? error.message : 'Не удалось загрузить файл.';
-            logEventClient('file_upload_error', { field: getLogFieldName(columnName) });
+            logUserActionClient(`Ошибка загрузки файла: ${getLogFieldName(columnName)}`);
             showToast(`Ошибка: ${message}`, 'error');
           })
           .uploadDocumentAttachment(form);
@@ -1977,7 +1901,7 @@
 
     const fileState = currentDocsRow.fileStates && currentDocsRow.fileStates[colIndex];
     if (fileState && fileState.hasFile) {
-      showAttachmentReplacementDialog(openFileSelector, getLogFieldName(columnName));
+      showAttachmentReplacementDialog(openFileSelector);
     } else {
       openFileSelector();
     }
@@ -2034,7 +1958,7 @@
     if (!rule.editable) return;
     if (mode === 'edit') {
       const columnName = currentDocsRow.header[colIndex];
-      logEventClient('edit_click', { field: getLogFieldName(columnName) });
+      logUserActionClient(`Нажал: Редактировать — ${getLogFieldName(columnName)}`);
       cell.classList.remove('is-actions-active');
       lockCellGeometryForEdit(cell);
       const serverValue = String(currentDocsRow.serverRow[colIndex] ?? '');
@@ -2046,8 +1970,6 @@
       cell.dataset.originalValue = serverValue;
       cell.innerHTML = `<div class="cell-edit-shell"><div class="cell-editor"><div class="cell-edit-inline"><input class="cell-value-input" data-col-index="${colIndex}" value="${escapeHtmlAttr(value)}" /></div></div>${renderCellEditActions(colIndex)}</div>`;
       const input = cell.querySelector('input');
-      const valueBeforeEdit = input.value;
-      let localDraftSaved = false;
       const suggestConfig = rule.special === 'suggest' ? rule.suggestions : null;
       let suggestionOptions = [];
       let activeSuggestionIndex = -1;
@@ -2070,6 +1992,7 @@
           opt.addEventListener('mousedown', event => {
             event.preventDefault();
             input.value = item;
+            setDocumentDraftValue(colIndex, input.value);
             validate();
             dropSuggestionList();
             input.focus();
@@ -2085,6 +2008,7 @@
       if (rule.special === 'date') input.addEventListener('blur', function() {
         const formatted = formatDateInput(input.value, { finalizeYear: true });
         if (formatted !== input.value) input.value = formatted;
+        setDocumentDraftValue(colIndex, input.value);
         validate();
       });
       input.focus();
@@ -2100,6 +2024,7 @@
       input.addEventListener('input', () => {
         const prepared = applyInputSpecial(input.value, rule);
         if (prepared !== input.value) input.value = prepared;
+        setDocumentDraftValue(colIndex, input.value);
         validate();
         renderSuggestionList();
       });
@@ -2136,23 +2061,7 @@
           saveBtn.click();
         }, 0);
       });
-      const saveLocalDraftAfterEdit = () => {
-        if (localDraftSaved) return;
-
-        localDraftSaved = true;
-        setDocumentDraftValue(colIndex, input.value);
-        if (documentDraftSaveTimer) {
-          clearTimeout(documentDraftSaveTimer);
-          documentDraftSaveTimer = null;
-        }
-        writeCurrentDocumentDraft();
-        logEventClient('draft_saved', { field: getLogFieldName(columnName), value: input.value });
-      };
-      input._saveLocalDraftAfterEdit = saveLocalDraftAfterEdit;
-      input.addEventListener('blur', () => {
-        saveLocalDraftAfterEdit();
-        setTimeout(dropSuggestionList, UI_TIMINGS.suggestionBlurDelayMs);
-      });
+      input.addEventListener('blur', () => setTimeout(dropSuggestionList, UI_TIMINGS.suggestionBlurDelayMs));
       validate();
       if (suggestConfig) {
         google.script.run
@@ -2166,10 +2075,8 @@
       return;
     }
     if (mode === 'cancel') {
-      logEventClient('cancel_click', { field: getLogFieldName(currentDocsRow.header[colIndex]) });
-      const editInput = cell.querySelector('input');
-      editInput?._saveLocalDraftAfterEdit?.();
-      const draftValue = editInput?.value ?? cell.dataset.originalValue ?? '';
+      logUserActionClient(`Нажал: Отмена — ${getLogFieldName(currentDocsRow.header[colIndex])}`);
+      const draftValue = cell.querySelector('input')?.value ?? cell.dataset.originalValue ?? '';
       const existing = cell.querySelector('.cell-suggest-list');
       if (existing) existing.remove();
       delete cell.dataset.originalValue;
@@ -2179,7 +2086,6 @@
       renderCellDisplay(cell, colIndex, currentDocsRow.serverRow[colIndex] ?? '');
       return;
     }
-    logEventClient('save_click', { field: getLogFieldName(currentDocsRow.header[colIndex]) });
     const input = cell.querySelector('input');
     const saveValue = (input?.value || '').trim();
     const oldValue = String(currentDocsRow.serverRow[colIndex] ?? '').trim();
@@ -2203,7 +2109,7 @@
           updateCurrentIdentityAfterSave(currentDocsRow.header[colIndex], saveValue);
           moveCurrentDocumentDraftToCurrentIdentity(previousDraftKey);
         }
-        logEventClient('save_success', { field: getLogFieldName(currentDocsRow.header[colIndex]), value: saveValue });
+        logUserActionClient(`Сохранено: ${getLogFieldName(currentDocsRow.header[colIndex])}`);
         showToast('Сохранено');
       })
       .withFailureHandler(error => {
@@ -2213,7 +2119,7 @@
         btn.classList.remove('is-saving');
         btn.setAttribute('aria-label', 'Сохранить');
         const message = error && error.message ? error.message : 'Не удалось сохранить изменения.';
-        logEventClient('save_error', { field: getLogFieldName(currentDocsRow.header[colIndex]) });
+        logUserActionClient(`Ошибка сохранения: ${getLogFieldName(currentDocsRow.header[colIndex])}`);
         showToast(`Ошибка: ${message}`, 'error');
       })
       .updateResultCell(dom.login.value.trim(), dom.password.value.trim(), dom.snils.value.trim(), currentDocsRow.header[colIndex], saveValue);
@@ -2579,13 +2485,6 @@
     scheduleMatch();
   });
 
-  tbody.addEventListener('focusout', e => {
-    if (!e.target.classList.contains('input')) return;
-    logEventClient('attendance_cell_change', {
-      value: normalizeAttendanceInput(e.target.innerText)
-    });
-  });
-
   tbody.addEventListener('paste', e => {
     if (!e.target.classList.contains('input')) return;
     e.preventDefault();
@@ -2618,7 +2517,6 @@
   }
 
   async function pasteAttendanceToLastCell() {
-    logEventClient('attendance_paste_click');
     try {
       const text = await navigator.clipboard.readText();
       if (!text.trim()) return;
@@ -2643,7 +2541,6 @@
       saveAttendanceDraft();
       scheduleMatch();
     } catch (_) {
-      logEventClient('attendance_paste_error');
       showAttendanceNotice('Не удалось вставить из буфера');
     }
   }
@@ -2659,7 +2556,6 @@
   }
 
   async function copyAttendanceFullFio() {
-    logEventClient('attendance_copy_click');
     const values = getAttendanceSelectedValues();
     if (!values.length) {
       showAttendanceNotice('Нет выбранных ФИО для копирования');
@@ -2668,10 +2564,8 @@
 
     try {
       await navigator.clipboard.writeText(values.join('\n'));
-      logEventClient('attendance_copy_success');
       showAttendanceNotice('Полные ФИО скопированы');
     } catch (_) {
-      logEventClient('attendance_copy_error');
       showAttendanceNotice('Не удалось скопировать в буфер');
     }
   }
@@ -3627,17 +3521,10 @@
       if (fio === selectedValue) btn.classList.add('selected');
 
       btn.addEventListener('click', () => {
-        const previousFio = rowState.selectedFio;
         [...wrap.children].forEach(b => b.classList.remove('selected'));
         btn.classList.add('selected');
         rowState.selectedFio = fio;
         rowState.selectionMode = 'manual';
-
-        if (previousFio && previousFio !== fio) {
-          logEventClient('fio_change', { oldFio: previousFio, fio });
-        } else if (previousFio !== fio) {
-          logEventClient('fio_select', { fio });
-        }
       });
 
       wrap.appendChild(btn);
@@ -3708,7 +3595,6 @@
     });
 
     if (hasUnselectedRows) {
-      logEventClient('user_warning', { message: 'Выберите все ФИО' });
       showAttendanceNotice('Выберите все ФИО');
       return;
     }
@@ -3721,8 +3607,7 @@
 
     const prefillValue = encodeURIComponent(values.join('\n'));
     const url = `${CLIENT_CONFIG.urls.attendanceForm}=${prefillValue}`;
-    const formWindow = window.open(url, '_blank');
-    if (formWindow) logEventClient('attendance_form_open');
+    window.open(url, '_blank');
   }
 </script>
 </body>
