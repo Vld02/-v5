@@ -119,6 +119,149 @@ function getHtmlFile(name) {
 }
 
 /*************************************************
+ * ЛОГИЧЕСКИЕ СОБЫТИЯ ЖУРНАЛА
+ *
+ * Новый механизм пока не подключён к действиям сайта. Идентификатор события
+ * хранится в заметке ячейки даты, а не в видимом столбце и не в номере строки:
+ * заметка перемещается вместе со строкой при вставке строк сверху.
+ *************************************************/
+const LOGICAL_EVENT_NOTE_PREFIX = 'logical-event-id:';
+const LOGICAL_EVENT_SESSION_CACHE_PREFIX = 'logical-event-session:';
+const LOGICAL_EVENT_CACHE_TTL_SECONDS = 21600;
+const LOGICAL_EVENT_TEST_SHEET_NAME = '_Тест логических событий';
+
+/** Создаёт ключ текущего логического события для сессии страницы. */
+function getLogicalEventSessionCacheKey_(sessionId) {
+  return `${LOGICAL_EVENT_SESSION_CACHE_PREFIX}${String(sessionId || '').trim()}`;
+}
+
+/** Подготавливает лист с десятью видимыми столбцами нового журнала. */
+function prepareLogicalEventSheet_(sheet) {
+  if (sheet.getLastRow() === 0) {
+    sheet.getRange(1, 1, 1, USER_LOG_COLUMNS.length).setNumberFormat('@').setValues([USER_LOG_COLUMNS]);
+    return sheet;
+  }
+
+  const header = sheet.getRange(1, 1, 1, USER_LOG_COLUMNS.length).getValues()[0];
+  if (USER_LOG_COLUMNS.some((title, index) => header[index] !== title)) {
+    sheet.getRange(1, 1, 1, USER_LOG_COLUMNS.length).setNumberFormat('@').setValues([USER_LOG_COLUMNS]);
+  }
+  return sheet;
+}
+
+/**
+ * Находит строку события по постоянному внутреннему ID.
+ * Номер строки намеренно не кэшируется и не используется как идентификатор.
+ */
+function findLogicalEventRow_(sheet, eventId) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return -1;
+
+  const note = `${LOGICAL_EVENT_NOTE_PREFIX}${eventId}`;
+  const notes = sheet.getRange(2, 1, lastRow - 1, 1).getNotes();
+  const offset = notes.findIndex(row => row[0] === note);
+  return offset === -1 ? -1 : offset + 2;
+}
+
+/** Добавляет текст в одну ячейку события, сохраняя ранее записанные значения. */
+function appendLogicalEventCell_(sheet, rowIndex, columnIndex, value) {
+  const cell = sheet.getRange(rowIndex, columnIndex);
+  const previous = String(cell.getValue() || '');
+  const next = String(value || '');
+  cell.setNumberFormat('@').setValue(previous && next ? `${previous}\n${next}` : previous || next).setWrap(true);
+}
+
+/**
+ * Создаёт самостоятельное событие и возвращает его постоянный внутренний ID.
+ * @returns {{id:string, sessionId:string}}
+ */
+function createLogicalLogEvent_(sessionId, { login = '', password = '', snils = '', clientInfo = {} } = {}, targetSheet = null) {
+  const normalizedSessionId = String(sessionId || '').trim();
+  if (!normalizedSessionId) throw new Error('Для логического события требуется идентификатор сессии.');
+
+  const sheet = prepareLogicalEventSheet_(targetSheet || getSheet(CONFIG.LOG_SHEET_NAME, true));
+  const eventId = Utilities.getUuid();
+  const rowIndex = sheet.getLastRow() + 1;
+  sheet.getRange(rowIndex, 1, 1, USER_LOG_COLUMNS.length)
+    .setNumberFormat('@')
+    .setValues([[formatLogDateTime(new Date()), login, password, snils, clientInfo.ip || '', clientInfo.device || '', clientInfo.browser || '', '', '', '']])
+    .setWrap(true);
+  sheet.getRange(rowIndex, 1).setNote(`${LOGICAL_EVENT_NOTE_PREFIX}${eventId}`);
+  CacheService.getScriptCache().put(getLogicalEventSessionCacheKey_(normalizedSessionId), eventId, LOGICAL_EVENT_CACHE_TTL_SECONDS);
+  return { id: eventId, sessionId: normalizedSessionId };
+}
+
+/** Записывает действие пользователя в созданное событие. */
+function writeLogicalLogAction_(eventId, action, targetSheet = null) {
+  appendLogicalLogEventValue_(eventId, 8, action, targetSheet);
+}
+
+/** Дописывает результат сервера в созданное событие. */
+function appendLogicalLogResult_(eventId, result, targetSheet = null) {
+  appendLogicalLogEventValue_(eventId, 9, result, targetSheet);
+}
+
+/** Дописывает локальные данные браузера в созданное событие. */
+function appendLogicalLogLocalData_(eventId, localData, targetSheet = null) {
+  appendLogicalLogEventValue_(eventId, 10, localData, targetSheet);
+}
+
+/** Находит событие по ID и дописывает значение в его видимую ячейку. */
+function appendLogicalLogEventValue_(eventId, columnIndex, value, targetSheet = null) {
+  const normalizedEventId = String(eventId || '').trim();
+  if (!normalizedEventId) throw new Error('Не указан идентификатор логического события.');
+
+  const sheet = prepareLogicalEventSheet_(targetSheet || getSheet(CONFIG.LOG_SHEET_NAME, true));
+  const rowIndex = findLogicalEventRow_(sheet, normalizedEventId);
+  if (rowIndex < 2) throw new Error('Логическое событие не найдено.');
+  appendLogicalEventCell_(sheet, rowIndex, columnIndex, value);
+}
+
+/** Завершает событие, не затрагивая другие события той же сессии. */
+function finishLogicalLogEvent_(sessionId, eventId) {
+  const key = getLogicalEventSessionCacheKey_(sessionId);
+  const cache = CacheService.getScriptCache();
+  if (cache.get(key) === String(eventId || '').trim()) cache.remove(key);
+}
+
+/**
+ * Техническая проверка механизма без подключения реальных действий сайта.
+ * Создаёт отдельный лист, проверяет связность после вставки строки сверху и
+ * удаляет тестовый лист после успешной проверки.
+ */
+function testLogicalLogEventMechanism() {
+  const spreadsheet = getSpreadsheet();
+  const sheet = spreadsheet.insertSheet(`${LOGICAL_EVENT_TEST_SHEET_NAME}-${Utilities.getUuid()}`);
+
+  try {
+    prepareLogicalEventSheet_(sheet);
+    const firstEvent = createLogicalLogEvent_('session-a', {}, sheet);
+    writeLogicalLogAction_(firstEvent.id, 'Тестовое действие', sheet);
+    appendLogicalLogResult_(firstEvent.id, 'Тестовый результат', sheet);
+    appendLogicalLogLocalData_(firstEvent.id, 'Тестовые локальные данные', sheet);
+    const firstRowBeforeInsert = findLogicalEventRow_(sheet, firstEvent.id);
+    sheet.insertRowsBefore(2, 1);
+    appendLogicalLogResult_(firstEvent.id, 'Результат после вставки строки', sheet);
+    const firstRowAfterInsert = findLogicalEventRow_(sheet, firstEvent.id);
+
+    const nextEvent = createLogicalLogEvent_('session-a', {}, sheet);
+    writeLogicalLogAction_(nextEvent.id, 'Следующее действие', sheet);
+    const otherSessionEvent = createLogicalLogEvent_('session-b', {}, sheet);
+    writeLogicalLogAction_(otherSessionEvent.id, 'Действие другой сессии', sheet);
+    finishLogicalLogEvent_('session-a', nextEvent.id);
+    finishLogicalLogEvent_('session-b', otherSessionEvent.id);
+
+    const firstValues = sheet.getRange(firstRowAfterInsert, 8, 1, 3).getValues()[0];
+    if (firstRowAfterInsert === firstRowBeforeInsert || firstValues[0] !== 'Тестовое действие' || firstValues[1] !== 'Тестовый результат\nРезультат после вставки строки' || firstValues[2] !== 'Тестовые локальные данные') throw new Error('Не пройдена проверка дописывания в исходное событие.');
+    if (nextEvent.id === firstEvent.id || otherSessionEvent.id === firstEvent.id || findLogicalEventRow_(sheet, nextEvent.id) === findLogicalEventRow_(sheet, otherSessionEvent.id)) throw new Error('Не пройдена проверка независимости событий и сессий.');
+
+    return { passed: true, eventRows: 3, rowMovedAfterInsert: true, separateSessions: true };
+  } finally {
+    spreadsheet.deleteSheet(sheet);
+  }
+}
+
+/*************************************************
  * ЛОГИРОВАНИЕ
  *************************************************/
 /**
