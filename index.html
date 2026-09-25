@@ -1088,30 +1088,28 @@
     return true;
   }
 
+  // Generic messages are independent events only when no concrete result exists.
   function logUserMessage(message, type = 'warning') {
-    const text = String(message || '').trim();
-    if (!text) return;
-    const prefix = type === 'error' ? 'Ошибка' : 'Предупреждение';
-    const normalized = text.replace(/^(Ошибка|Предупреждение):\s*/i, '');
-    logUserActionClient(`${prefix}: ${normalized}`);
+    const normalized = String(message || '').replace(/^(Ошибка|Предупреждение):\s*/i, '').trim();
+    if (normalized) google.script.run.createConfiguredStandaloneMessage(type === 'error' ? 'user_error' : 'user_warning', { message: normalized }, LOG_SESSION_ID);
   }
 
-  function setErrorMessage(message, type = 'warning') {
+  function setErrorMessage(message, type = 'warning', shouldLog = true) {
     const text = String(message || '').trim();
     dom.error.textContent = text;
-    if (text) logUserMessage(text, type);
+    if (text && shouldLog) logUserMessage(text, type);
   }
 
   function getAuthMessageType(message) {
     return /(?:СНИЛС|введите ФИО|дату рождения)/i.test(String(message || '')) ? 'warning' : 'error';
   }
 
-  function showToast(message, type = 'success', autoHide = true) {
+  function showToast(message, type = 'success', autoHide = true, shouldLog = false) {
     const toast = document.createElement('div');
     toast.className = `toast ${type === 'error' ? 'error' : type === 'loading' ? 'loading' : 'success'}`;
     toast.textContent = message;
     dom.toastContainer.appendChild(toast);
-    if (type === 'error') logUserMessage(message, 'error');
+    if (type === 'error' && shouldLog) logUserMessage(message, 'error');
     if (autoHide) setTimeout(() => toast.remove(), CLIENT_CONFIG.timings.toastAutoHideMs);
     return toast;
   }
@@ -1129,6 +1127,8 @@
       dom.snils.value = formatSnilsInput(value);
     }
     saveAuthInputs(dom.login.value.trim(), dom.password.value.trim(), dom.snils.value.trim());
+    // Identity mutations invalidate the authenticated session immediately.
+    localStorage.removeItem(AUTH_STORAGE_KEYS.isLoggedIn);
   }
 
   function filterSuggestions(query, options) {
@@ -1151,10 +1151,10 @@
     return starts.concat(includes).map(item => item.value).slice(0, 10);
   }
 
-  function switchTab(key) {
+  function switchTab(key, { userInitiated = true } = {}) {
     if (!tabPanels[key]) return;
     const currentTab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
-    if (currentTab !== key) {
+    if (userInitiated && currentTab !== key) {
       const sectionEventId = {
         docs: 'section_docs',
         attendance: 'section_attendance',
@@ -1180,7 +1180,7 @@
 
   const savedTab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
   if (savedTab && tabPanels[savedTab]) {
-    switchTab(savedTab);
+    switchTab(savedTab, { userInitiated: false });
   }
 
   /*************************************************
@@ -1420,9 +1420,10 @@
     return `${day}.${month}.${parsed.year}`;
   }
 
-  function handleDocsRequestFailure(error) {
+  async function handleDocsRequestFailure(error, logicalEventId = '') {
     const message = error && error.message ? error.message : 'Не удалось выполнить аутентификацию.';
-    setErrorMessage(`Ошибка: ${message}`, 'error');
+    await appendConfiguredEventClient(logicalEventId, 'user_error', { message });
+    setErrorMessage(`Ошибка: ${message}`, 'error', false);
     stopAuthLoading();
   }
 
@@ -1442,7 +1443,8 @@
     const clientInfo = await getClientInfo();
 
     if (!loginVal || !passwordForServer) {
-      setErrorMessage('Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.');
+      await appendConfiguredEventClient(logicalEventId, 'user_warning', { message: 'Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.' });
+      setErrorMessage('Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.', 'warning', false);
       return;
     }
 
@@ -1453,7 +1455,7 @@
     google.script.run
       .withSuccessHandler(response => {
         if (response && response.error) {
-          setErrorMessage(response.error, getAuthMessageType(response.error));
+          setErrorMessage(response.error, getAuthMessageType(response.error), false);
           stopAuthLoading();
           return;
         }
@@ -1462,7 +1464,7 @@
           startSnilsStep(loginVal, passwordForServer);
           setErrorMessage(response.snilsError === 'invalid'
             ? 'Неверный СНИЛС.'
-            : 'Для входа введите СНИЛС.');
+            : 'Для входа введите СНИЛС.', 'warning', false);
           return;
         }
 
@@ -1470,7 +1472,7 @@
         hideSnilsStep();
         showDocsResult(response);
       })
-      .withFailureHandler(handleDocsRequestFailure)
+      .withFailureHandler(error => handleDocsRequestFailure(error, logicalEventId))
       .checkLogin(loginVal, passwordForServer, clientInfo, snilsFormatted, LOG_SESSION_ID, logicalEventId);
   }
 
@@ -1482,7 +1484,8 @@
       const loginVal = dom.login.value.trim();
       const passwordForServer = toServerDate(formatDateInput(dom.password.value, { finalizeYear: true }));
       if (!loginVal || !passwordForServer) {
-        setErrorMessage('Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.');
+        await appendConfiguredEventClient(logicalEventId, 'user_warning', { message: 'Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.' });
+        setErrorMessage('Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.', 'warning', false);
         return;
       }
       authState.login = loginVal;
@@ -1493,7 +1496,9 @@
     dom.snils.value = snilsFormatted;
 
     if (snilsFormatted.length !== 14) {
-      setErrorMessage(snilsFormatted ? 'Неверный СНИЛС.' : 'Для входа введите СНИЛС.');
+      const message = snilsFormatted ? 'Неверный СНИЛС.' : 'Для входа введите СНИЛС.';
+      await appendConfiguredEventClient(logicalEventId, 'user_warning', { message });
+      setErrorMessage(message, 'warning', false);
       return;
     }
 
@@ -1504,7 +1509,7 @@
     google.script.run
       .withSuccessHandler(response => {
         if (response && response.error) {
-          setErrorMessage(response.error, getAuthMessageType(response.error));
+          setErrorMessage(response.error, getAuthMessageType(response.error), false);
           stopAuthLoading();
           return;
         }
@@ -1519,7 +1524,7 @@
         dom.snilsWrap.style.display = 'block';
         showDocsResult(response);
       })
-      .withFailureHandler(handleDocsRequestFailure)
+      .withFailureHandler(error => handleDocsRequestFailure(error, logicalEventId))
       .verifySnils(authState.login, authState.password, snilsFormatted, clientInfo, LOG_SESSION_ID, logicalEventId);
   }
 
@@ -1554,14 +1559,6 @@
     google.script.run.checkLogin(loginVal, passwordForServer, { silent: true });
   }
 
-  function logUserActionClient(status) {
-    google.script.run.logUserAction(LOG_SESSION_ID, status);
-  }
-
-  function logLoginButtonClick() {
-    google.script.run.logLoginButtonClick(LOG_SESSION_ID);
-  }
-
   function createLogicalEventClient(eventId, params = {}) {
     return new Promise(resolve => {
       google.script.run
@@ -1580,31 +1577,37 @@
     return queuedEvent;
   }
 
-  function appendAndCompleteLogicalEventClient(logicalEventId, eventId, params = {}) {
+  function appendConfiguredEventClient(logicalEventId, eventId, params = {}) {
     if (!logicalEventId) return Promise.resolve(false);
     return new Promise(resolve => {
       google.script.run
-        .withSuccessHandler(written => {
-          if (!written) {
-            resolve(false);
-            return;
-          }
-          google.script.run
-            .withSuccessHandler(() => resolve(true))
-            .withFailureHandler(() => resolve(false))
-            .completeLogicalLogEvent(logicalEventId);
-        })
+        .withSuccessHandler(written => resolve(Boolean(written)))
         .withFailureHandler(() => resolve(false))
         .appendConfiguredLogicalEventPart(logicalEventId, eventId, params);
     });
   }
 
+  const appendAndCompleteLogicalEventClient = appendConfiguredEventClient;
+
+  const documentEditorFinishPromises = new WeakMap();
+
   async function finishDocumentEditor(cell, colIndex) {
+    const pending = documentEditorFinishPromises.get(cell);
+    if (pending) return pending;
+    const work = finishDocumentEditorWork_(cell, colIndex);
+    documentEditorFinishPromises.set(cell, work);
+    try { return await work; } finally { documentEditorFinishPromises.delete(cell); }
+  }
+
+  async function finishDocumentEditorWork_(cell, colIndex) {
     const columnName = currentDocsRow.header[colIndex];
     const input = cell.querySelector('input');
     const value = String(input?.value ?? cell.dataset.originalValue ?? '').trim();
     const eventPromise = currentDocsRow.editEventPromises[columnName];
     const logicalEventId = eventPromise ? await eventPromise : '';
+    // Persist the user draft before writing the local-save log entry.
+    setDocumentDraftValue(colIndex, value);
+    writeCurrentDocumentDraft();
     await appendAndCompleteLogicalEventClient(logicalEventId, 'draft_saved', {
       field: getLogFieldName(columnName),
       value
@@ -1614,7 +1617,6 @@
     const existing = cell.querySelector('.cell-suggest-list');
     if (existing) existing.remove();
     delete cell.dataset.originalValue;
-    setDocumentDraftValue(colIndex, value);
     unlockCellGeometryAfterEdit(cell);
     renderCellDisplay(cell, colIndex, currentDocsRow.serverRow[colIndex] ?? '');
   }
@@ -1623,26 +1625,17 @@
     return String(columnName || '').replace(/\s*\([^()]+\)$/, '').trim() || String(columnName || '');
   }
 
-  function logSectionVisitClient(section) {
-    google.script.run.logSectionVisit(LOG_SESSION_ID, section);
-  }
 
-  function logFillFormClickClient() {
-    google.script.run.logFillFormClick(LOG_SESSION_ID);
-  }
+  function logFillFormClickClient() { return enqueueLogicalEventClient('attendance_form_click'); }
 
   async function logInitialPageOpen() {
-    const loginVal = dom.login.value.trim();
-    const passwordForServer = toServerDate(formatDateInput(dom.password.value, { finalizeYear: true }));
-    const snilsFormatted = formatSnilsInput(dom.snils.value);
     const clientInfo = await getClientInfo();
-
-    google.script.run.logPageOpen({
-      login: loginVal,
-      password: passwordForServer,
-      snils: snilsFormatted,
-      clientInfo
-    }, LOG_SESSION_ID);
+    await enqueueLogicalEventClient('page_open', { sessionData: {
+      login: localStorage.getItem(AUTH_STORAGE_KEYS.savedLogin) || '',
+      password: localStorage.getItem(AUTH_STORAGE_KEYS.savedDate) || '',
+      snils: localStorage.getItem(AUTH_STORAGE_KEYS.savedSnils) || '',
+      ip: clientInfo.ip, device: clientInfo.device, browser: clientInfo.browser
+    }});
   }
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -1853,15 +1846,18 @@
     cell.setAttribute('style', style);
   }
 
-  function openAttachmentFile(colIndex) {
+  async function openAttachmentFile(colIndex) {
     const columnName = currentDocsRow.header[colIndex];
-    void enqueueLogicalEventClient('file_open', { field: getLogFieldName(columnName) });
+    const fileEventPromise = enqueueLogicalEventClient('file_open', { field: getLogFieldName(columnName) });
     const openedWindow = window.open('', '_blank');
     if (!openedWindow) {
+      const fileEventId = await fileEventPromise;
+      await appendConfiguredEventClient(fileEventId, 'file_open_error', { field: getLogFieldName(columnName) });
       showToast('Браузер заблокировал открытие файла. Разрешите всплывающие окна для сайта.', 'error');
       return;
     }
     openedWindow.document.title = 'Загрузка файла…';
+    const fileEventId = await fileEventPromise;
     google.script.run
       .withSuccessHandler(file => {
         try {
@@ -1871,13 +1867,16 @@
           const objectUrl = URL.createObjectURL(new Blob([bytes], { type: file.mimeType || 'application/octet-stream' }));
           openedWindow.location.replace(objectUrl);
           setTimeout(() => URL.revokeObjectURL(objectUrl), UI_TIMINGS.attachmentObjectUrlLifetimeMs);
+          google.script.run.completeLogicalLogEvent(fileEventId);
         } catch (error) {
           openedWindow.close();
+          void appendConfiguredEventClient(fileEventId, 'file_open_error', { field: getLogFieldName(columnName) });
           showToast(`Ошибка: ${error.message || 'Не удалось открыть файл.'}`, 'error');
         }
       })
       .withFailureHandler(error => {
         openedWindow.close();
+        void appendConfiguredEventClient(fileEventId, 'file_open_error', { field: getLogFieldName(columnName) });
         showToast(`Ошибка: ${(error && error.message) || 'Не удалось открыть файл.'}`, 'error');
       })
       .getDocumentAttachmentContent(dom.login.value.trim(), toServerDate(dom.password.value), dom.snils.value.trim(), columnName);
@@ -1932,12 +1931,14 @@
       form.appendChild(fileInput);
       document.body.appendChild(form);
 
-      fileInput.addEventListener('change', () => {
+      fileInput.addEventListener('change', async () => {
         if (!fileInput.files.length) {
           form.remove();
           return;
         }
-        void enqueueLogicalEventClient('file_selected', { fileName: fileInput.files[0].name });
+        const fileEventId = await enqueueLogicalEventClient('file_selected', { fileName: fileInput.files[0].name });
+        if (!fileEventId) { form.remove(); return; }
+        form.dataset.logicalEventId = fileEventId;
         if (!currentDocsRow.attachmentUploads) currentDocsRow.attachmentUploads = {};
         currentDocsRow.attachmentUploads[colIndex] = true;
         const cell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
@@ -1949,7 +1950,7 @@
             if (currentDocsRow.fileStates) currentDocsRow.fileStates[colIndex] = (response && response.fileState) || { hasFile: true };
             const resultCell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
             if (resultCell) renderCellDisplay(resultCell, colIndex, currentDocsRow.serverRow[colIndex] ?? '');
-            logUserActionClient(`Файл загружен: ${getLogFieldName(columnName)}`);
+            void appendAndCompleteLogicalEventClient(form.dataset.logicalEventId, 'file_upload_success', { field: getLogFieldName(columnName) });
             showToast(`Файл «${(response && response.fileName) || 'документ'}» загружен.`);
           })
           .withFailureHandler(error => {
@@ -1958,7 +1959,7 @@
             const resultCell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
             if (resultCell) renderCellDisplay(resultCell, colIndex, currentDocsRow.serverRow[colIndex] ?? '');
             const message = error && error.message ? error.message : 'Не удалось загрузить файл.';
-            logUserActionClient(`Ошибка загрузки файла: ${getLogFieldName(columnName)}`);
+            void appendAndCompleteLogicalEventClient(form.dataset.logicalEventId, 'file_upload_error', { field: getLogFieldName(columnName) });
             showToast(`Ошибка: ${message}`, 'error');
           })
           .uploadDocumentAttachment(form);
@@ -2135,7 +2136,12 @@
           saveBtn.click();
         }, 0);
       });
-      input.addEventListener('blur', () => setTimeout(dropSuggestionList, UI_TIMINGS.suggestionBlurDelayMs));
+      input.addEventListener('blur', () => {
+        setTimeout(dropSuggestionList, UI_TIMINGS.suggestionBlurDelayMs);
+        // A single editor state makes blur/save/cancel idempotent: subsequent
+        // handlers await the same completion and cannot create save first.
+        void finishDocumentEditor(cell, colIndex);
+      });
       validate();
       if (suggestConfig) {
         google.script.run
@@ -2554,6 +2560,15 @@
     scheduleMatch();
   });
 
+  tbody.addEventListener('blur', event => {
+    if (!event.target.classList.contains('input')) return;
+    const value = normalizeAttendanceInput(event.target.innerText);
+    if (!value) return;
+    void enqueueLogicalEventClient('attendance_cell_change', { value }).then(eventId =>
+      appendConfiguredEventClient(eventId, 'attendance_draft_saved')
+    );
+  }, true);
+
   tbody.addEventListener('paste', e => {
     if (!e.target.classList.contains('input')) return;
     e.preventDefault();
@@ -2586,9 +2601,10 @@
   }
 
   async function pasteAttendanceToLastCell() {
+    const eventId = await enqueueLogicalEventClient('attendance_paste_click');
     try {
       const text = await navigator.clipboard.readText();
-      if (!text.trim()) return;
+      if (!text.trim()) { google.script.run.completeLogicalLogEvent(eventId); return; }
 
       let targetRow = tbody.lastElementChild;
       if (!targetRow || targetRow.cells[0].innerText.trim()) {
@@ -2597,7 +2613,7 @@
       }
 
       const lines = text.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
-      if (!lines.length) return;
+      if (!lines.length) { google.script.run.completeLogicalLogEvent(eventId); return; }
 
       targetRow.cells[0].innerText = lines[0];
       let row = targetRow;
@@ -2609,7 +2625,9 @@
 
       saveAttendanceDraft();
       scheduleMatch();
+      google.script.run.completeLogicalLogEvent(eventId);
     } catch (_) {
+      await appendConfiguredEventClient(eventId, 'attendance_paste_error');
       showAttendanceNotice('Не удалось вставить из буфера');
     }
   }
@@ -2625,16 +2643,20 @@
   }
 
   async function copyAttendanceFullFio() {
+    const eventId = await enqueueLogicalEventClient('attendance_copy_click');
     const values = getAttendanceSelectedValues();
     if (!values.length) {
+      await appendConfiguredEventClient(eventId, 'user_warning', { message: 'Нет выбранных ФИО для копирования' });
       showAttendanceNotice('Нет выбранных ФИО для копирования');
       return;
     }
 
     try {
       await navigator.clipboard.writeText(values.join('\n'));
+      await appendConfiguredEventClient(eventId, 'attendance_copy_success');
       showAttendanceNotice('Полные ФИО скопированы');
     } catch (_) {
+      await appendConfiguredEventClient(eventId, 'attendance_copy_error');
       showAttendanceNotice('Не удалось скопировать в буфер');
     }
   }
@@ -3590,6 +3612,8 @@
       if (fio === selectedValue) btn.classList.add('selected');
 
       btn.addEventListener('click', () => {
+        const previousFio = rowState.selectedFio;
+        void enqueueLogicalEventClient(previousFio && previousFio !== fio ? 'fio_change' : 'fio_select', previousFio && previousFio !== fio ? { previousFio, fio } : { fio });
         [...wrap.children].forEach(b => b.classList.remove('selected'));
         btn.classList.add('selected');
         rowState.selectedFio = fio;
@@ -3646,6 +3670,7 @@
   const hasCachedTrainingHistory = restoreTrainingHistoryCache();
   loadTrainingHistory(hasCachedTrainingHistory);
   async function openAttendanceForm() {
+    const formEventId = await enqueueLogicalEventClient('attendance_form_click');
     if (debounceTimer) {
       clearTimeout(debounceTimer);
       debounceTimer = null;
@@ -3664,6 +3689,7 @@
     });
 
     if (hasUnselectedRows) {
+      await appendConfiguredEventClient(formEventId, 'user_warning', { message: 'Выберите все ФИО' });
       showAttendanceNotice('Выберите все ФИО');
       return;
     }
@@ -3672,7 +3698,7 @@
 
     localStorage.setItem(ATTENDANCE_DRAFT_DELETE_AFTER_KEY, String(Date.now() + ATTENDANCE_DRAFT_TTL_MS));
 
-    logFillFormClickClient();
+    void appendConfiguredEventClient(formEventId, 'attendance_form_open');
 
     const prefillValue = encodeURIComponent(values.join('\n'));
     const url = `${CLIENT_CONFIG.urls.attendanceForm}=${prefillValue}`;

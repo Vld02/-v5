@@ -234,42 +234,6 @@ function buildLogRichText(lines) {
 }
 
 /**
- * Возвращает ключ временного сопоставления строки и идентификатора сессии.
- * Идентификатор создаётся браузером на каждую загрузку страницы и не хранится
- * в колонках листа, чтобы сохранить исходную структуру из восьми столбцов.
- */
-function getLogSessionCacheKey_(sessionId) {
-  return `access-log-session:${String(sessionId || '').trim()}`;
-}
-
-/** Ищет строку, созданную для текущей сессии браузера. */
-function findSessionLogRow_(sessionId) {
-  const value = CacheService.getScriptCache().get(getLogSessionCacheKey_(sessionId));
-  const rowIndex = Number(value);
-  return Number.isInteger(rowIndex) && rowIndex > 1 ? rowIndex : -1;
-}
-
-/** Запоминает строку сессии на срок, достаточный для активной работы страницы. */
-function rememberSessionLogRow_(sessionId, rowIndex) {
-  CacheService.getScriptCache().put(getLogSessionCacheKey_(sessionId), String(rowIndex), 21600);
-}
-
-/** Добавляет событие только в историю даты и статуса текущей строки. */
-function appendLogLine(sheet, rowIndex, status) {
-  const range = sheet.getRange(rowIndex, 1, 1, LOG_COLUMNS.length);
-  const oldValues = range.getValues()[0];
-  [
-    { col: 0, value: formatLogDateTime(new Date()) },
-    { col: 7, value: String(status || '') }
-  ].forEach(({ col, value }) => {
-    const oldText = formatLogCellValue(col, oldValues[col]);
-    const lines = oldText === '' ? [value] : oldText.split('\n').concat([value]);
-    range.getCell(1, col + 1).setRichTextValue(buildLogRichText(lines));
-  });
-  range.setWrap(true);
-}
-
-/**
  * Добавляет скрытые метаданные к строке логического события.
  * Метаданные диапазона остаются связанными со строкой после вставки строк
  * выше неё, поэтому номер строки нигде не выступает идентификатором события.
@@ -319,11 +283,12 @@ function createLogicalLogEvent(sessionId, action) {
     const eventId = Utilities.getUuid();
     const rowIndex = sheet.getLastRow() + 1;
     appendPlainLogRow(sheet, [
-      formatLogDateTime(new Date()), '', '', '', '', '', '', `Действие: ${String(action).trim()}`
+      formatLogDateTime(new Date()), '', '', '', '', '', '', String(action).trim(), '', ''
     ]);
     const range = sheet.getRange(rowIndex, 1, 1, LOG_COLUMNS.length);
     addLogicalEventMetadata_(range, LOGICAL_EVENT_LOG_CONFIG.eventIdMetadataKey, eventId);
     addLogicalEventMetadata_(range, LOGICAL_EVENT_LOG_CONFIG.sessionIdMetadataKey, String(sessionId).trim());
+    addLogicalEventMetadata_(range, LOGICAL_EVENT_LOG_CONFIG.stateMetadataKey, `${eventId}:active`);
     return eventId;
   } finally {
     lock.releaseLock();
@@ -343,21 +308,18 @@ function appendLogicalLogLocalData(eventId, localData) {
 /** Находит событие по ID и добавляет к нему часть без использования номера строки как ID. */
 function appendLogicalLogPart_(eventId, label, value) {
   if (!String(eventId || '').trim() || !String(value || '').trim()) return false;
-
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(LOG_CONFIG.lockWaitMs)) return false;
   try {
     const sheet = getLogSheet();
-    if (!sheet) return false;
-    const range = findLogicalEventRange_(sheet, eventId);
+    const range = sheet && findLogicalEventRange_(sheet, eventId);
     if (!range || isLogicalEventCompleted_(range, eventId)) return false;
-    // Номер строки используется только как текущее местоположение найденного
-    // по метаданным диапазона, а не как постоянный идентификатор события.
-    appendLogLine(sheet, range.getRow(), `${label}: ${String(value).trim()}`);
+    const column = label === 'Результат' ? 9 : 10;
+    const cell = range.getCell(1, column);
+    const previous = String(cell.getValue() || '');
+    cell.setValue(previous ? `${previous}\n${String(value).trim()}` : String(value).trim()).setWrap(true);
     return true;
-  } finally {
-    lock.releaseLock();
-  }
+  } finally { lock.releaseLock(); }
 }
 
 /** Завершает логическое событие и запрещает последующие дописывания в него. */
@@ -371,6 +333,9 @@ function completeLogicalLogEvent(eventId) {
     if (!sheet) return false;
     const range = findLogicalEventRange_(sheet, eventId);
     if (!range || isLogicalEventCompleted_(range, eventId)) return false;
+    range.getDeveloperMetadata().filter(metadata =>
+      metadata.getKey() === LOGICAL_EVENT_LOG_CONFIG.stateMetadataKey
+    ).forEach(metadata => metadata.remove());
     addLogicalEventMetadata_(
       range,
       LOGICAL_EVENT_LOG_CONFIG.stateMetadataKey,
@@ -402,21 +367,47 @@ function getConfiguredLogEvent_(eventId, expectedType) {
  */
 function createConfiguredLogicalEvent(sessionId, eventId, params = {}) {
   const event = getConfiguredLogEvent_(eventId, LOG_EVENT_CONFIG.EVENT_TYPES.ACTION);
-  if (!event || event.rule !== LOG_EVENT_CONFIG.RULES.CREATE_NEW) return '';
-  return createLogicalLogEvent(sessionId, renderLogEventTemplate_(event, params));
+  if (!event || event.mode !== LOG_EVENT_CONFIG.RULES.CREATE_NEW) return '';
+  const logicalEventId = createLogicalLogEvent(sessionId, renderLogEventTemplate_(event, params));
+  const sheet = logicalEventId && getLogSheet();
+  const range = sheet && findLogicalEventRange_(sheet, logicalEventId);
+  if (range) {
+    addLogicalEventMetadata_(range, 'logical-log-action-id', event.id);
+    // Only page_open records immutable session context in the visible row.
+    if (event.id === 'page_open') {
+      const info = params.sessionData || {};
+      range.getCell(1, 2).setValue(String(info.login || ''));
+      range.getCell(1, 3).setValue(String(info.password || ''));
+      range.getCell(1, 4).setValue(String(info.snils || ''));
+      range.getCell(1, 5).setValue(String(info.ip || ''));
+      range.getCell(1, 6).setValue(String(info.device || ''));
+      range.getCell(1, 7).setValue(String(info.browser || ''));
+    }
+    if (event.completeAfterWrite) completeLogicalLogEvent(logicalEventId);
+  }
+  return logicalEventId;
 }
 
 /** Дописывает результат или локальные данные по ID события из Config.gs. */
 function appendConfiguredLogicalEventPart(eventId, partEventId, params = {}) {
   const event = LOG_EVENT_CONFIG.EVENTS[partEventId];
-  if (!event || !event.enabled || event.rule !== LOG_EVENT_CONFIG.RULES.ATTACH_TO_CURRENT) return false;
-  if (event.type === LOG_EVENT_CONFIG.EVENT_TYPES.RESULT) {
-    return appendLogicalLogResult(eventId, renderLogEventTemplate_(event, params));
-  }
-  if (event.type === LOG_EVENT_CONFIG.EVENT_TYPES.LOCAL_DATA) {
-    return appendLogicalLogLocalData(eventId, renderLogEventTemplate_(event, params));
-  }
-  return false;
+  if (!event || !event.enabled || event.mode !== LOG_EVENT_CONFIG.RULES.ATTACH_TO_EVENT) return false;
+  const sheet = getLogSheet();
+  const range = sheet && findLogicalEventRange_(sheet, eventId);
+  if (!range || isLogicalEventCompleted_(range, eventId)) return false;
+  const session = range.getDeveloperMetadata().find(item => item.getKey() === LOGICAL_EVENT_LOG_CONFIG.sessionIdMetadataKey);
+  const parent = range.getDeveloperMetadata().find(item => item.getKey() === 'logical-log-action-id');
+  // Both IDs must be present; the requested child must belong to this exact action,
+  // never just to the last action of the same kind.
+  if (!session || !session.getValue() || (event.parentEvent && (!parent || parent.getValue() !== event.parentEvent))) return false;
+  const value = renderLogEventTemplate_(event, params);
+  const written = event.type === LOG_EVENT_CONFIG.EVENT_TYPES.RESULT
+    ? appendLogicalLogResult(eventId, value)
+    : event.type === LOG_EVENT_CONFIG.EVENT_TYPES.LOCAL_DATA
+      ? appendLogicalLogLocalData(eventId, value)
+      : false;
+  if (written && event.completeAfterWrite) completeLogicalLogEvent(eventId);
+  return written;
 }
 
 /**
@@ -454,7 +445,9 @@ function runLogicalLogEventTechnicalTest() {
   const firstRange = findLogicalEventRange_(sheet, firstEventId);
   const nextRange = findLogicalEventRange_(sheet, nextEventId);
   const secondSessionRange = findLogicalEventRange_(sheet, secondSessionEventId);
-  const firstStatus = String(firstRange.getCell(1, 8).getValue());
+  const firstAction = String(firstRange.getCell(1, 8).getValue());
+  const firstResult = String(firstRange.getCell(1, 9).getValue());
+  const firstLocalData = String(firstRange.getCell(1, 10).getValue());
   const firstSessionMetadata = firstRange.getDeveloperMetadata().find(metadata =>
     metadata.getKey() === LOGICAL_EVENT_LOG_CONFIG.sessionIdMetadataKey
   );
@@ -462,9 +455,9 @@ function runLogicalLogEventTechnicalTest() {
     metadata.getKey() === LOGICAL_EVENT_LOG_CONFIG.sessionIdMetadataKey
   );
   if (
-    !firstStatus.includes('Действие: Техническое действие') ||
-    !firstStatus.includes('Результат: Технический результат') ||
-    !firstStatus.includes('Локальные данные: Технические локальные данные') ||
+    firstAction !== 'Техническое действие' ||
+    firstResult !== 'Технический результат' ||
+    firstLocalData !== 'Технические локальные данные' ||
     !firstSessionMetadata || firstSessionMetadata.getValue() !== firstSessionId ||
     !secondSessionMetadata || secondSessionMetadata.getValue() !== secondSessionId ||
     firstRange.getRow() === nextRange.getRow() || firstRange.getRow() === secondSessionRange.getRow() ||
@@ -483,77 +476,20 @@ function runLogicalLogEventTechnicalTest() {
   };
 }
 
-/** Создаёт строку только для нового открытия сайта. */
-function logPageOpen({ login = '', password = '', snils = '', clientInfo = {} } = {}, sessionId) {
-  if (!String(sessionId || '').trim()) return;
-  const lock = LockService.getScriptLock();
-  if (!lock.tryLock(LOG_CONFIG.lockWaitMs)) return;
-  try {
-    const sheet = getLogSheet();
-    if (!sheet) return;
-    const rowIndex = sheet.getLastRow() + 1;
-    appendPlainLogRow(sheet, [
-      formatLogDateTime(new Date()), login, password, snils,
-      clientInfo.ip || '', clientInfo.device || '', clientInfo.browser || '', 'Зашел на сайт'
-    ]);
-    rememberSessionLogRow_(sessionId, rowIndex);
-  } finally {
-    lock.releaseLock();
-  }
+
+/** Creates a standalone configured warning/error when no user action owns it. */
+function createConfiguredStandaloneMessage(eventId, params = {}, sessionId = '') {
+  const event = LOG_EVENT_CONFIG.EVENTS[eventId];
+  if (!event || !event.enabled || !['user_warning', 'user_error'].includes(event.id)) return '';
+  const id = createLogicalLogEvent(sessionId || Utilities.getUuid(), renderLogEventTemplate_(event, params));
+  if (id) completeLogicalLogEvent(id);
+  return id;
 }
 
-/** Добавляет событие в строку уже созданной сессии. */
-function logSessionEvent(sessionId, status) {
-  if (!String(sessionId || '').trim()) return;
-  const lock = LockService.getScriptLock();
-  if (!lock.tryLock(LOG_CONFIG.lockWaitMs)) return;
-  try {
-    const rowIndex = findSessionLogRow_(sessionId);
-    if (rowIndex < 2) return;
-    const sheet = getLogSheet();
-    if (!sheet || rowIndex > sheet.getLastRow()) return;
-    appendLogLine(sheet, rowIndex, status);
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-/** Логирует результат авторизации, но не silent-проверки. */
-function logAuthAttempt(payload) {
-  if (payload.clientInfo && payload.clientInfo.silent) return;
-  logSessionEvent(payload.sessionId, payload.status);
-}
-
-/**
- * Дописывает результат входа к переданному логическому событию. Поддержка
- * старого статуса сохраняется только для клиентов предыдущей версии без ID.
- */
-function logAuthResult_(logicalEventId, eventId, clientInfo, legacyPayload) {
-  if (clientInfo && clientInfo.silent) return;
-  if (String(logicalEventId || '').trim()) {
-    if (appendConfiguredLogicalEventPart(logicalEventId, eventId)) {
-      completeLogicalLogEvent(logicalEventId);
-    }
-    return;
-  }
-  logAuthAttempt(legacyPayload);
-}
-
-function logUserAction(sessionId, status) {
-  logSessionEvent(sessionId, status);
-}
-
-function logLoginButtonClick(sessionId) {
-  logSessionEvent(sessionId, 'Нажал: Войти');
-}
-
-function logSectionVisit(sessionId, section) {
-  const sectionName = APP_CONFIG.SECTION_NAMES[section] || section;
-  logSessionEvent(sessionId, `Перешёл в раздел ${sectionName}`);
-}
-
-function logFillFormClick(sessionId) {
-  logSessionEvent(sessionId, 'Нажал: Заполнить форму');
+/** Writes one configured authentication result to the originating login event. */
+function logAuthResult_(logicalEventId, resultEventId, clientInfo = {}, _legacyPayload = {}) {
+  if (clientInfo && clientInfo.silent) return false;
+  return appendConfiguredLogicalEventPart(logicalEventId, resultEventId);
 }
 
 /*************************************************
@@ -726,6 +662,7 @@ function checkLogin(login, password, clientInfo = {}, snils = '', sessionId = ''
   logStage(`Получены границы листа: rows=${lastRow}, cols=${lastCol}`, startedAt);
 
   if (lastRow < 2 || lastCol < 1) {
+    logAuthResult_(logicalEventId, 'login_config_error', clientInfo);
     return { error: 'Таблица пуста.' };
   }
 
@@ -805,6 +742,7 @@ function verifySnils(login, password, snils, clientInfo = {}, sessionId = '', lo
   const lastCol = sheet.getLastColumn();
 
   if (lastRow < 2 || lastCol < 1) {
+    logAuthResult_(logicalEventId, 'login_config_error', clientInfo);
     return { error: 'Таблица пуста.' };
   }
 
@@ -1415,9 +1353,7 @@ function appendSaveResult_(logicalEventId, eventId, columnName, value = '') {
   try {
     const params = { field: String(columnName || '').replace(/\s*\([^()]+\)$/, '').trim() };
     if (eventId === 'save_success') params.value = value;
-    if (appendConfiguredLogicalEventPart(logicalEventId, eventId, params)) {
-      completeLogicalLogEvent(logicalEventId);
-    }
+    appendConfiguredLogicalEventPart(logicalEventId, eventId, params);
   } catch (error) {
     Logger.log(`Не удалось записать результат сохранения: ${error.message}`);
   }
