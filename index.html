@@ -1088,13 +1088,8 @@
     return true;
   }
 
-  function logUserMessage(message, type = 'warning') {
-    const text = String(message || '').trim();
-    if (!text) return;
-    const prefix = type === 'error' ? 'Ошибка' : 'Предупреждение';
-    const normalized = text.replace(/^(Ошибка|Предупреждение):\s*/i, '');
-    logUserActionClient(`${prefix}: ${normalized}`);
-  }
+  // UI messages are journaled only by their configured, concrete user event.
+  function logUserMessage(_message, _type = 'warning') {}
 
   function setErrorMessage(message, type = 'warning') {
     const text = String(message || '').trim();
@@ -1554,14 +1549,6 @@
     google.script.run.checkLogin(loginVal, passwordForServer, { silent: true });
   }
 
-  function logUserActionClient(status) {
-    google.script.run.logUserAction(LOG_SESSION_ID, status);
-  }
-
-  function logLoginButtonClick() {
-    google.script.run.logLoginButtonClick(LOG_SESSION_ID);
-  }
-
   function createLogicalEventClient(eventId, params = {}) {
     return new Promise(resolve => {
       google.script.run
@@ -1623,26 +1610,11 @@
     return String(columnName || '').replace(/\s*\([^()]+\)$/, '').trim() || String(columnName || '');
   }
 
-  function logSectionVisitClient(section) {
-    google.script.run.logSectionVisit(LOG_SESSION_ID, section);
-  }
 
-  function logFillFormClickClient() {
-    google.script.run.logFillFormClick(LOG_SESSION_ID);
-  }
+  function logFillFormClickClient() { return enqueueLogicalEventClient('attendance_form_click'); }
 
   async function logInitialPageOpen() {
-    const loginVal = dom.login.value.trim();
-    const passwordForServer = toServerDate(formatDateInput(dom.password.value, { finalizeYear: true }));
-    const snilsFormatted = formatSnilsInput(dom.snils.value);
-    const clientInfo = await getClientInfo();
-
-    google.script.run.logPageOpen({
-      login: loginVal,
-      password: passwordForServer,
-      snils: snilsFormatted,
-      clientInfo
-    }, LOG_SESSION_ID);
+    await enqueueLogicalEventClient('page_open');
   }
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -1937,7 +1909,7 @@
           form.remove();
           return;
         }
-        void enqueueLogicalEventClient('file_selected', { fileName: fileInput.files[0].name });
+        void enqueueLogicalEventClient('file_selected', { fileName: fileInput.files[0].name }).then(fileEventId => { form.dataset.logicalEventId = fileEventId; });
         if (!currentDocsRow.attachmentUploads) currentDocsRow.attachmentUploads = {};
         currentDocsRow.attachmentUploads[colIndex] = true;
         const cell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
@@ -1949,7 +1921,7 @@
             if (currentDocsRow.fileStates) currentDocsRow.fileStates[colIndex] = (response && response.fileState) || { hasFile: true };
             const resultCell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
             if (resultCell) renderCellDisplay(resultCell, colIndex, currentDocsRow.serverRow[colIndex] ?? '');
-            logUserActionClient(`Файл загружен: ${getLogFieldName(columnName)}`);
+            void appendAndCompleteLogicalEventClient(form.dataset.logicalEventId, 'file_upload_success', { field: getLogFieldName(columnName) });
             showToast(`Файл «${(response && response.fileName) || 'документ'}» загружен.`);
           })
           .withFailureHandler(error => {
@@ -1958,7 +1930,7 @@
             const resultCell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
             if (resultCell) renderCellDisplay(resultCell, colIndex, currentDocsRow.serverRow[colIndex] ?? '');
             const message = error && error.message ? error.message : 'Не удалось загрузить файл.';
-            logUserActionClient(`Ошибка загрузки файла: ${getLogFieldName(columnName)}`);
+            void appendAndCompleteLogicalEventClient(form.dataset.logicalEventId, 'file_upload_error', { field: getLogFieldName(columnName) });
             showToast(`Ошибка: ${message}`, 'error');
           })
           .uploadDocumentAttachment(form);
@@ -3672,7 +3644,7 @@
 
     localStorage.setItem(ATTENDANCE_DRAFT_DELETE_AFTER_KEY, String(Date.now() + ATTENDANCE_DRAFT_TTL_MS));
 
-    logFillFormClickClient();
+    void logFillFormClickClient().then(eventId => appendAndCompleteLogicalEventClient(eventId, 'attendance_form_open'));
 
     const prefillValue = encodeURIComponent(values.join('\n'));
     const url = `${CLIENT_CONFIG.urls.attendanceForm}=${prefillValue}`;
