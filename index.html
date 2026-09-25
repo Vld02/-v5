@@ -1154,7 +1154,14 @@
   function switchTab(key) {
     if (!tabPanels[key]) return;
     const currentTab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
-    if (currentTab !== key) logSectionVisitClient(key);
+    if (currentTab !== key) {
+      const sectionEventId = {
+        docs: 'section_docs',
+        attendance: 'section_attendance',
+        gear: 'section_gear'
+      }[key];
+      if (sectionEventId) void enqueueLogicalEventClient(sectionEventId);
+    }
     topbarTabs.forEach(btn => {
       const isActive = btn.dataset.tab === key;
       btn.classList.toggle('active', isActive);
@@ -1431,8 +1438,8 @@
     dom.snils.value = snilsFormatted;
     saveAuthInputs(loginVal, dateInput.value, snilsFormatted);
 
+    const logicalEventId = await enqueueLogicalEventClient('login_click');
     const clientInfo = await getClientInfo();
-    logLoginButtonClick();
 
     if (!loginVal || !passwordForServer) {
       setErrorMessage('Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.');
@@ -1464,17 +1471,16 @@
         showDocsResult(response);
       })
       .withFailureHandler(handleDocsRequestFailure)
-      .checkLogin(loginVal, passwordForServer, clientInfo, snilsFormatted, LOG_SESSION_ID);
+      .checkLogin(loginVal, passwordForServer, clientInfo, snilsFormatted, LOG_SESSION_ID, logicalEventId);
   }
 
   async function verifySnilsDocs() {
     dom.error.textContent = '';
+    const logicalEventId = await enqueueLogicalEventClient('login_click');
 
     if (!authState.login || !authState.password) {
       const loginVal = dom.login.value.trim();
       const passwordForServer = toServerDate(formatDateInput(dom.password.value, { finalizeYear: true }));
-      logLoginButtonClick();
-
       if (!loginVal || !passwordForServer) {
         setErrorMessage('Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.');
         return;
@@ -1514,7 +1520,7 @@
         showDocsResult(response);
       })
       .withFailureHandler(handleDocsRequestFailure)
-      .verifySnils(authState.login, authState.password, snilsFormatted, clientInfo, LOG_SESSION_ID);
+      .verifySnils(authState.login, authState.password, snilsFormatted, clientInfo, LOG_SESSION_ID, logicalEventId);
   }
 
   async function getClientInfo() {
@@ -1554,6 +1560,24 @@
 
   function logLoginButtonClick() {
     google.script.run.logLoginButtonClick(LOG_SESSION_ID);
+  }
+
+  function createLogicalEventClient(eventId, params = {}) {
+    return new Promise(resolve => {
+      google.script.run
+        .withSuccessHandler(logicalEventId => resolve(String(logicalEventId || '')))
+        .withFailureHandler(() => resolve(''))
+        .createConfiguredLogicalEvent(LOG_SESSION_ID, eventId, params);
+    });
+  }
+
+  // Последовательность сохраняет порядок самостоятельных действий в журнале,
+  // не блокируя сам интерфейс ожиданием записи в Google Sheets.
+  let logicalEventCreationQueue = Promise.resolve();
+  function enqueueLogicalEventClient(eventId, params = {}) {
+    const queuedEvent = logicalEventCreationQueue.then(() => createLogicalEventClient(eventId, params));
+    logicalEventCreationQueue = queuedEvent.catch(() => '');
+    return queuedEvent;
   }
 
   function getLogFieldName(columnName) {
@@ -1791,6 +1815,7 @@
 
   function openAttachmentFile(colIndex) {
     const columnName = currentDocsRow.header[colIndex];
+    void enqueueLogicalEventClient('file_open', { field: getLogFieldName(columnName) });
     const openedWindow = window.open('', '_blank');
     if (!openedWindow) {
       showToast('Браузер заблокировал открытие файла. Разрешите всплывающие окна для сайта.', 'error');
@@ -1805,7 +1830,6 @@
           for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
           const objectUrl = URL.createObjectURL(new Blob([bytes], { type: file.mimeType || 'application/octet-stream' }));
           openedWindow.location.replace(objectUrl);
-          logUserActionClient(`Открыл файл: ${getLogFieldName(columnName)}`);
           setTimeout(() => URL.revokeObjectURL(objectUrl), UI_TIMINGS.attachmentObjectUrlLifetimeMs);
         } catch (error) {
           openedWindow.close();
@@ -1819,17 +1843,19 @@
       .getDocumentAttachmentContent(dom.login.value.trim(), toServerDate(dom.password.value), dom.snils.value.trim(), columnName);
   }
 
-  function showAttachmentReplacementDialog(onConfirm) {
+  function showAttachmentReplacementDialog(columnName, onConfirm) {
     const backdrop = document.createElement('div');
     backdrop.className = 'attachment-confirm-backdrop';
     backdrop.innerHTML = `<section class="attachment-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="attachmentConfirmTitle"><h2 id="attachmentConfirmTitle">Заменить прикреплённый файл?</h2><p>При загрузке нового файла предыдущий будет перемещён в корзину.</p><div class="attachment-confirm-actions"><button type="button" data-action="cancel">Отмена</button><button type="button" class="attachment-confirm-primary" data-action="confirm">Продолжить</button></div></section>`;
     const close = () => backdrop.remove();
     backdrop.addEventListener('click', event => {
       if (event.target === backdrop || event.target.closest('[data-action="cancel"]')) {
+        void enqueueLogicalEventClient('file_replace_cancel', { field: getLogFieldName(columnName) });
         close();
         return;
       }
       if (event.target.closest('[data-action="confirm"]')) {
+        void enqueueLogicalEventClient('file_replace_continue', { field: getLogFieldName(columnName) });
         close();
         // Нажатие этой кнопки — пользовательский жест, поэтому браузер разрешит
         // сразу открыть системный выбор файла даже после долгого ожидания.
@@ -1844,7 +1870,7 @@
     const columnName = currentDocsRow.header[colIndex];
     if (!columnName) return;
 
-    logUserActionClient(`Нажал: Прикрепить файл — ${getLogFieldName(columnName)}`);
+    void enqueueLogicalEventClient('file_attach_click', { field: getLogFieldName(columnName) });
     const openFileSelector = () => {
       const form = document.createElement('form');
       form.style.display = 'none';
@@ -1871,6 +1897,7 @@
           form.remove();
           return;
         }
+        void enqueueLogicalEventClient('file_selected', { fileName: fileInput.files[0].name });
         if (!currentDocsRow.attachmentUploads) currentDocsRow.attachmentUploads = {};
         currentDocsRow.attachmentUploads[colIndex] = true;
         const cell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
@@ -1901,7 +1928,7 @@
 
     const fileState = currentDocsRow.fileStates && currentDocsRow.fileStates[colIndex];
     if (fileState && fileState.hasFile) {
-      showAttachmentReplacementDialog(openFileSelector);
+      showAttachmentReplacementDialog(columnName, openFileSelector);
     } else {
       openFileSelector();
     }
@@ -1958,7 +1985,7 @@
     if (!rule.editable) return;
     if (mode === 'edit') {
       const columnName = currentDocsRow.header[colIndex];
-      logUserActionClient(`Нажал: Редактировать — ${getLogFieldName(columnName)}`);
+      void enqueueLogicalEventClient('edit_click', { field: getLogFieldName(columnName) });
       cell.classList.remove('is-actions-active');
       lockCellGeometryForEdit(cell);
       const serverValue = String(currentDocsRow.serverRow[colIndex] ?? '');
@@ -2075,7 +2102,7 @@
       return;
     }
     if (mode === 'cancel') {
-      logUserActionClient(`Нажал: Отмена — ${getLogFieldName(currentDocsRow.header[colIndex])}`);
+      void enqueueLogicalEventClient('cancel_click', { field: getLogFieldName(currentDocsRow.header[colIndex]) });
       const draftValue = cell.querySelector('input')?.value ?? cell.dataset.originalValue ?? '';
       const existing = cell.querySelector('.cell-suggest-list');
       if (existing) existing.remove();
@@ -2092,6 +2119,7 @@
     const identityChanged = Boolean(rule.isIdentityField && saveValue !== oldValue);
     if (!isValidFieldValue(saveValue, rule)) return;
     if (identityChanged && !confirm('Вы изменяете данные, используемые для идентификации пользователя.\n\nПосле успешного сохранения следующие запросы будут использовать новое значение.\n\nПродолжить?')) return;
+    void enqueueLogicalEventClient('save_click', { field: getLogFieldName(currentDocsRow.header[colIndex]) });
     btn.disabled = true;
     const cancelBtn = cell.querySelector('.cell-edit-btn[data-mode="cancel"]');
     if (cancelBtn) cancelBtn.disabled = true;
