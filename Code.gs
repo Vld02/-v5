@@ -315,7 +315,8 @@ function formatLogCellValue(col, value) {
 function appendPlainLogRow(sheet, values) {
   const rowIndex = sheet.getLastRow() + 1;
   const range = sheet.getRange(rowIndex, 1, 1, LOG_COLUMNS.length);
-  range.setNumberFormat('@').setValues([values]).setWrap(true);
+  const rowValues = values.concat(Array(Math.max(0, LOG_COLUMNS.length - values.length)).fill(''));
+  range.setNumberFormat('@').setValues([rowValues.slice(0, LOG_COLUMNS.length)]).setWrap(true);
 }
 
 /**
@@ -457,8 +458,20 @@ function logUserAction(sessionId, status) {
   logSessionEvent(sessionId, status);
 }
 
-function logLoginButtonClick(sessionId) {
-  logSessionEvent(sessionId, 'Нажал: Войти');
+/**
+ * Первый подключённый сценарий нового журнала: самостоятельное нажатие «Войти».
+ * Его внутренний ID не передаётся в браузер и не виден в таблице.
+ */
+function logLoginButtonClick({ sessionId = '', login = '', password = '', snils = '', clientInfo = {} } = {}) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(LOG_CONFIG.lockWaitMs)) return;
+  try {
+    const event = createLogicalLogEvent_(sessionId, { login, password, snils, clientInfo });
+    writeLogicalLogAction_(event.id, USER_LOG_EVENTS.login_click.template);
+    finishLogicalLogEvent_(sessionId, event.id);
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function logSectionVisit(sessionId, section) {

