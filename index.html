@@ -877,7 +877,7 @@
     return editConfigPromise;
   }
 
-  let currentDocsRow = { header: [], serverRow: [], colors: [], fileStates: [], attachmentUploads: {}, draftValues: {}, draftKey: '' };
+  let currentDocsRow = { header: [], serverRow: [], sourceRowIndex: null, colors: [], fileStates: [], attachmentUploads: {}, draftValues: {}, draftKey: '' };
   let documentDraftSaveTimer = null;
 
   loadEditConfig().catch(() => {});
@@ -1093,7 +1093,7 @@
     if (!text) return;
     const prefix = type === 'error' ? 'Ошибка' : 'Предупреждение';
     const normalized = text.replace(/^(Ошибка|Предупреждение):\s*/i, '');
-    logUserActionClient(`${prefix}: ${normalized}`);
+    logUserResultClient(`${prefix}: ${normalized}`);
   }
 
   function setErrorMessage(message, type = 'warning') {
@@ -1432,7 +1432,13 @@
     saveAuthInputs(loginVal, dateInput.value, snilsFormatted);
 
     const clientInfo = await getClientInfo();
-    logLoginButtonClick();
+    clientInfo.snilsVisible = dom.snilsWrap.style.display !== 'none';
+    await logLoginButtonClick({
+      login: loginVal,
+      password: passwordForServer,
+      snils: snilsFormatted,
+      clientInfo
+    });
 
     if (!loginVal || !passwordForServer) {
       setErrorMessage('Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.');
@@ -1440,8 +1446,6 @@
     }
 
     startAuthLoading('Аутентификация');
-
-    clientInfo.snilsVisible = dom.snilsWrap.style.display !== 'none';
 
     google.script.run
       .withSuccessHandler(response => {
@@ -1470,11 +1474,21 @@
   async function verifySnilsDocs() {
     dom.error.textContent = '';
 
-    if (!authState.login || !authState.password) {
-      const loginVal = dom.login.value.trim();
-      const passwordForServer = toServerDate(formatDateInput(dom.password.value, { finalizeYear: true }));
-      logLoginButtonClick();
+    const snilsFormatted = formatSnilsInput(dom.snils.value);
+    dom.snils.value = snilsFormatted;
+    const loginVal = authState.login || dom.login.value.trim();
+    const passwordForServer = authState.password
+      || toServerDate(formatDateInput(dom.password.value, { finalizeYear: true }));
+    const clientInfo = await getClientInfo();
+    clientInfo.snilsVisible = true;
+    await logLoginButtonClick({
+      login: loginVal,
+      password: passwordForServer,
+      snils: snilsFormatted,
+      clientInfo
+    });
 
+    if (!authState.login || !authState.password) {
       if (!loginVal || !passwordForServer) {
         setErrorMessage('Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.');
         return;
@@ -1483,17 +1497,12 @@
       authState.password = passwordForServer;
     }
 
-    const snilsFormatted = formatSnilsInput(dom.snils.value);
-    dom.snils.value = snilsFormatted;
-
     if (snilsFormatted.length !== 14) {
       setErrorMessage(snilsFormatted ? 'Неверный СНИЛС.' : 'Для входа введите СНИЛС.');
       return;
     }
 
     startAuthLoading('Проверка СНИЛС');
-    const clientInfo = await getClientInfo();
-    clientInfo.snilsVisible = true;
 
     google.script.run
       .withSuccessHandler(response => {
@@ -1548,12 +1557,65 @@
     google.script.run.checkLogin(loginVal, passwordForServer, { silent: true });
   }
 
-  function logUserActionClient(status) {
-    google.script.run.logUserAction(LOG_SESSION_ID, status);
+  // Все события журнала проходят через одну очередь.
+  // Это сохраняет порядок: действие -> локальное сохранение -> следующее действие.
+  let logQueue = Promise.resolve();
+
+  function enqueueLog(task) {
+    const run = logQueue.then(() => task());
+    logQueue = run.catch(() => {});
+    return run.catch(() => {});
   }
 
-  function logLoginButtonClick() {
-    google.script.run.logLoginButtonClick(LOG_SESSION_ID);
+  function logUserActionClient(action) {
+    const text = String(action || '').trim();
+    if (!text) return Promise.resolve();
+
+    return enqueueLog(() => new Promise(resolve => {
+      google.script.run
+        .withSuccessHandler(() => resolve())
+        .withFailureHandler(() => resolve())
+        .logUserAction(LOG_SESSION_ID, text);
+    }));
+  }
+
+  function logUserResultClient(result) {
+    const text = String(result || '').trim();
+    if (!text) return Promise.resolve();
+
+    return enqueueLog(() => new Promise(resolve => {
+      google.script.run
+        .withSuccessHandler(() => resolve())
+        .withFailureHandler(() => resolve())
+        .logSessionResult(LOG_SESSION_ID, text);
+    }));
+  }
+
+  function logLocalDataClient(localData) {
+    const text = String(localData || '').trim();
+    if (!text) return Promise.resolve();
+
+    return enqueueLog(() => new Promise(resolve => {
+      google.script.run
+        .withSuccessHandler(() => resolve())
+        .withFailureHandler(() => resolve())
+        .logLocalData(LOG_SESSION_ID, text);
+    }));
+  }
+
+  function logLoginButtonClick(payload = {}) {
+    return enqueueLog(() => new Promise(resolve => {
+      google.script.run
+        .withSuccessHandler(() => resolve())
+        .withFailureHandler(() => resolve())
+        .logLoginButtonClick({
+          login: payload.login || '',
+          password: payload.password || '',
+          snils: payload.snils || '',
+          clientInfo: payload.clientInfo || {},
+          sessionId: LOG_SESSION_ID
+        });
+    }));
   }
 
   function getLogFieldName(columnName) {
@@ -1561,11 +1623,16 @@
   }
 
   function logSectionVisitClient(section) {
-    google.script.run.logSectionVisit(LOG_SESSION_ID, section);
+    return enqueueLog(() => new Promise(resolve => {
+      google.script.run
+        .withSuccessHandler(() => resolve())
+        .withFailureHandler(() => resolve())
+        .logSectionVisit(LOG_SESSION_ID, section);
+    }));
   }
 
   function logFillFormClickClient() {
-    google.script.run.logFillFormClick(LOG_SESSION_ID);
+    return logUserActionClient('Нажал: Заполнить форму');
   }
 
   async function logInitialPageOpen() {
@@ -1574,12 +1641,17 @@
     const snilsFormatted = formatSnilsInput(dom.snils.value);
     const clientInfo = await getClientInfo();
 
-    google.script.run.logPageOpen({
-      login: loginVal,
-      password: passwordForServer,
-      snils: snilsFormatted,
-      clientInfo
-    }, LOG_SESSION_ID);
+    return enqueueLog(() => new Promise(resolve => {
+      google.script.run
+        .withSuccessHandler(() => resolve())
+        .withFailureHandler(() => resolve())
+        .logPageOpen({
+          login: loginVal,
+          password: passwordForServer,
+          snils: snilsFormatted,
+          clientInfo
+        }, LOG_SESSION_ID);
+    }));
   }
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -1633,6 +1705,7 @@
     currentDocsRow = {
       header: [...header],
       serverRow: [...serverRow],
+      sourceRowIndex: response.sourceRowIndex || null,
       colors: [...colors],
       fileStates: [...(response.fileStates || [])],
       attachmentUploads: {},
@@ -1882,7 +1955,7 @@
             if (currentDocsRow.fileStates) currentDocsRow.fileStates[colIndex] = (response && response.fileState) || { hasFile: true };
             const resultCell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
             if (resultCell) renderCellDisplay(resultCell, colIndex, currentDocsRow.serverRow[colIndex] ?? '');
-            logUserActionClient(`Файл загружен: ${getLogFieldName(columnName)}`);
+            logUserResultClient(`Файл загружен: ${getLogFieldName(columnName)}`);
             showToast(`Файл «${(response && response.fileName) || 'документ'}» загружен.`);
           })
           .withFailureHandler(error => {
@@ -1891,7 +1964,7 @@
             const resultCell = document.querySelector(`.item-value[data-col-index="${colIndex}"]`);
             if (resultCell) renderCellDisplay(resultCell, colIndex, currentDocsRow.serverRow[colIndex] ?? '');
             const message = error && error.message ? error.message : 'Не удалось загрузить файл.';
-            logUserActionClient(`Ошибка загрузки файла: ${getLogFieldName(columnName)}`);
+            logUserResultClient(`Ошибка загрузки файла: ${getLogFieldName(columnName)}`);
             showToast(`Ошибка: ${message}`, 'error');
           })
           .uploadDocumentAttachment(form);
@@ -1970,6 +2043,8 @@
       cell.dataset.originalValue = serverValue;
       cell.innerHTML = `<div class="cell-edit-shell"><div class="cell-editor"><div class="cell-edit-inline"><input class="cell-value-input" data-col-index="${colIndex}" value="${escapeHtmlAttr(value)}" /></div></div>${renderCellEditActions(colIndex)}</div>`;
       const input = cell.querySelector('input');
+      const valueBeforeEdit = input.value;
+      let localDraftSaved = false;
       const suggestConfig = rule.special === 'suggest' ? rule.suggestions : null;
       let suggestionOptions = [];
       let activeSuggestionIndex = -1;
@@ -1992,7 +2067,6 @@
           opt.addEventListener('mousedown', event => {
             event.preventDefault();
             input.value = item;
-            setDocumentDraftValue(colIndex, input.value);
             validate();
             dropSuggestionList();
             input.focus();
@@ -2008,7 +2082,6 @@
       if (rule.special === 'date') input.addEventListener('blur', function() {
         const formatted = formatDateInput(input.value, { finalizeYear: true });
         if (formatted !== input.value) input.value = formatted;
-        setDocumentDraftValue(colIndex, input.value);
         validate();
       });
       input.focus();
@@ -2024,7 +2097,6 @@
       input.addEventListener('input', () => {
         const prepared = applyInputSpecial(input.value, rule);
         if (prepared !== input.value) input.value = prepared;
-        setDocumentDraftValue(colIndex, input.value);
         validate();
         renderSuggestionList();
       });
@@ -2061,7 +2133,23 @@
           saveBtn.click();
         }, 0);
       });
-      input.addEventListener('blur', () => setTimeout(dropSuggestionList, UI_TIMINGS.suggestionBlurDelayMs));
+      const saveLocalDraftAfterEdit = () => {
+        if (!localDraftSaved && input.value !== valueBeforeEdit) {
+          localDraftSaved = true;
+          setDocumentDraftValue(colIndex, input.value);
+          if (documentDraftSaveTimer) {
+            clearTimeout(documentDraftSaveTimer);
+            documentDraftSaveTimer = null;
+          }
+          writeCurrentDocumentDraft();
+          logLocalDataClient(`Локально сохранено: ${getLogFieldName(columnName)} → ${input.value}`);
+        }
+      };
+      input._saveLocalDraftAfterEdit = saveLocalDraftAfterEdit;
+      input.addEventListener('blur', () => {
+        saveLocalDraftAfterEdit();
+        setTimeout(dropSuggestionList, UI_TIMINGS.suggestionBlurDelayMs);
+      });
       validate();
       if (suggestConfig) {
         google.script.run
@@ -2076,7 +2164,9 @@
     }
     if (mode === 'cancel') {
       logUserActionClient(`Нажал: Отмена — ${getLogFieldName(currentDocsRow.header[colIndex])}`);
-      const draftValue = cell.querySelector('input')?.value ?? cell.dataset.originalValue ?? '';
+      const editInput = cell.querySelector('input');
+      editInput?._saveLocalDraftAfterEdit?.();
+      const draftValue = editInput?.value ?? cell.dataset.originalValue ?? '';
       const existing = cell.querySelector('.cell-suggest-list');
       if (existing) existing.remove();
       delete cell.dataset.originalValue;
@@ -2109,7 +2199,7 @@
           updateCurrentIdentityAfterSave(currentDocsRow.header[colIndex], saveValue);
           moveCurrentDocumentDraftToCurrentIdentity(previousDraftKey);
         }
-        logUserActionClient(`Сохранено: ${getLogFieldName(currentDocsRow.header[colIndex])}`);
+        logUserResultClient(`Сохранено на сервере: ${getLogFieldName(currentDocsRow.header[colIndex])} → ${saveValue}`);
         showToast('Сохранено');
       })
       .withFailureHandler(error => {
@@ -2119,7 +2209,7 @@
         btn.classList.remove('is-saving');
         btn.setAttribute('aria-label', 'Сохранить');
         const message = error && error.message ? error.message : 'Не удалось сохранить изменения.';
-        logUserActionClient(`Ошибка сохранения: ${getLogFieldName(currentDocsRow.header[colIndex])}`);
+        logUserResultClient(`Ошибка сохранения: ${getLogFieldName(currentDocsRow.header[colIndex])}`);
         showToast(`Ошибка: ${message}`, 'error');
       })
       .updateResultCell(dom.login.value.trim(), dom.password.value.trim(), dom.snils.value.trim(), currentDocsRow.header[colIndex], saveValue);
