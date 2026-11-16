@@ -1873,13 +1873,49 @@
     }));
   }
 
-  window.addEventListener('DOMContentLoaded', () => {
-    // Однократно удаляем прежние одиночные значения: они сохранялись до
-    // ответа сервера и не являются подтверждёнными записями справочника.
-    localStorage.removeItem('savedLogin');
-    localStorage.removeItem('savedDate');
-    localStorage.removeItem('savedSnils');
+  function migrateLegacyAuthRecord() {
+    // Переносим существовавшую локальную запись в новый единый справочник,
+    // чтобы ранее сохранённые данные не пропали после обновления структуры.
+    const legacyFio = String(localStorage.getItem('savedLogin') || '').trim().replace(/\s+/g, ' ');
+    const legacyBirthDate = toServerDate(localStorage.getItem('savedDate') || '');
+    const legacySnilsValue = formatSnilsInput(localStorage.getItem('savedSnils') || '');
+    const legacySnils = legacySnilsValue.length === 14 ? legacySnilsValue : '';
 
+    if (!legacyFio || !legacyBirthDate) return;
+
+    const athletes = readKnownAthletes();
+    const normalizedFio = normalizeKnownAthleteName(legacyFio);
+    const existingIndex = athletes.findIndex(item =>
+      normalizeKnownAthleteName(item.fio) === normalizedFio &&
+      item.birthDate === legacyBirthDate
+    );
+
+    if (existingIndex >= 0) {
+      // Если запись уже есть, не затираем её СНИЛС пустым старым значением.
+      if (!athletes[existingIndex].snils && legacySnils) {
+        athletes[existingIndex].snils = legacySnils;
+      }
+    } else {
+      athletes.unshift({
+        fio: legacyFio,
+        birthDate: legacyBirthDate,
+        snils: legacySnils
+      });
+    }
+
+    try {
+      localStorage.setItem(DOCUMENT_ATHLETES_STORAGE_KEY, JSON.stringify(athletes.slice(0, 500)));
+      // Удаляем старые ключи только после успешной записи нового справочника.
+      localStorage.removeItem('savedLogin');
+      localStorage.removeItem('savedDate');
+      localStorage.removeItem('savedSnils');
+    } catch (_) {
+      // При ошибке записи старые значения остаются на месте для следующей попытки.
+    }
+  }
+
+  window.addEventListener('DOMContentLoaded', () => {
+    migrateLegacyAuthRecord();
     restoreLatestKnownAthlete();
     logInitialPageOpen();
   });
