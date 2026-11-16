@@ -1,4 +1,3 @@
-
 /**
  * Собирает публичную конфигурацию из Config-файлов для index.html.
  * @returns {string}
