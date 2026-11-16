@@ -560,6 +560,71 @@ function formatAuthPasswordValue_(value) {
   return String(value ?? '');
 }
 
+
+/**
+ * Проверяет право вошедшего пользователя получить полный локальный справочник.
+ * Список разрешённых ФИО остаётся только в серверной конфигурации.
+ * @param {string} fio ФИО из подтверждённой строки листа «Результат».
+ * @returns {boolean}
+ */
+function canLoadAthleteDirectory_(fio) {
+  const normalizedFio = normalizeLogin(fio);
+  if (!normalizedFio) return false;
+
+  const allowedFios = Array.isArray(CONFIG.AUTH.athleteDirectoryAccessFios)
+    ? CONFIG.AUTH.athleteDirectoryAccessFios
+    : [];
+
+  return allowedFios.some(allowedFio => normalizeLogin(allowedFio) === normalizedFio);
+}
+
+/**
+ * Возвращает только три поля, необходимые для автоподсказок.
+ * Другие столбцы листа «Результат» клиенту не передаются.
+ * @returns {Array<{fio:string,birthDate:string,snils:string}>}
+ */
+function getAthleteDirectoryForClient_() {
+  const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
+  if (!sheet) throw new Error('Лист с результатами не найден.');
+
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) return [];
+
+  const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+  const loginCol = header.indexOf(CONFIG.AUTH.loginHeader);
+  const birthDateCol = header.indexOf(CONFIG.AUTH.passwordHeader);
+  const snilsCol = header.indexOf(CONFIG.AUTH.snilsHeader);
+
+  if (loginCol < 0 || birthDateCol < 0 || snilsCol < 0) {
+    throw new Error('Не найдены все колонки ФИО, даты рождения и СНИЛС.');
+  }
+
+  const rowCount = lastRow - 1;
+  const fioValues = sheet.getRange(2, loginCol + 1, rowCount, 1).getValues();
+  const birthDateValues = sheet.getRange(2, birthDateCol + 1, rowCount, 1).getValues();
+  const snilsValues = sheet.getRange(2, snilsCol + 1, rowCount, 1).getValues();
+
+  const records = [];
+  const seen = new Set();
+
+  for (let i = 0; i < rowCount; i++) {
+    const fio = formatCellValue(fioValues[i][0]).trim();
+    const birthDate = formatAuthPasswordValue_(birthDateValues[i][0]).trim();
+    const snils = normalizeSnils(snilsValues[i][0]);
+
+    if (!fio || !birthDate) continue;
+
+    // checkLogin также выбирает первую строку для совпадающих ФИО и даты.
+    const key = normalizeLogin(fio) + '|' + birthDate;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    records.push({ fio, birthDate, snils });
+  }
+
+  return records;
+}
+
 /**
  * Собирает данные строки только по разрешенным колонкам.
  * @param {Array<*>} row Значения строки.
@@ -567,18 +632,19 @@ function formatAuthPasswordValue_(value) {
  * @param {string[]} backgrounds Цвета ячеек строки.
  * @param {number[]} allowedCols Индексы разрешенных колонок.
  */
-function prepareRowForClient(row, header, backgrounds, allowedCols, sourceRowIndex = null) {
+function prepareRowForClient(row, header, backgrounds, allowedCols, sourceRowIndex = null, options = {}) {
   const loginCol = header.indexOf(CONFIG.AUTH.loginHeader);
   const birthDateCol = header.indexOf(CONFIG.AUTH.passwordHeader);
   const snilsCol = header.indexOf(CONFIG.AUTH.snilsHeader);
+  const authIdentity = {
+    fio: loginCol >= 0 ? formatCellValue(row[loginCol]).trim() : '',
+    birthDate: birthDateCol >= 0 ? formatAuthPasswordValue_(row[birthDateCol]).trim() : '',
+    snils: snilsCol >= 0 ? normalizeSnils(row[snilsCol]) : ''
+  };
 
-  return {
+  const response = {
     sourceRowIndex,
-    authIdentity: {
-      fio: loginCol >= 0 ? formatCellValue(row[loginCol]).trim() : '',
-      birthDate: birthDateCol >= 0 ? formatAuthPasswordValue_(row[birthDateCol]).trim() : '',
-      snils: snilsCol >= 0 ? normalizeSnils(row[snilsCol]) : ''
-    },
+    authIdentity,
     header: allowedCols.map(i => header[i]),
     row: allowedCols.map(i => formatCellValue(row[i])),
     colors: allowedCols.map(i => backgrounds[i]),
@@ -591,6 +657,20 @@ function prepareRowForClient(row, header, backgrounds, allowedCols, sourceRowInd
         : null;
     })
   };
+
+  // Полный справочник отправляется только после активной успешной авторизации
+  // пользователя, чьё подтверждённое ФИО указано в конфигурации.
+  if (options.includeAthleteDirectory === true && canLoadAthleteDirectory_(authIdentity.fio)) {
+    try {
+      response.athleteDirectory = getAthleteDirectoryForClient_();
+    } catch (error) {
+      // Ошибка обновления справочника не должна отменять успешный вход.
+      Logger.log('Не удалось подготовить локальный справочник спортсменов: ' + error.message);
+      response.athleteDirectoryLoadFailed = true;
+    }
+  }
+
+  return response;
 }
 
 /**
@@ -670,7 +750,9 @@ function checkLogin(login, password, clientInfo = {}, snils = '', sessionId = ''
       const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
       logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Удачный вход' });
       logStage('Совпадение найдено, данные строки загружены', startedAt);
-      return prepareRowForClient(row, header, rowBackgrounds, allowedCols, rowIndex);
+      return prepareRowForClient(row, header, rowBackgrounds, allowedCols, rowIndex, {
+          includeAthleteDirectory: clientInfo.silent !== true
+        });
     }
   }
 
@@ -739,7 +821,9 @@ function verifySnils(login, password, snils, clientInfo = {}, sessionId = '') {
         const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
         const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
         logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Удачный вход без СНИЛС' });
-        return prepareRowForClient(row, header, rowBackgrounds, allowedCols, rowIndex);
+        return prepareRowForClient(row, header, rowBackgrounds, allowedCols, rowIndex, {
+          includeAthleteDirectory: clientInfo.silent !== true
+        });
       }
 
       if (rowSnils !== expectedSnils) {
@@ -752,7 +836,9 @@ function verifySnils(login, password, snils, clientInfo = {}, sessionId = '') {
       const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
       logAuthAttempt({ login, password, snils, clientInfo, sessionId, status: 'Удачный вход по СНИЛС' });
       logStage('СНИЛС подтвержден, данные строки загружены', startedAt);
-      return prepareRowForClient(row, header, rowBackgrounds, allowedCols, rowIndex);
+      return prepareRowForClient(row, header, rowBackgrounds, allowedCols, rowIndex, {
+          includeAthleteDirectory: clientInfo.silent !== true
+        });
     }
   }
 
