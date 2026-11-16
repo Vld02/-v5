@@ -89,9 +89,8 @@ const LOG_COLUMNS = LOG_CONFIG.COLUMNS;
 const GENERAL_CLIENT_CONFIG = Object.freeze({
   // Уникальные ключи для сохранения данных сайта в браузере:
   storageKeys: Object.freeze({
-    savedLogin: 'savedLogin',
-    savedDate: 'savedDate',
-    savedSnils: 'savedSnils',
+    // Единый локальный справочник подтверждённых записей для входа в «Документы».
+    documentAthletes: 'documentAthletesV1',
     isLoggedIn: 'isLoggedIn',
     activeTab: 'activeTab'
   }),
