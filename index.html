@@ -694,6 +694,24 @@
   .attachment-confirm-actions { display:flex; justify-content:flex-end; gap:var(--space-sm); margin-top:1rem; }
   .attachment-confirm-actions button { padding:0.5rem 0.85rem; border:0.05rem solid var(--border); border-radius:var(--radius-sm); background:#fff; color:inherit; font:inherit; cursor:pointer; }
   .attachment-confirm-actions .attachment-confirm-primary { border-color:#137333; background:#137333; color:#fff; }
+
+  .athlete-autocomplete { position:relative; }
+  .athlete-suggestions {
+    position:absolute; top:calc(100% + 0.2rem); left:0; right:0; z-index:1200;
+    max-height:17rem; overflow:auto; border:1px solid var(--border);
+    border-radius:var(--radius-md); background:#fff; color:var(--text);
+    box-shadow:0 0.35rem 1rem rgba(0,0,0,.18);
+  }
+  .athlete-suggestions[hidden] { display:none !important; }
+  .athlete-suggestion {
+    display:flex; flex-direction:column; align-items:flex-start; gap:0.12rem;
+    width:100%; padding:0.65rem 0.8rem; border:0; border-bottom:1px solid #ececec;
+    background:#fff; color:inherit; text-align:left; font:inherit; cursor:pointer;
+  }
+  .athlete-suggestion:last-child { border-bottom:0; }
+  .athlete-suggestion:hover, .athlete-suggestion.is-active { background:#eef5ff; }
+  .athlete-suggestion-name { font-weight:600; }
+  .athlete-suggestion-meta { color:#666; font-size:0.82em; }
 </style>
 </head>
 <body>
@@ -712,7 +730,10 @@
     <h2 class="section-heading"><?= APP_CONFIG.SECTION_NAMES.docs ?></h2>
 
     <label>ФИО занимающегося:</label>
-    <input id="login" type="text" placeholder="Фамилия Имя Отчество" />
+    <div class="athlete-autocomplete">
+      <input id="login" type="text" placeholder="Фамилия Имя Отчество" autocomplete="off" aria-autocomplete="list" aria-controls="athleteSuggestions" aria-expanded="false" />
+      <div id="athleteSuggestions" class="athlete-suggestions" role="listbox" hidden></div>
+    </div>
 
     <label>Дата рождения:</label>
     <input id="password" name="birthDateText" type="text" inputmode="numeric" maxlength="10" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="ДД.ММ.ГГГГ" />
@@ -809,6 +830,7 @@
     password: document.getElementById('password'),
     snils: document.getElementById('snils'),
     snilsWrap: document.getElementById('snilsWrap'),
+    athleteSuggestions: document.getElementById('athleteSuggestions'),
     toastContainer: document.getElementById('toastContainer')
   };
 
@@ -832,6 +854,7 @@
   const SILENT_SYNC_INTERVAL_MS = CLIENT_CONFIG.timings.silentSyncIntervalMs;
   const TRAINING_HISTORY_STORAGE_KEY = CLIENT_CONFIG.storageKeys.trainingHistory;
   const DOCUMENT_EDIT_DRAFTS_STORAGE_KEY = CLIENT_CONFIG.storageKeys.documentEditDrafts;
+  const KNOWN_ATHLETES_STORAGE_KEY = CLIENT_CONFIG.storageKeys.knownAthletes;
   const DOCUMENT_DRAFT_SAVE_DEBOUNCE_MS = CLIENT_CONFIG.timings.documentDraftSaveDebounceMs;
   const TRAINING_SHEET_URL = CLIENT_CONFIG.urls.trainingSheet;
 
@@ -1226,21 +1249,203 @@
     authState.login = login;
     authState.password = password;
 
-    const savedSnils = localStorage.getItem(AUTH_STORAGE_KEYS.savedSnils);
-    if (savedSnils && !dom.snils.value.trim()) {
-      dom.snils.value = formatSnilsInput(savedSnils);
-    }
-
+    // Не подставляем СНИЛС от другого спортсмена из прежней одиночной памяти.
+    // Значение может остаться только если оно было выбрано вместе с этим ФИО.
     dom.snilsWrap.style.display = 'block';
     dom.snils.focus();
     stopAuthLoading();
   }
 
-  function saveAuthInputs(loginVal, dateVal, snilsVal) {
-    localStorage.setItem(AUTH_STORAGE_KEYS.savedLogin, loginVal);
-    localStorage.setItem(AUTH_STORAGE_KEYS.savedDate, dateVal);
-    localStorage.setItem(AUTH_STORAGE_KEYS.savedSnils, snilsVal);
+  function normalizeKnownAthleteName(value) {
+    return String(value || '')
+      .toLocaleLowerCase('ru-RU')
+      .replace(/ё/g, 'е')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
+
+  function readKnownAthletes() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(KNOWN_ATHLETES_STORAGE_KEY) || '[]');
+      if (!Array.isArray(parsed)) return [];
+
+      return parsed.filter(item => {
+        if (!item || typeof item.fio !== 'string' || typeof item.birthDate !== 'string') return false;
+        return Boolean(item.fio.trim() && toServerDate(item.birthDate));
+      }).map(item => ({
+        fio: item.fio.trim().replace(/\s+/g, ' '),
+        birthDate: toServerDate(item.birthDate),
+        snils: formatSnilsInput(item.snils || '').length === 14
+          ? formatSnilsInput(item.snils || '')
+          : ''
+      }));
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function saveAuthInputs(identity) {
+    if (!identity) return;
+
+    const fio = String(identity.fio || '').trim().replace(/\s+/g, ' ');
+    const birthDate = toServerDate(identity.birthDate);
+    const formattedSnils = formatSnilsInput(identity.snils || '');
+    const snils = formattedSnils.length === 14 ? formattedSnils : '';
+
+    // В локальную память попадают только значения из строки Google Таблицы,
+    // которую сервер уже успешно сопоставил и вернул после авторизации.
+    if (!fio || !birthDate) return;
+
+    const athleteKey = `${normalizeKnownAthleteName(fio)}\u001f${birthDate}`;
+    const athletes = readKnownAthletes().filter(item =>
+      `${normalizeKnownAthleteName(item.fio)}\u001f${item.birthDate}` !== athleteKey
+    );
+    athletes.unshift({ fio, birthDate, snils });
+
+    try {
+      localStorage.setItem(KNOWN_ATHLETES_STORAGE_KEY, JSON.stringify(athletes.slice(0, 500)));
+      // Сохраняем привычное поведение: при следующем открытии показываем
+      // последнюю успешно подтверждённую запись, а не последнюю попытку входа.
+      localStorage.setItem(AUTH_STORAGE_KEYS.savedLogin, fio);
+      localStorage.setItem(AUTH_STORAGE_KEYS.savedDate, birthDate);
+      localStorage.setItem(AUTH_STORAGE_KEYS.savedSnils, snils);
+    } catch (_) {
+      // Ошибка локального хранилища не должна отменять успешную авторизацию.
+    }
+  }
+
+  let athleteSuggestionCloseTimer = null;
+  let athleteSuggestionActiveIndex = -1;
+  let athleteSuggestionMatches = [];
+
+  function hideAthleteSuggestions() {
+    if (athleteSuggestionCloseTimer) {
+      clearTimeout(athleteSuggestionCloseTimer);
+      athleteSuggestionCloseTimer = null;
+    }
+    dom.athleteSuggestions.hidden = true;
+    dom.login.setAttribute('aria-expanded', 'false');
+    athleteSuggestionActiveIndex = -1;
+  }
+
+  function chooseKnownAthlete(athlete) {
+    if (!athlete) return;
+
+    hideAthleteSuggestions();
+    authState.awaitingSnils = false;
+    authState.login = '';
+    authState.password = '';
+    dom.snilsWrap.style.display = 'none';
+
+    dom.login.value = athlete.fio;
+    dom.password.value = formatDateInput(athlete.birthDate);
+    dom.snils.value = athlete.snils;
+  }
+
+  function renderKnownAthleteSuggestions() {
+    const query = normalizeKnownAthleteName(dom.login.value);
+    const container = dom.athleteSuggestions;
+    container.replaceChildren();
+    athleteSuggestionMatches = [];
+    athleteSuggestionActiveIndex = -1;
+
+    if (query.length < 2) {
+      hideAthleteSuggestions();
+      return;
+    }
+
+    athleteSuggestionMatches = readKnownAthletes()
+      .filter(item => normalizeKnownAthleteName(item.fio).includes(query))
+      .slice(0, 8);
+
+    if (!athleteSuggestionMatches.length) {
+      hideAthleteSuggestions();
+      return;
+    }
+
+    athleteSuggestionMatches.forEach((athlete, index) => {
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.className = 'athlete-suggestion';
+      option.setAttribute('role', 'option');
+      option.setAttribute('aria-selected', 'false');
+
+      const name = document.createElement('span');
+      name.className = 'athlete-suggestion-name';
+      name.textContent = athlete.fio;
+
+      const meta = document.createElement('span');
+      meta.className = 'athlete-suggestion-meta';
+      meta.textContent = athlete.birthDate;
+
+      option.append(name, meta);
+      option.addEventListener('mouseenter', () => setActiveAthleteSuggestion(index));
+      option.addEventListener('click', () => chooseKnownAthlete(athlete));
+      container.appendChild(option);
+    });
+
+    container.hidden = false;
+    dom.login.setAttribute('aria-expanded', 'true');
+  }
+
+  function setActiveAthleteSuggestion(index) {
+    if (!athleteSuggestionMatches.length) return;
+
+    athleteSuggestionActiveIndex = (index + athleteSuggestionMatches.length) % athleteSuggestionMatches.length;
+    [...dom.athleteSuggestions.querySelectorAll('.athlete-suggestion')].forEach((option, optionIndex) => {
+      const active = optionIndex === athleteSuggestionActiveIndex;
+      option.classList.toggle('is-active', active);
+      option.setAttribute('aria-selected', String(active));
+      if (active) option.scrollIntoView({ block: 'nearest' });
+    });
+  }
+
+  function restoreLatestKnownAthlete() {
+    const latest = readKnownAthletes()[0];
+    if (!latest) return;
+
+    dom.login.value = latest.fio;
+    dom.password.value = formatDateInput(latest.birthDate);
+    dom.snils.value = latest.snils;
+  }
+
+  dom.login.addEventListener('input', () => {
+    // После ручного изменения ФИО нельзя оставлять дату/СНИЛС другого человека.
+    dom.password.value = '';
+    dom.snils.value = '';
+    authState.awaitingSnils = false;
+    authState.login = '';
+    authState.password = '';
+    dom.snilsWrap.style.display = 'none';
+    renderKnownAthleteSuggestions();
+  });
+
+  dom.login.addEventListener('focus', renderKnownAthleteSuggestions);
+  dom.login.addEventListener('blur', () => {
+    athleteSuggestionCloseTimer = setTimeout(hideAthleteSuggestions, UI_TIMINGS.suggestionBlurDelayMs);
+  });
+
+  dom.login.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      hideAthleteSuggestions();
+      return;
+    }
+
+    if (!dom.athleteSuggestions.hidden && event.key === 'ArrowDown') {
+      event.preventDefault();
+      setActiveAthleteSuggestion(athleteSuggestionActiveIndex + 1);
+    } else if (!dom.athleteSuggestions.hidden && event.key === 'ArrowUp') {
+      event.preventDefault();
+      setActiveAthleteSuggestion(
+        athleteSuggestionActiveIndex < 0
+          ? athleteSuggestionMatches.length - 1
+          : athleteSuggestionActiveIndex - 1
+      );
+    } else if (!dom.athleteSuggestions.hidden && event.key === 'Enter' && athleteSuggestionActiveIndex >= 0) {
+      event.preventDefault();
+      chooseKnownAthlete(athleteSuggestionMatches[athleteSuggestionActiveIndex]);
+    }
+  });
 
   function parseDateString(value) {
     if (!value) return null;
@@ -1429,7 +1634,6 @@
     const passwordForServer = toServerDate(dateInput.value);
     const snilsFormatted = formatSnilsInput(dom.snils.value);
     dom.snils.value = snilsFormatted;
-    saveAuthInputs(loginVal, dateInput.value, snilsFormatted);
 
     const clientInfo = await getClientInfo();
     clientInfo.snilsVisible = dom.snilsWrap.style.display !== 'none';
@@ -1463,6 +1667,7 @@
           return;
         }
 
+        saveAuthInputs(response.authIdentity);
         localStorage.setItem(AUTH_STORAGE_KEYS.isLoggedIn, '1');
         hideSnilsStep();
         showDocsResult(response);
@@ -1512,9 +1717,7 @@
           return;
         }
 
-        localStorage.setItem(AUTH_STORAGE_KEYS.savedLogin, authState.login);
-        localStorage.setItem(AUTH_STORAGE_KEYS.savedDate, dom.password.value);
-        localStorage.setItem(AUTH_STORAGE_KEYS.savedSnils, snilsFormatted);
+        saveAuthInputs(response.authIdentity);
         localStorage.setItem(AUTH_STORAGE_KEYS.isLoggedIn, '1');
         authState.awaitingSnils = false;
         authState.login = '';
@@ -1655,14 +1858,13 @@
   }
 
   window.addEventListener('DOMContentLoaded', () => {
-    const savedLogin = localStorage.getItem(AUTH_STORAGE_KEYS.savedLogin);
-    const savedDate = localStorage.getItem(AUTH_STORAGE_KEYS.savedDate);
-    const savedSnils = localStorage.getItem(AUTH_STORAGE_KEYS.savedSnils);
+    // Старые одиночные значения могли быть сохранены до проверки входа.
+    // Не переносим их в справочник и больше не используем как подтверждённые.
+    localStorage.removeItem(AUTH_STORAGE_KEYS.savedLogin);
+    localStorage.removeItem(AUTH_STORAGE_KEYS.savedDate);
+    localStorage.removeItem(AUTH_STORAGE_KEYS.savedSnils);
 
-    if (savedLogin) dom.login.value = savedLogin;
-    if (savedDate) dom.password.value = formatDateInput(savedDate);
-    if (savedSnils) dom.snils.value = formatSnilsInput(savedSnils);
-
+    restoreLatestKnownAthlete();
     logInitialPageOpen();
   });
 
