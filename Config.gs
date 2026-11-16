@@ -92,6 +92,7 @@ const GENERAL_CLIENT_CONFIG = Object.freeze({
     savedLogin: 'savedLogin',
     savedDate: 'savedDate',
     savedSnils: 'savedSnils',
+    documentAthletes: 'documentAthletesV1',
     isLoggedIn: 'isLoggedIn',
     activeTab: 'activeTab'
   }),
