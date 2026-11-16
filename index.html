@@ -227,6 +227,24 @@
   .cell-suggest-item:last-child { border-bottom:none; }
   .cell-suggest-item:hover, .cell-suggest-item.active { background:#eef5ff; }
 
+  .auth-login-field { position:relative; }
+  .auth-athlete-suggestions {
+    position:absolute; top:calc(100% - var(--space-sm)); left:0; right:0; z-index:90;
+    max-height:14rem; overflow-y:auto; background:#fff; border:0.05rem solid #c5c5c5;
+    border-radius:0 0 0.4rem 0.4rem; box-shadow:0 0.3rem 0.8rem rgba(0,0,0,0.12);
+  }
+  .auth-athlete-suggestions[hidden] { display:none; }
+  .auth-athlete-suggestion {
+    display:flex; align-items:center; justify-content:space-between; gap:var(--space-md);
+    width:100%; box-sizing:border-box; margin:0; padding:0.55rem 0.7rem;
+    border:0; border-bottom:0.05rem solid #f0f0f0; background:#fff; color:inherit;
+    text-align:left; cursor:pointer;
+  }
+  .auth-athlete-suggestion:last-child { border-bottom:none; }
+  .auth-athlete-suggestion:hover, .auth-athlete-suggestion.active { background:#eef5ff; }
+  .auth-athlete-suggestion-name { min-width:0; overflow-wrap:anywhere; }
+  .auth-athlete-suggestion-date { flex:0 0 auto; color:#666; font-size:0.88em; white-space:nowrap; }
+
   .auth-actions {
     display: flex;
     align-items: flex-end;
@@ -711,8 +729,11 @@
   <section id="tab-docs" class="tab-panel active">
     <h2 class="section-heading"><?= APP_CONFIG.SECTION_NAMES.docs ?></h2>
 
-    <label>ФИО занимающегося:</label>
-    <input id="login" type="text" placeholder="Фамилия Имя Отчество" />
+    <label for="login">ФИО занимающегося:</label>
+    <div class="auth-login-field">
+      <input id="login" type="text" placeholder="Фамилия Имя Отчество" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-autocomplete="list" aria-controls="athleteSuggestions" aria-expanded="false" />
+      <div id="athleteSuggestions" class="auth-athlete-suggestions" role="listbox" hidden></div>
+    </div>
 
     <label>Дата рождения:</label>
     <input id="password" name="birthDateText" type="text" inputmode="numeric" maxlength="10" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="ДД.ММ.ГГГГ" />
@@ -806,6 +827,7 @@
     error: document.getElementById('error'),
     loading: document.getElementById('loading'),
     login: document.getElementById('login'),
+    loginSuggestions: document.getElementById('athleteSuggestions'),
     password: document.getElementById('password'),
     snils: document.getElementById('snils'),
     snilsWrap: document.getElementById('snilsWrap'),
@@ -1214,6 +1236,148 @@
     return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 9)}-${digits.slice(9)}`;
   }
 
+
+  function normalizeAthleteSearchValue(value) {
+    return String(value || '').trim().toLocaleLowerCase('ru-RU').replace(/ё/g, 'е').replace(/\s+/g, ' ');
+  }
+
+  function readDocumentAthletes() {
+    try {
+      const raw = localStorage.getItem(AUTH_STORAGE_KEYS.documentAthletes);
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(parsed)) return [];
+      return parsed
+        .filter(item => item && typeof item.fio === 'string' && typeof item.birthDate === 'string')
+        .map(item => ({
+          fio: item.fio.trim(),
+          birthDate: toServerDate(item.birthDate) || item.birthDate.trim(),
+          snils: formatSnilsInput(item.snils || '')
+        }))
+        .filter(item => item.fio && item.birthDate);
+    } catch (_error) {
+      return [];
+    }
+  }
+
+  function saveConfirmedDocumentAthlete(identity) {
+    if (!identity || typeof identity !== 'object') return;
+    const fio = String(identity.fio || '').trim();
+    const birthDate = toServerDate(String(identity.birthDate || ''));
+    if (!fio || !birthDate) return;
+
+    const record = { fio, birthDate, snils: formatSnilsInput(identity.snils || '') };
+    const recordKey = normalizeAthleteSearchValue(record.fio) + '|' + record.birthDate;
+    const records = readDocumentAthletes().filter(item =>
+      normalizeAthleteSearchValue(item.fio) + '|' + item.birthDate !== recordKey
+    );
+    records.push(record);
+    try {
+      localStorage.setItem(AUTH_STORAGE_KEYS.documentAthletes, JSON.stringify(records));
+    } catch (error) {
+      console.warn('Не удалось сохранить локальный список спортсменов:', error);
+    }
+  }
+
+
+  function replaceDocumentAthleteDirectory(records) {
+    if (!Array.isArray(records)) return false;
+
+    const uniqueRecords = new Map();
+    records.forEach(item => {
+      if (!item || typeof item.fio !== 'string' || typeof item.birthDate !== 'string') return;
+      const fio = item.fio.trim();
+      const birthDate = toServerDate(item.birthDate) || item.birthDate.trim();
+      if (!fio || !birthDate) return;
+
+      const record = {
+        fio,
+        birthDate,
+        snils: formatSnilsInput(item.snils || '')
+      };
+      const key = normalizeAthleteSearchValue(record.fio) + '|' + record.birthDate;
+      uniqueRecords.set(key, record);
+    });
+
+    try {
+      localStorage.setItem(
+        AUTH_STORAGE_KEYS.documentAthletes,
+        JSON.stringify([...uniqueRecords.values()])
+      );
+      return true;
+    } catch (error) {
+      console.warn('Не удалось обновить локальный справочник спортсменов:', error);
+      return false;
+    }
+  }
+
+  function updateDocumentAthleteStoreFromAuthResponse(response) {
+    if (response && Array.isArray(response.athleteDirectory)) {
+      replaceDocumentAthleteDirectory(response.athleteDirectory);
+      return;
+    }
+    saveConfirmedDocumentAthlete(response && response.authIdentity);
+  }
+
+  let athleteSuggestionRecords = [];
+  let athleteSuggestionActiveIndex = -1;
+
+  function hideDocumentAthleteSuggestions() {
+    athleteSuggestionRecords = [];
+    athleteSuggestionActiveIndex = -1;
+    dom.loginSuggestions.innerHTML = '';
+    dom.loginSuggestions.hidden = true;
+    dom.login.setAttribute('aria-expanded', 'false');
+  }
+
+  function renderDocumentAthleteSuggestions() {
+    const query = normalizeAthleteSearchValue(dom.login.value);
+    if (query.length < 2) {
+      hideDocumentAthleteSuggestions();
+      return;
+    }
+    athleteSuggestionRecords = readDocumentAthletes()
+      .filter(item => normalizeAthleteSearchValue(item.fio).includes(query))
+      .slice(0, 10);
+    if (!athleteSuggestionRecords.length) {
+      hideDocumentAthleteSuggestions();
+      return;
+    }
+
+    athleteSuggestionActiveIndex = -1;
+    dom.loginSuggestions.innerHTML = athleteSuggestionRecords.map((item, index) =>
+      '<div class="auth-athlete-suggestion" role="option" aria-selected="false" data-athlete-index="' + index + '">' +
+        '<span class="auth-athlete-suggestion-name">' + escapeHtml(item.fio) + '</span>' +
+        '<span class="auth-athlete-suggestion-date">' + escapeHtml(item.birthDate) + '</span>' +
+      '</div>'
+    ).join('');
+    dom.loginSuggestions.hidden = false;
+    dom.login.setAttribute('aria-expanded', 'true');
+  }
+
+  function setActiveAthleteSuggestion(index) {
+    const options = [...dom.loginSuggestions.querySelectorAll('[data-athlete-index]')];
+    if (!options.length) return;
+    athleteSuggestionActiveIndex = Math.max(0, Math.min(index, options.length - 1));
+    options.forEach((option, optionIndex) => {
+      const active = optionIndex === athleteSuggestionActiveIndex;
+      option.classList.toggle('active', active);
+      option.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    options[athleteSuggestionActiveIndex].scrollIntoView({ block: 'nearest' });
+  }
+
+  function selectDocumentAthlete(index) {
+    const athlete = athleteSuggestionRecords[index];
+    if (!athlete) return;
+    dom.login.value = athlete.fio;
+    dom.password.value = formatDateInput(athlete.birthDate, { finalizeYear: true });
+    dom.snils.value = formatSnilsInput(athlete.snils);
+    hideDocumentAthleteSuggestions();
+    hideSnilsStep();
+    dom.error.textContent = '';
+    dom.password.focus();
+  }
+
   function hideSnilsStep() {
     authState.awaitingSnils = false;
     authState.login = '';
@@ -1225,11 +1389,6 @@
     authState.awaitingSnils = true;
     authState.login = login;
     authState.password = password;
-
-    const savedSnils = localStorage.getItem(AUTH_STORAGE_KEYS.savedSnils);
-    if (savedSnils && !dom.snils.value.trim()) {
-      dom.snils.value = formatSnilsInput(savedSnils);
-    }
 
     dom.snilsWrap.style.display = 'block';
     dom.snils.focus();
@@ -1420,6 +1579,11 @@
   }
 
   async function loginDocs() {
+    if (authState.awaitingSnils) {
+      await verifySnilsDocs();
+      return;
+    }
+
     dom.error.textContent = '';
     stopAuthLoading();
 
@@ -1463,6 +1627,10 @@
           return;
         }
 
+        updateDocumentAthleteStoreFromAuthResponse(response);
+        if (response && response.athleteDirectoryLoadFailed) {
+          setErrorMessage('Вход выполнен, но полный список спортсменов не удалось обновить.', 'warning');
+        }
         localStorage.setItem(AUTH_STORAGE_KEYS.isLoggedIn, '1');
         hideSnilsStep();
         showDocsResult(response);
@@ -1512,6 +1680,10 @@
           return;
         }
 
+        updateDocumentAthleteStoreFromAuthResponse(response);
+        if (response && response.athleteDirectoryLoadFailed) {
+          setErrorMessage('Вход выполнен, но полный список спортсменов не удалось обновить.', 'warning');
+        }
         localStorage.setItem(AUTH_STORAGE_KEYS.savedLogin, authState.login);
         localStorage.setItem(AUTH_STORAGE_KEYS.savedDate, dom.password.value);
         localStorage.setItem(AUTH_STORAGE_KEYS.savedSnils, snilsFormatted);
@@ -2238,15 +2410,53 @@
       .replace(/'/g, '&#039;');
   }
 
+  dom.login.addEventListener('focus', function() {
+    renderDocumentAthleteSuggestions();
+  });
+
   dom.login.addEventListener('input', function() {
     hideSnilsStep();
+    dom.password.value = '';
+    dom.snils.value = '';
+    dom.error.textContent = '';
+    renderDocumentAthleteSuggestions();
+  });
+
+  dom.login.addEventListener('blur', function() {
+    setTimeout(hideDocumentAthleteSuggestions, UI_TIMINGS.suggestionBlurDelayMs);
   });
 
   dom.login.addEventListener('keydown', function(e) {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (dom.loginSuggestions.hidden) renderDocumentAthleteSuggestions();
+      if (!athleteSuggestionRecords.length) return;
+      e.preventDefault();
+      const nextIndex = e.key === 'ArrowDown'
+        ? athleteSuggestionActiveIndex + 1
+        : (athleteSuggestionActiveIndex < 0 ? athleteSuggestionRecords.length - 1 : athleteSuggestionActiveIndex - 1);
+      setActiveAthleteSuggestion(nextIndex);
+      return;
+    }
+    if (e.key === 'Escape') {
+      hideDocumentAthleteSuggestions();
+      return;
+    }
     if (e.key === 'Enter') {
       e.preventDefault();
-      dom.password.focus();
+      if (!dom.loginSuggestions.hidden && athleteSuggestionActiveIndex >= 0) {
+        selectDocumentAthlete(athleteSuggestionActiveIndex);
+      } else {
+        hideDocumentAthleteSuggestions();
+        dom.password.focus();
+      }
     }
+  });
+
+  dom.loginSuggestions.addEventListener('pointerdown', function(e) {
+    const option = e.target.closest('[data-athlete-index]');
+    if (!option) return;
+    e.preventDefault();
+    selectDocumentAthlete(Number(option.dataset.athleteIndex));
   });
 
   dom.password.addEventListener('keydown', function(e) {
@@ -2299,6 +2509,7 @@
 
   dom.password.addEventListener('input', function(e) {
     hideSnilsStep();
+    dom.snils.value = '';
     const normalized = normalizeMaskedDateValue(e.target.value);
     if (normalized !== e.target.value) e.target.value = normalized;
   });
