@@ -28,7 +28,14 @@ const CONFIG = Object.freeze({
     // Столбец с датой рождения для входа:
     passwordHeader: 'Дата рождения (С)',
     // Столбец со СНИЛС:
-    snilsHeader: 'СНИЛС: номер (С)'
+    snilsHeader: 'СНИЛС: номер (С)',
+
+    // ФИО пользователей, которым разрешена загрузка полного справочника
+    // спортсменов в локальную память браузера. Сравнение не учитывает регистр
+    // и различие между «ё» и «е».
+    athleteDirectoryAccessFios: Object.freeze([
+      // 'Фамилия Имя Отчество'
+    ])
   })
 });
 
@@ -92,6 +99,7 @@ const GENERAL_CLIENT_CONFIG = Object.freeze({
     savedLogin: 'savedLogin',
     savedDate: 'savedDate',
     savedSnils: 'savedSnils',
+    documentAthletes: 'documentAthletesV1',
     isLoggedIn: 'isLoggedIn',
     activeTab: 'activeTab'
   }),
