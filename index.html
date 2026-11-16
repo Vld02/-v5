@@ -1278,6 +1278,46 @@
     }
   }
 
+
+  function replaceDocumentAthleteDirectory(records) {
+    if (!Array.isArray(records)) return false;
+
+    const uniqueRecords = new Map();
+    records.forEach(item => {
+      if (!item || typeof item.fio !== 'string' || typeof item.birthDate !== 'string') return;
+      const fio = item.fio.trim();
+      const birthDate = toServerDate(item.birthDate) || item.birthDate.trim();
+      if (!fio || !birthDate) return;
+
+      const record = {
+        fio,
+        birthDate,
+        snils: formatSnilsInput(item.snils || '')
+      };
+      const key = normalizeAthleteSearchValue(record.fio) + '|' + record.birthDate;
+      uniqueRecords.set(key, record);
+    });
+
+    try {
+      localStorage.setItem(
+        AUTH_STORAGE_KEYS.documentAthletes,
+        JSON.stringify([...uniqueRecords.values()])
+      );
+      return true;
+    } catch (error) {
+      console.warn('Не удалось обновить локальный справочник спортсменов:', error);
+      return false;
+    }
+  }
+
+  function updateDocumentAthleteStoreFromAuthResponse(response) {
+    if (response && Array.isArray(response.athleteDirectory)) {
+      replaceDocumentAthleteDirectory(response.athleteDirectory);
+      return;
+    }
+    saveConfirmedDocumentAthlete(response && response.authIdentity);
+  }
+
   let athleteSuggestionRecords = [];
   let athleteSuggestionActiveIndex = -1;
 
@@ -1587,7 +1627,10 @@
           return;
         }
 
-        saveConfirmedDocumentAthlete(response && response.authIdentity);
+        updateDocumentAthleteStoreFromAuthResponse(response);
+        if (response && response.athleteDirectoryLoadFailed) {
+          setErrorMessage('Вход выполнен, но полный список спортсменов не удалось обновить.', 'warning');
+        }
         localStorage.setItem(AUTH_STORAGE_KEYS.isLoggedIn, '1');
         hideSnilsStep();
         showDocsResult(response);
@@ -1637,7 +1680,10 @@
           return;
         }
 
-        saveConfirmedDocumentAthlete(response && response.authIdentity);
+        updateDocumentAthleteStoreFromAuthResponse(response);
+        if (response && response.athleteDirectoryLoadFailed) {
+          setErrorMessage('Вход выполнен, но полный список спортсменов не удалось обновить.', 'warning');
+        }
         localStorage.setItem(AUTH_STORAGE_KEYS.savedLogin, authState.login);
         localStorage.setItem(AUTH_STORAGE_KEYS.savedDate, dom.password.value);
         localStorage.setItem(AUTH_STORAGE_KEYS.savedSnils, snilsFormatted);
