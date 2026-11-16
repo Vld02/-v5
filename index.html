@@ -854,7 +854,7 @@
   const SILENT_SYNC_INTERVAL_MS = CLIENT_CONFIG.timings.silentSyncIntervalMs;
   const TRAINING_HISTORY_STORAGE_KEY = CLIENT_CONFIG.storageKeys.trainingHistory;
   const DOCUMENT_EDIT_DRAFTS_STORAGE_KEY = CLIENT_CONFIG.storageKeys.documentEditDrafts;
-  const KNOWN_ATHLETES_STORAGE_KEY = CLIENT_CONFIG.storageKeys.knownAthletes;
+  const DOCUMENT_ATHLETES_STORAGE_KEY = AUTH_STORAGE_KEYS.documentAthletes;
   const DOCUMENT_DRAFT_SAVE_DEBOUNCE_MS = CLIENT_CONFIG.timings.documentDraftSaveDebounceMs;
   const TRAINING_SHEET_URL = CLIENT_CONFIG.urls.trainingSheet;
 
@@ -1266,7 +1266,7 @@
 
   function readKnownAthletes() {
     try {
-      const parsed = JSON.parse(localStorage.getItem(KNOWN_ATHLETES_STORAGE_KEY) || '[]');
+      const parsed = JSON.parse(localStorage.getItem(DOCUMENT_ATHLETES_STORAGE_KEY) || '[]');
       if (!Array.isArray(parsed)) return [];
 
       return parsed.filter(item => {
@@ -1296,19 +1296,28 @@
     // которую сервер уже успешно сопоставил и вернул после авторизации.
     if (!fio || !birthDate) return;
 
-    const athleteKey = `${normalizeKnownAthleteName(fio)}\u001f${birthDate}`;
-    const athletes = readKnownAthletes().filter(item =>
-      `${normalizeKnownAthleteName(item.fio)}\u001f${item.birthDate}` !== athleteKey
+    const normalizedFio = normalizeKnownAthleteName(fio);
+    const athletes = readKnownAthletes();
+    const exactIndex = athletes.findIndex(item =>
+      normalizeKnownAthleteName(item.fio) === normalizedFio && item.birthDate === birthDate
     );
+    const sameNameIndexes = athletes
+      .map((item, index) => normalizeKnownAthleteName(item.fio) === normalizedFio ? index : -1)
+      .filter(index => index >= 0);
+
+    // Существующую запись обновляем. Если у этого ФИО ровно одна запись,
+    // её дата рождения также может быть исправлена после успешной авторизации.
+    // При нескольких людях с одинаковым ФИО разные даты остаются отдельными записями.
+    let replaceIndex = exactIndex;
+    if (replaceIndex < 0 && sameNameIndexes.length === 1) {
+      replaceIndex = sameNameIndexes[0];
+    }
+
+    if (replaceIndex >= 0) athletes.splice(replaceIndex, 1);
     athletes.unshift({ fio, birthDate, snils });
 
     try {
-      localStorage.setItem(KNOWN_ATHLETES_STORAGE_KEY, JSON.stringify(athletes.slice(0, 500)));
-      // Сохраняем привычное поведение: при следующем открытии показываем
-      // последнюю успешно подтверждённую запись, а не последнюю попытку входа.
-      localStorage.setItem(AUTH_STORAGE_KEYS.savedLogin, fio);
-      localStorage.setItem(AUTH_STORAGE_KEYS.savedDate, birthDate);
-      localStorage.setItem(AUTH_STORAGE_KEYS.savedSnils, snils);
+      localStorage.setItem(DOCUMENT_ATHLETES_STORAGE_KEY, JSON.stringify(athletes.slice(0, 500)));
     } catch (_) {
       // Ошибка локального хранилища не должна отменять успешную авторизацию.
     }
@@ -1335,11 +1344,11 @@
     authState.awaitingSnils = false;
     authState.login = '';
     authState.password = '';
-    dom.snilsWrap.style.display = 'none';
-
     dom.login.value = athlete.fio;
-    dom.password.value = formatDateInput(athlete.birthDate);
-    dom.snils.value = athlete.snils;
+    dom.password.value = athlete.birthDate;
+    dom.snils.value = formatSnilsInput(athlete.snils || '');
+    // Показываем СНИЛС сразу, когда он сохранён для выбранного спортсмена.
+    dom.snilsWrap.style.display = athlete.snils ? 'block' : 'none';
   }
 
   function renderKnownAthleteSuggestions() {
@@ -1379,6 +1388,8 @@
       meta.textContent = athlete.birthDate;
 
       option.append(name, meta);
+      // Не даём полю ФИО потерять фокус до click на варианте (важно для touch).
+      option.addEventListener('pointerdown', event => event.preventDefault());
       option.addEventListener('mouseenter', () => setActiveAthleteSuggestion(index));
       option.addEventListener('click', () => chooseKnownAthlete(athlete));
       container.appendChild(option);
@@ -1405,8 +1416,9 @@
     if (!latest) return;
 
     dom.login.value = latest.fio;
-    dom.password.value = formatDateInput(latest.birthDate);
-    dom.snils.value = latest.snils;
+    dom.password.value = latest.birthDate;
+    dom.snils.value = formatSnilsInput(latest.snils || '');
+    dom.snilsWrap.style.display = latest.snils ? 'block' : 'none';
   }
 
   dom.login.addEventListener('input', () => {
@@ -1625,6 +1637,11 @@
   }
 
   async function loginDocs() {
+    if (authState.awaitingSnils) {
+      await verifySnilsDocs();
+      return;
+    }
+
     dom.error.textContent = '';
     stopAuthLoading();
 
@@ -1751,13 +1768,12 @@
   }
 
   function loadDataSilently() {
-    const loginVal = localStorage.getItem(AUTH_STORAGE_KEYS.savedLogin);
-    const dateRaw = localStorage.getItem(AUTH_STORAGE_KEYS.savedDate);
-    if (!loginVal || !dateRaw) return;
+    const latest = readKnownAthletes()[0];
+    if (!latest) return;
 
-    const passwordForServer = toServerDate(dateRaw);
+    const passwordForServer = toServerDate(latest.birthDate);
     if (!passwordForServer) return;
-    google.script.run.checkLogin(loginVal, passwordForServer, { silent: true });
+    google.script.run.checkLogin(latest.fio, passwordForServer, { silent: true });
   }
 
   // Все события журнала проходят через одну очередь.
@@ -1858,11 +1874,11 @@
   }
 
   window.addEventListener('DOMContentLoaded', () => {
-    // Старые одиночные значения могли быть сохранены до проверки входа.
-    // Не переносим их в справочник и больше не используем как подтверждённые.
-    localStorage.removeItem(AUTH_STORAGE_KEYS.savedLogin);
-    localStorage.removeItem(AUTH_STORAGE_KEYS.savedDate);
-    localStorage.removeItem(AUTH_STORAGE_KEYS.savedSnils);
+    // Однократно удаляем прежние одиночные значения: они сохранялись до
+    // ответа сервера и не являются подтверждёнными записями справочника.
+    localStorage.removeItem('savedLogin');
+    localStorage.removeItem('savedDate');
+    localStorage.removeItem('savedSnils');
 
     restoreLatestKnownAthlete();
     logInitialPageOpen();
