@@ -568,8 +568,19 @@ function formatAuthPasswordValue_(value) {
  * @param {number[]} allowedCols Индексы разрешенных колонок.
  */
 function prepareRowForClient(row, header, backgrounds, allowedCols, sourceRowIndex = null) {
+  const loginCol = header.indexOf(CONFIG.AUTH.loginHeader);
+  const birthDateCol = header.indexOf(CONFIG.AUTH.passwordHeader);
+  const snilsCol = header.indexOf(CONFIG.AUTH.snilsHeader);
+
   return {
     sourceRowIndex,
+    // Эти три значения используются браузером только после успешной проверки
+    // личности и нужны для пополнения локальной памяти подтверждённых записей.
+    authIdentity: {
+      fio: loginCol >= 0 ? String(row[loginCol] ?? '').trim() : '',
+      birthDate: birthDateCol >= 0 ? formatAuthPasswordValue_(row[birthDateCol]).trim() : '',
+      snils: snilsCol >= 0 ? normalizeSnils(row[snilsCol]) : ''
+    },
     header: allowedCols.map(i => header[i]),
     row: allowedCols.map(i => formatCellValue(row[i])),
     colors: allowedCols.map(i => backgrounds[i]),
