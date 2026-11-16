@@ -13,7 +13,6 @@ const TechnicalConfig = Object.freeze({
     attendanceDraftDeleteAfter: 'attendanceDraftDeleteAfterAtV1',
     lastSilentSync: 'lastSilentSyncAt',
     trainingHistory: 'trainingHistoryItemsV1',
-    documentEditDrafts: 'documentEditDraftsV1',
-    knownAthletes: 'knownAthletesV1'
+    documentEditDrafts: 'documentEditDraftsV1'
   })
 });
