@@ -280,7 +280,7 @@ function appendSessionLogRow_(sheet, payload = {}, addInitialEvent = true) {
  * Гарантирует наличие строки текущей сессии.
  * Более поздние login/password/SNILS не заменяют первоначальные значения строки.
  */
-function ensureSessionLogRow_(sheet, payload = {}, sessionId = '') {
+function ensureSessionLogRow_(sheet, payload = {}, sessionId = '', addInitialEvent = true) {
   const normalizedSessionId = String(sessionId || '').trim();
   if (!normalizedSessionId || !sheet) return -1;
 
@@ -290,7 +290,7 @@ function ensureSessionLogRow_(sheet, payload = {}, sessionId = '') {
   const rowIndex = appendSessionLogRow_(sheet, {
     ...payload,
     sessionId: normalizedSessionId
-  }, true);
+  }, addInitialEvent !== false);
 
   rememberSessionLogRow_(normalizedSessionId, rowIndex);
   return rowIndex;
@@ -410,7 +410,7 @@ function logLocalData(sessionId, localData) {
 }
 
 /** Создаёт строку только для нового открытия сайта. */
-function logPageOpen(payload = {}, sessionId = '') {
+function logPageOpen(payload = {}, sessionId = '', addInitialEvent = true) {
   const normalizedSessionId = String(sessionId || '').trim();
   if (!normalizedSessionId) return;
 
@@ -426,7 +426,7 @@ function logPageOpen(payload = {}, sessionId = '') {
     const rowIndex = appendSessionLogRow_(sheet, {
       ...payload,
       sessionId: normalizedSessionId
-    }, true);
+    }, addInitialEvent !== false);
 
     rememberSessionLogRow_(normalizedSessionId, rowIndex);
   } finally {
@@ -445,7 +445,7 @@ function logAuthAttempt(payload = {}) {
     const sheet = getLogSheet();
     if (!sheet) return;
 
-    const rowIndex = ensureSessionLogRow_(sheet, payload, payload.sessionId);
+    const rowIndex = ensureSessionLogRow_(sheet, payload, payload.sessionId, false);
     if (rowIndex >= 2) {
       appendSessionLogEvent_(sheet, rowIndex, {
         'Результат действия': payload.status,
