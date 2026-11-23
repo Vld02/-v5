@@ -773,7 +773,9 @@ function checkLogin(login, password, clientInfo = {}, snils = '', sessionId = ''
       const rowIndex = i + 2;
       const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
       const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
-      logAuthAttempt({ login, password, snils, clientInfo, sessionId, adminFio, status: 'Удачный вход' });
+      const authenticatedFio = formatCellValue(row[authCols.loginCol]).trim();
+      const logAdminFio = canLoadAthleteDirectory_(authenticatedFio) ? authenticatedFio : adminFio;
+      logAuthAttempt({ login, password, snils, clientInfo, sessionId, adminFio: logAdminFio, status: 'Удачный вход' });
       logStage('Совпадение найдено, данные строки загружены', startedAt);
       return prepareRowForClient(row, header, rowBackgrounds, allowedCols, rowIndex, {
           includeAthleteDirectory: clientInfo.silent !== true
@@ -845,7 +847,9 @@ function verifySnils(login, password, snils, clientInfo = {}, sessionId = '', ad
         const rowIndex = i + 2;
         const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
         const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
-        logAuthAttempt({ login, password, snils, clientInfo, sessionId, adminFio, status: 'Удачный вход без СНИЛС' });
+        const authenticatedFio = formatCellValue(row[authCols.loginCol]).trim();
+        const logAdminFio = canLoadAthleteDirectory_(authenticatedFio) ? authenticatedFio : adminFio;
+        logAuthAttempt({ login, password, snils, clientInfo, sessionId, adminFio: logAdminFio, status: 'Удачный вход без СНИЛС' });
         return prepareRowForClient(row, header, rowBackgrounds, allowedCols, rowIndex, {
           includeAthleteDirectory: clientInfo.silent !== true
         });
@@ -859,7 +863,9 @@ function verifySnils(login, password, snils, clientInfo = {}, sessionId = '', ad
       const rowIndex = i + 2;
       const row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
       const rowBackgrounds = sheet.getRange(rowIndex, 1, 1, lastCol).getBackgrounds()[0];
-      logAuthAttempt({ login, password, snils, clientInfo, sessionId, adminFio, status: 'Удачный вход по СНИЛС' });
+      const authenticatedFio = formatCellValue(row[authCols.loginCol]).trim();
+      const logAdminFio = canLoadAthleteDirectory_(authenticatedFio) ? authenticatedFio : adminFio;
+      logAuthAttempt({ login, password, snils, clientInfo, sessionId, adminFio: logAdminFio, status: 'Удачный вход по СНИЛС' });
       logStage('СНИЛС подтвержден, данные строки загружены', startedAt);
       return prepareRowForClient(row, header, rowBackgrounds, allowedCols, rowIndex, {
           includeAthleteDirectory: clientInfo.silent !== true
