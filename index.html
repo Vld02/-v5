@@ -156,7 +156,7 @@
   .item-title { font-weight: bold; width: 45%; padding: var(--space-sm); background:#f7f7f7; border-right:0.05rem solid #d8d8d8; display:flex; align-items:center; justify-content:space-between; gap:var(--space-xs); }
   .item-title-text { flex:1 1 auto; min-width:0; max-width:100%; box-sizing:border-box; overflow-wrap:anywhere; }
   .cell-title-help-actions { display:flex; align-items:center; flex:0 0 auto; opacity:0; visibility:hidden; pointer-events:none; transition:opacity .16s ease, visibility .16s ease; }
-  .item-title.is-actions-active .cell-title-help-actions,
+  .item.is-actions-active .cell-title-help-actions,
   .item-title:focus-visible .cell-title-help-actions,
   .item-title:focus-within .cell-title-help-actions { opacity:1; visibility:visible; pointer-events:auto; }
   .supports-hover .item:hover .cell-title-help-actions { opacity:1; visibility:visible; pointer-events:auto; }
@@ -198,7 +198,7 @@
   .cell-edit-shell { position:relative; min-height:2rem; }
   .cell-edit-actions { position:absolute; right:0.5rem; bottom:0.35rem; display:flex; align-items:center; gap:var(--space-xs); }
   .cell-view-actions { opacity:0; visibility:hidden; pointer-events:none; transition:opacity .16s ease, visibility .16s ease; }
-  .item-value.is-actions-active .cell-view-actions,
+  .item.is-actions-active .cell-view-actions,
   .cell-edit-shell:focus-visible .cell-view-actions,
   .cell-edit-shell:focus-within .cell-view-actions { opacity:1; visibility:visible; pointer-events:auto; }
   .supports-hover .item:hover .cell-view-actions { opacity:1; visibility:visible; pointer-events:auto; }
@@ -2260,13 +2260,13 @@
   document.addEventListener('click', function(e) {
     const supportsHover = window.matchMedia && window.matchMedia('(hover: hover)').matches;
     if (!supportsHover) {
-      const title = e.target.closest('.item-title');
-      const cell = e.target.closest('.item-value');
-      document.querySelectorAll('.item-title.is-actions-active, .item-value.is-actions-active').forEach(node => {
-        if (node !== title && node !== cell) node.classList.remove('is-actions-active');
+      const row = e.target.closest('.item');
+      document.querySelectorAll('.item.is-actions-active').forEach(node => {
+        if (node !== row) node.classList.remove('is-actions-active');
       });
-      if (title && title.querySelector('.cell-title-help-actions')) title.classList.add('is-actions-active');
-      if (cell && cell.querySelector('.cell-view-actions')) cell.classList.add('is-actions-active');
+      if (row && row.querySelector('.cell-title-help-actions, .cell-view-actions')) {
+        row.classList.add('is-actions-active');
+      }
     }
 
     const fileOpenButton = e.target.closest('.file-open-btn');
