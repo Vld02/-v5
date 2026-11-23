@@ -848,8 +848,13 @@
     gear: document.getElementById('tab-gear')
   };
   const AUTH_STORAGE_KEYS = CLIENT_CONFIG.storageKeys;
-  // Новый идентификатор при каждой загрузке страницы; не сохраняем его в storage.
-  const LOG_SESSION_ID = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  // Идентификатор текущей пары «ФИО + дата рождения» в журнале.
+  // При переходе к другому пользователю создаётся новый идентификатор.
+  function createLogSessionId() {
+    return window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+  let LOG_SESSION_ID = createLogSessionId();
+  let LOG_SESSION_IDENTITY_KEY = null;
   const UI_TIMINGS = CLIENT_CONFIG.timings;
   const NO_GROUP_LABEL = <?!= JSON.stringify(TRAINING_CONFIG.noGroupLabel) ?>;
   const ACTIVE_TAB_STORAGE_KEY = AUTH_STORAGE_KEYS.activeTab;
@@ -1619,18 +1624,24 @@
     dom.snils.value = snilsFormatted;
     saveAuthInputs(loginVal, dateInput.value, snilsFormatted);
 
-    const clientInfo = await getClientInfo();
-    clientInfo.snilsVisible = dom.snilsWrap.style.display !== 'none';
-    await logLoginButtonClick({
-      login: loginVal,
-      password: passwordForServer,
-      snils: snilsFormatted,
-      clientInfo
-    });
-
     if (!loginVal || !passwordForServer) {
       setErrorMessage('Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.');
       return;
+    }
+
+    const newLogSession = startNewLogSessionForIdentity(loginVal, passwordForServer);
+    const sessionId = LOG_SESSION_ID;
+    const clientInfo = await getClientInfo();
+    clientInfo.snilsVisible = dom.snilsWrap.style.display !== 'none';
+
+    if (newLogSession) {
+      await initialPageOpenPromise;
+      await logPageOpenClient({
+        login: loginVal,
+        password: passwordForServer,
+        snils: snilsFormatted,
+        clientInfo
+      }, sessionId, false);
     }
 
     startAuthLoading('Аутентификация');
@@ -1660,7 +1671,7 @@
         showDocsResult(response);
       })
       .withFailureHandler(handleDocsRequestFailure)
-      .checkLogin(loginVal, passwordForServer, clientInfo, snilsFormatted, LOG_SESSION_ID, adminFio);
+      .checkLogin(loginVal, passwordForServer, clientInfo, snilsFormatted, sessionId, adminFio);
   }
 
   async function verifySnilsDocs() {
@@ -1672,14 +1683,9 @@
     const passwordForServer = authState.password
       || toServerDate(formatDateInput(dom.password.value, { finalizeYear: true }));
     const adminFio = authState.adminFio || selectedAthleteAdminFio;
+    const sessionId = LOG_SESSION_ID;
     const clientInfo = await getClientInfo();
     clientInfo.snilsVisible = true;
-    await logLoginButtonClick({
-      login: loginVal,
-      password: passwordForServer,
-      snils: snilsFormatted,
-      clientInfo
-    });
 
     if (!authState.login || !authState.password) {
       if (!loginVal || !passwordForServer) {
@@ -1720,7 +1726,7 @@
         showDocsResult(response);
       })
       .withFailureHandler(handleDocsRequestFailure)
-      .verifySnils(authState.login, authState.password, snilsFormatted, clientInfo, LOG_SESSION_ID, adminFio);
+      .verifySnils(authState.login, authState.password, snilsFormatted, clientInfo, sessionId, adminFio);
   }
 
   async function getClientInfo() {
@@ -1754,9 +1760,27 @@
     google.script.run.checkLogin(loginVal, passwordForServer, { silent: true });
   }
 
+  function getLogIdentityKey(login, birthDate) {
+    const normalizedLogin = normalizeAthleteSearchValue(login);
+    const normalizedBirthDate = toServerDate(birthDate) || '';
+    return normalizedLogin || normalizedBirthDate
+      ? `${normalizedLogin}|${normalizedBirthDate}`
+      : '';
+  }
+
+  function startNewLogSessionForIdentity(login, birthDate) {
+    const nextIdentityKey = getLogIdentityKey(login, birthDate);
+    if (nextIdentityKey === LOG_SESSION_IDENTITY_KEY) return false;
+
+    LOG_SESSION_ID = createLogSessionId();
+    LOG_SESSION_IDENTITY_KEY = nextIdentityKey;
+    return true;
+  }
+
   // Все события журнала проходят через одну очередь.
-  // Это сохраняет порядок: действие -> локальное сохранение -> следующее действие.
+  // Это сохраняет порядок поступления событий на сервер.
   let logQueue = Promise.resolve();
+  let initialPageOpenPromise = Promise.resolve();
 
   function enqueueLog(task) {
     const run = logQueue.then(() => task());
@@ -1764,54 +1788,51 @@
     return run.catch(() => {});
   }
 
+  function logPageOpenClient(payload, sessionId, addInitialEvent = true) {
+    return enqueueLog(() => new Promise(resolve => {
+      google.script.run
+        .withSuccessHandler(() => resolve())
+        .withFailureHandler(() => resolve())
+        .logPageOpen(payload, sessionId, addInitialEvent);
+    }));
+  }
+
   function logUserActionClient(action) {
     const text = String(action || '').trim();
     if (!text) return Promise.resolve();
+    const sessionId = LOG_SESSION_ID;
 
     return enqueueLog(() => new Promise(resolve => {
       google.script.run
         .withSuccessHandler(() => resolve())
         .withFailureHandler(() => resolve())
-        .logUserAction(LOG_SESSION_ID, text);
+        .logUserAction(sessionId, text);
     }));
   }
 
   function logUserResultClient(result) {
     const text = String(result || '').trim();
     if (!text) return Promise.resolve();
+    const sessionId = LOG_SESSION_ID;
 
     return enqueueLog(() => new Promise(resolve => {
       google.script.run
         .withSuccessHandler(() => resolve())
         .withFailureHandler(() => resolve())
-        .logSessionResult(LOG_SESSION_ID, text);
+        .logSessionResult(sessionId, text);
     }));
   }
 
   function logLocalDataClient(localData) {
     const text = String(localData || '').trim();
     if (!text) return Promise.resolve();
+    const sessionId = LOG_SESSION_ID;
 
     return enqueueLog(() => new Promise(resolve => {
       google.script.run
         .withSuccessHandler(() => resolve())
         .withFailureHandler(() => resolve())
-        .logLocalData(LOG_SESSION_ID, text);
-    }));
-  }
-
-  function logLoginButtonClick(payload = {}) {
-    return enqueueLog(() => new Promise(resolve => {
-      google.script.run
-        .withSuccessHandler(() => resolve())
-        .withFailureHandler(() => resolve())
-        .logLoginButtonClick({
-          login: payload.login || '',
-          password: payload.password || '',
-          snils: payload.snils || '',
-          clientInfo: payload.clientInfo || {},
-          sessionId: LOG_SESSION_ID
-        });
+        .logLocalData(sessionId, text);
     }));
   }
 
@@ -1820,11 +1841,12 @@
   }
 
   function logSectionVisitClient(section) {
+    const sessionId = LOG_SESSION_ID;
     return enqueueLog(() => new Promise(resolve => {
       google.script.run
         .withSuccessHandler(() => resolve())
         .withFailureHandler(() => resolve())
-        .logSectionVisit(LOG_SESSION_ID, section);
+        .logSectionVisit(sessionId, section);
     }));
   }
 
@@ -1836,19 +1858,16 @@
     const loginVal = dom.login.value.trim();
     const passwordForServer = toServerDate(formatDateInput(dom.password.value, { finalizeYear: true }));
     const snilsFormatted = formatSnilsInput(dom.snils.value);
+    const sessionId = LOG_SESSION_ID;
+    LOG_SESSION_IDENTITY_KEY = getLogIdentityKey(loginVal, passwordForServer);
     const clientInfo = await getClientInfo();
 
-    return enqueueLog(() => new Promise(resolve => {
-      google.script.run
-        .withSuccessHandler(() => resolve())
-        .withFailureHandler(() => resolve())
-        .logPageOpen({
-          login: loginVal,
-          password: passwordForServer,
-          snils: snilsFormatted,
-          clientInfo
-        }, LOG_SESSION_ID);
-    }));
+    return logPageOpenClient({
+      login: loginVal,
+      password: passwordForServer,
+      snils: snilsFormatted,
+      clientInfo
+    }, sessionId, true);
   }
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -1860,7 +1879,7 @@
     if (savedDate) dom.password.value = formatDateInput(savedDate);
     if (savedSnils) dom.snils.value = formatSnilsInput(savedSnils);
 
-    logInitialPageOpen();
+    initialPageOpenPromise = logInitialPageOpen();
   });
 
   const DOCUMENT_SECTION_GROUPS = CLIENT_CONFIG.documentSections.groups;
