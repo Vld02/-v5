@@ -1860,15 +1860,6 @@
     if (savedDate) dom.password.value = formatDateInput(savedDate);
     if (savedSnils) dom.snils.value = formatSnilsInput(savedSnils);
 
-    const savedBirthDate = toServerDate(savedDate || '');
-    const savedAthlete = savedBirthDate
-      ? readDocumentAthletes().find(item =>
-          normalizeAthleteSearchValue(item.fio) === normalizeAthleteSearchValue(savedLogin) &&
-          item.birthDate === savedBirthDate
-        )
-      : null;
-    selectedAthleteAdminFio = savedAthlete ? savedAthlete.adminFio : '';
-
     logInitialPageOpen();
   });
 
