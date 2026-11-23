@@ -1949,9 +1949,9 @@
       cancel: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>',
       help: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9.1 9a3 3 0 1 1 5.8 1c-.7 1.2-2.4 1.7-2.4 3"/><path d="M12 17h.01"/><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>',
       attach: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m21.4 11.6-8.9 8.9a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>',
-      file: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>'
-      ,copy: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg>'
-      ,download: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg>'
+      file: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>',
+      copy: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg>',
+      download: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg>'
     };
     return icons[name] || '';
   }
@@ -2083,7 +2083,7 @@
       .getDocumentAttachmentContent(dom.login.value.trim(), toServerDate(dom.password.value), dom.snils.value.trim(), columnName);
   }
 
-  function showAttachmentReplacementDialog(onConfirm) {  async function copyDocumentCellValue(colIndex, button) {
+  async function copyDocumentCellValue(colIndex, button) {
     const columnName = currentDocsRow.header[colIndex];
     const value = String(currentDocsRow.serverRow[colIndex] ?? '');
     if (!columnName || !value.trim()) return;
@@ -2169,7 +2169,7 @@
       .getDocumentAttachmentContent(dom.login.value.trim(), toServerDate(dom.password.value), dom.snils.value.trim(), columnName);
   }
 
-
+  function showAttachmentReplacementDialog(onConfirm) {
     const backdrop = document.createElement('div');
     backdrop.className = 'attachment-confirm-backdrop';
     backdrop.innerHTML = `<section class="attachment-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="attachmentConfirmTitle"><h2 id="attachmentConfirmTitle">Заменить прикреплённый файл?</h2><p>При загрузке нового файла предыдущий будет перемещён в корзину.</p><div class="attachment-confirm-actions"><button type="button" data-action="cancel">Отмена</button><button type="button" class="attachment-confirm-primary" data-action="confirm">Продолжить</button></div></section>`;
