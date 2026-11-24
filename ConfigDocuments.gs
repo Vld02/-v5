@@ -22,8 +22,22 @@ const DOCUMENTS_CONFIG = Object.freeze({
     'Паспорт: Скан (П)': Object.freeze({ template: 'Паспорт (П) - {Фамилия Имя Отчество (П)}' }),
     'Паспорт: Скан (М)': Object.freeze({ template: 'Паспорт (М) - {Фамилия Имя Отчество (М)}' }),
     'Паспорт: Скан (Д)': Object.freeze({ template: 'Паспорт (Д) - {Фамилия Имя Отчество (Д)}' }),
-    'СнОПД (С)': Object.freeze({ template: 'СнОПД - {Фамилия Имя Отчество (С)}' }),
-    'СнФиВ (С)': Object.freeze({ template: 'СнФиВ - {Фамилия Имя Отчество (С)}' }),
+    'СнОПД (С)': Object.freeze({
+      template: 'СнОПД - {Фамилия Имя Отчество (С)}',
+      templateUrl: 'https://disk.yandex.ru/i/vJwmv6RohxZt3Q'
+    }),
+    'СнФиВ (С)': Object.freeze({
+      template: 'СнФиВ - {Фамилия Имя Отчество (С)}',
+      templateUrl: 'https://disk.yandex.ru/i/8Z3eDlC8YjFCIg'
+    }),
+    'ЛКО (С)': Object.freeze({
+      template: 'ЛКО - {Фамилия Имя Отчество (С)}',
+      templateUrl: 'https://disk.yandex.ru/i/OyMC_fyXzb8d6Q'
+    }),
+    'ЗнЗвСШ (С)': Object.freeze({
+      template: 'ЗнЗвСШ - {Фамилия Имя Отчество (С)}',
+      templateUrl: 'https://disk.yandex.ru/i/0H75ijwxwDvXbQ'
+    }),
     'Фото (С)': Object.freeze({ template: 'Фото - {Фамилия Имя Отчество (С)}' })
     
   }),
@@ -214,6 +228,8 @@ const EDIT_CONFIG = Object.freeze({
     'ID номер МГФСО (С)': { editable: true, rule: 'MGFSO_ID', required: false, isIdentityField: false, description: 'ID занимающегося в МГФСО. Содержит 7 цифр.', example: '1234567' },
     'Мед допуск до (С)': { editable: true, rule: 'DATE_RU', required: false, isIdentityField: false, description: 'Дата, до которой действует медицинский допуск.' },
     'РУСАДА (С)': { editable: true, rule: 'YEAR', required: false, isIdentityField: false, description: 'Год прохождения РУСАДА.' },
+    'ЛКО (С)': { editable: true, rule: 'FILE', required: false, isIdentityField: false, description: 'Загрузите скан личной карточки обучающегося.' },
+    'ЗнЗвСШ (С)': { editable: true, rule: 'FILE', required: false, isIdentityField: false, description: 'Загрузите заявление на зачисление в спортивную школу.' },
     'СнОПД (С)': { editable: true, rule: 'FILE', required: false, isIdentityField: false, description: 'Загрузите скан Согласия на обработку персональных данных' },
     'СнФиВ (С)': { editable: true, rule: 'FILE', required: false, isIdentityField: false, description: 'Загрузите скан Согласия на фото и видеосъемку' },
     'Фото (С)': { editable: true, rule: 'FILE', required: false, isIdentityField: false, description: 'Загрузите скан личного фото спортсмена' }
