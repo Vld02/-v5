@@ -604,11 +604,6 @@ function canLoadAthleteDirectory_(fio) {
 }
 
 /**
- * Возвращает только три поля, необходимые для автоподсказок.
- * Другие столбцы листа «Результат» клиенту не передаются.
- * @returns {Array<{fio:string,birthDate:string,snils:string}>}
- */
-/**
  * Проверяет право пользователя открывать панель заполнения тренировки.
  * ФИО и группа берутся только из уже найденной сервером строки авторизации.
  * Достаточно совпадения с любым из двух независимых списков.
@@ -633,6 +628,11 @@ function canFillTraining_(fio, group) {
   return fioAllowed || groupAllowed;
 }
 
+/**
+ * Возвращает только три поля, необходимые для автоподсказок.
+ * Другие столбцы листа «Результат» клиенту не передаются.
+ * @returns {Array<{fio:string,birthDate:string,snils:string}>}
+ */
 function getAthleteDirectoryForClient_() {
   const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
   if (!sheet) throw new Error('Лист с результатами не найден.');
