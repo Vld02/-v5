@@ -761,6 +761,7 @@
 
   <section id="tab-attendance" class="tab-panel">
     <h2 class="section-heading"><?= APP_CONFIG.SECTION_NAMES.attendance ?></h2>
+    <div id="attendanceEntryPanel" style="display:none;">
     <div class="controls" aria-label="Инструменты таблицы посещаемости">
       <div class="attendance-toolbar-group">
         <button type="button" class="attendance-icon-btn" title="Вставить" aria-label="Вставить" onclick="pasteAttendanceToLastCell()">📋</button>
@@ -786,6 +787,7 @@
           </tr>
         </tbody>
       </table>
+    </div>
     </div>
 
     <div class="training-topbar">
@@ -839,6 +841,7 @@
     snilsWrap: document.getElementById('snilsWrap'),
     toastContainer: document.getElementById('toastContainer')
   };
+  const attendanceEntryPanel = document.getElementById('attendanceEntryPanel');
 
   const topbarTabs = [...document.querySelectorAll('.topbar-tab')];
 
@@ -848,6 +851,7 @@
     gear: document.getElementById('tab-gear')
   };
   const AUTH_STORAGE_KEYS = CLIENT_CONFIG.storageKeys;
+  const TRAINING_FILL_ACCESS_STORAGE_KEY = AUTH_STORAGE_KEYS.trainingFillAccess;
   // Идентификатор текущей пары «ФИО + дата рождения» в журнале.
   // При переходе к другому пользователю создаётся новый идентификатор.
   function createLogSessionId() {
@@ -1397,6 +1401,8 @@
     dom.login.value = athlete.fio;
     dom.password.value = formatDateInput(athlete.birthDate, { finalizeYear: true });
     dom.snils.value = formatSnilsInput(athlete.snils);
+    clearSavedAuthentication();
+    clearTrainingFillAccessCache();
     hideDocumentAthleteSuggestions();
     hideSnilsStep();
     selectedAthleteAdminFio = String(athlete.adminFio || '').trim();
@@ -1606,7 +1612,8 @@
     stopAuthLoading();
   }
 
-  async function loginDocs() {
+  async function loginDocs(options = {}) {
+    const automatic = options.automatic === true;
     if (authState.awaitingSnils) {
       await verifySnilsDocs();
       return;
@@ -1622,17 +1629,21 @@
     const passwordForServer = toServerDate(dateInput.value);
     const snilsFormatted = formatSnilsInput(dom.snils.value);
     dom.snils.value = snilsFormatted;
-    saveAuthInputs(loginVal, dateInput.value, snilsFormatted);
 
     if (!loginVal || !passwordForServer) {
-      setErrorMessage('Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.');
+      if (!automatic) setErrorMessage('Введите ФИО и дату рождения в формате ДД.ММ.ГГГГ.');
       return;
+    }
+
+    if (!automatic) {
+      clearSavedAuthentication();
+      clearTrainingFillAccessCache();
     }
 
     const newLogSession = startNewLogSessionForIdentity(loginVal, passwordForServer);
     const sessionId = LOG_SESSION_ID;
     const clientInfo = await getClientInfo();
-    clientInfo.snilsVisible = dom.snilsWrap.style.display !== 'none';
+    clientInfo.snilsVisible = !automatic && dom.snilsWrap.style.display !== 'none';
 
     if (newLogSession) {
       await initialPageOpenPromise;
@@ -1644,17 +1655,26 @@
       }, sessionId, false);
     }
 
-    startAuthLoading('Аутентификация');
+    if (!automatic) startAuthLoading('Аутентификация');
 
     google.script.run
       .withSuccessHandler(response => {
         if (response && response.error) {
+          if (automatic) {
+            clearTrainingFillAccessCache();
+            localStorage.removeItem(AUTH_STORAGE_KEYS.isLoggedIn);
+          }
           setErrorMessage(response.error, getAuthMessageType(response.error));
           stopAuthLoading();
           return;
         }
 
         if (response && response.requiresSnils) {
+          if (automatic) {
+            clearTrainingFillAccessCache();
+            localStorage.removeItem(AUTH_STORAGE_KEYS.isLoggedIn);
+            switchTab('docs');
+          }
           startSnilsStep(loginVal, passwordForServer, adminFio);
           setErrorMessage(response.snilsError === 'invalid'
             ? 'Неверный СНИЛС.'
@@ -1663,6 +1683,12 @@
         }
 
         updateDocumentAthleteStoreFromAuthResponse(response, adminFio);
+        saveAuthInputs(
+          response && response.authIdentity && response.authIdentity.fio || loginVal,
+          response && response.authIdentity && response.authIdentity.birthDate || dateInput.value,
+          snilsFormatted
+        );
+        updateTrainingFillAccessFromAuth(response);
         if (response && response.athleteDirectoryLoadFailed) {
           setErrorMessage('Вход выполнен, но полный список спортсменов не удалось обновить.', 'warning');
         }
@@ -1670,7 +1696,13 @@
         hideSnilsStep();
         showDocsResult(response);
       })
-      .withFailureHandler(handleDocsRequestFailure)
+      .withFailureHandler(error => {
+        if (automatic) {
+          clearTrainingFillAccessCache();
+          localStorage.removeItem(AUTH_STORAGE_KEYS.isLoggedIn);
+        }
+        handleDocsRequestFailure(error);
+      })
       .checkLogin(loginVal, passwordForServer, clientInfo, snilsFormatted, sessionId, adminFio);
   }
 
@@ -1715,9 +1747,12 @@
         if (response && response.athleteDirectoryLoadFailed) {
           setErrorMessage('Вход выполнен, но полный список спортсменов не удалось обновить.', 'warning');
         }
-        localStorage.setItem(AUTH_STORAGE_KEYS.savedLogin, authState.login);
-        localStorage.setItem(AUTH_STORAGE_KEYS.savedDate, dom.password.value);
-        localStorage.setItem(AUTH_STORAGE_KEYS.savedSnils, snilsFormatted);
+        saveAuthInputs(
+          response && response.authIdentity && response.authIdentity.fio || authState.login,
+          response && response.authIdentity && response.authIdentity.birthDate || dom.password.value,
+          snilsFormatted
+        );
+        updateTrainingFillAccessFromAuth(response);
         localStorage.setItem(AUTH_STORAGE_KEYS.isLoggedIn, '1');
         authState.awaitingSnils = false;
         authState.login = '';
@@ -1753,11 +1788,32 @@
   function loadDataSilently() {
     const loginVal = localStorage.getItem(AUTH_STORAGE_KEYS.savedLogin);
     const dateRaw = localStorage.getItem(AUTH_STORAGE_KEYS.savedDate);
-    if (!loginVal || !dateRaw) return;
+    const snils = formatSnilsInput(localStorage.getItem(AUTH_STORAGE_KEYS.savedSnils) || '');
+    if (!loginVal || !dateRaw) {
+      clearTrainingFillAccessCache();
+      return;
+    }
 
     const passwordForServer = toServerDate(dateRaw);
-    if (!passwordForServer) return;
-    google.script.run.checkLogin(loginVal, passwordForServer, { silent: true });
+    if (!passwordForServer) {
+      clearTrainingFillAccessCache();
+      return;
+    }
+
+    google.script.run
+      .withSuccessHandler(response => {
+        if (response && !response.error && !response.requiresSnils && response.authIdentity) {
+          updateTrainingFillAccessFromAuth(response);
+          return;
+        }
+        clearTrainingFillAccessCache();
+        localStorage.removeItem(AUTH_STORAGE_KEYS.isLoggedIn);
+      })
+      .withFailureHandler(() => {
+        clearTrainingFillAccessCache();
+        localStorage.removeItem(AUTH_STORAGE_KEYS.isLoggedIn);
+      })
+      .checkLogin(loginVal, passwordForServer, { silent: true, snilsVisible: true }, snils, LOG_SESSION_ID, '');
   }
 
   function getLogIdentityKey(login, birthDate) {
@@ -1766,6 +1822,61 @@
     return normalizedLogin || normalizedBirthDate
       ? `${normalizedLogin}|${normalizedBirthDate}`
       : '';
+  }
+
+  function readTrainingFillAccessCache() {
+    try {
+      const value = localStorage.getItem(TRAINING_FILL_ACCESS_STORAGE_KEY);
+      const record = value ? JSON.parse(value) : null;
+      if (!record || typeof record.identityKey !== 'string' || typeof record.allowed !== 'boolean') return null;
+      return record;
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  function setAttendanceEntryPanelVisible(visible) {
+    if (attendanceEntryPanel) attendanceEntryPanel.style.display = visible ? '' : 'none';
+  }
+
+  function applyCachedTrainingFillAccess() {
+    const record = readTrainingFillAccessCache();
+    const currentIdentityKey = getLogIdentityKey(dom.login.value, dom.password.value);
+    const allowed = Boolean(record && record.allowed === true && record.identityKey === currentIdentityKey);
+    setAttendanceEntryPanelVisible(allowed);
+    return allowed;
+  }
+
+  function clearTrainingFillAccessCache() {
+    localStorage.removeItem(TRAINING_FILL_ACCESS_STORAGE_KEY);
+    setAttendanceEntryPanelVisible(false);
+  }
+
+  function updateTrainingFillAccessFromAuth(response) {
+    const identity = response && response.authIdentity;
+    const identityKey = identity ? getLogIdentityKey(identity.fio, identity.birthDate) : '';
+    if (!identityKey || typeof response.canFillTraining !== 'boolean') {
+      clearTrainingFillAccessCache();
+      return false;
+    }
+
+    const record = { identityKey, allowed: response.canFillTraining === true };
+    try {
+      localStorage.setItem(TRAINING_FILL_ACCESS_STORAGE_KEY, JSON.stringify(record));
+    } catch (_error) {
+      // При недоступном localStorage используем ответ текущей серверной проверки.
+    }
+    const currentIdentityKey = getLogIdentityKey(dom.login.value, dom.password.value);
+    const allowed = record.allowed && record.identityKey === currentIdentityKey;
+    setAttendanceEntryPanelVisible(allowed);
+    return allowed;
+  }
+
+  function clearSavedAuthentication() {
+    localStorage.removeItem(AUTH_STORAGE_KEYS.savedLogin);
+    localStorage.removeItem(AUTH_STORAGE_KEYS.savedDate);
+    localStorage.removeItem(AUTH_STORAGE_KEYS.savedSnils);
+    localStorage.removeItem(AUTH_STORAGE_KEYS.isLoggedIn);
   }
 
   function startNewLogSessionForIdentity(login, birthDate) {
@@ -1879,7 +1990,11 @@
     if (savedDate) dom.password.value = formatDateInput(savedDate);
     if (savedSnils) dom.snils.value = formatSnilsInput(savedSnils);
 
+    // Панель может появиться сразу по кэшу предыдущей успешной проверки,
+    // но серверная авторизация ниже обязательно перепроверит актуальные права.
+    applyCachedTrainingFillAccess();
     initialPageOpenPromise = logInitialPageOpen();
+    if (savedLogin && savedDate) loginDocs({ automatic: true });
   });
 
   const DOCUMENT_SECTION_GROUPS = CLIENT_CONFIG.documentSections.groups;
@@ -2570,6 +2685,8 @@
   });
 
   dom.login.addEventListener('input', function() {
+    clearSavedAuthentication();
+    clearTrainingFillAccessCache();
     selectedAthleteAdminFio = '';
     hideSnilsStep();
     dom.password.value = '';
@@ -2640,6 +2757,8 @@
       if (position >= 3) chars[2] = '.';
       if (position >= 6) chars[5] = '.';
       input.value = normalizeMaskedDateValue(chars.join(''));
+      clearSavedAuthentication();
+      clearTrainingFillAccessCache();
       setMaskedDateSelection(input, getNextMaskedDateCursorPosition(position));
       hideSnilsStep();
       return;
@@ -2659,12 +2778,16 @@
       chars[position] = ' ';
     }
     input.value = normalizeMaskedDateValue(chars.join(''));
+    clearSavedAuthentication();
+    clearTrainingFillAccessCache();
     setMaskedDateSelection(input, end > start ? start : (e.key === 'Backspace' ? position : start));
     selectedAthleteAdminFio = '';
     hideSnilsStep();
   });
 
   dom.password.addEventListener('input', function(e) {
+    clearSavedAuthentication();
+    clearTrainingFillAccessCache();
     selectedAthleteAdminFio = '';
     hideSnilsStep();
     dom.snils.value = '';
