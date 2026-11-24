@@ -155,6 +155,9 @@
   .item:first-of-type { border-top: 0.05rem solid #d8d8d8; }
   .item-title { font-weight: bold; width: 45%; padding: var(--space-sm); background:#f7f7f7; border-right:0.05rem solid #d8d8d8; display:flex; align-items:center; justify-content:space-between; gap:var(--space-xs); }
   .item-title-text { flex:1 1 auto; min-width:0; max-width:100%; box-sizing:border-box; overflow-wrap:anywhere; }
+  .document-template-link { display:inline-flex; align-items:center; margin-left:0.45em; color:var(--primary); font-size:0.82em; font-weight:600; text-decoration:none; white-space:nowrap; }
+  .document-template-link:hover { text-decoration:underline; }
+  .document-template-link:focus-visible { outline:2px solid var(--primary); outline-offset:2px; border-radius:2px; }
   .cell-title-help-actions { display:flex; align-items:center; flex:0 0 auto; opacity:0; visibility:hidden; pointer-events:none; transition:opacity .16s ease, visibility .16s ease; }
   .item.is-actions-active .cell-title-help-actions,
   .item-title:focus-visible .cell-title-help-actions,
@@ -2008,6 +2011,14 @@
     return group ? { ...group, marker } : null;
   }
 
+  function renderDocumentTemplateLink(headerTitle) {
+    const urls = CLIENT_CONFIG.documentTemplateUrls || {};
+    const templateUrl = typeof urls[headerTitle] === 'string' ? urls[headerTitle].trim() : '';
+    if (!/^https:\/\/disk\.yandex\.ru\/i\/[A-Za-z0-9_-]+\/?$/.test(templateUrl)) return '';
+
+    return ` <a class="document-template-link" href="${escapeHtmlAttr(templateUrl)}" target="_blank" rel="noopener noreferrer" title="Открыть шаблон документа">Шаблон ↗</a>`;
+  }
+
   async function showDocsResult(response) {
     if (response.error) {
       setErrorMessage(response.error, 'error');
@@ -2072,7 +2083,7 @@
         const style = bg ? `background:${bg};` : '';
         const rule = getFieldEditRule(header[i]);
         const btnClass = rule.editable ? '' : 'non-editable';
-        html += `<div class="item"><div class="item-title"><span class="item-title-text">${escapeHtml(cleanedTitle)}</span>${renderCellHelpButton(i, rule)}</div><div class="item-value" style="${style}" data-col-index="${i}">${renderCellDisplayMarkup(i, serverRow[i] ?? '', rule.editable, btnClass, rule)}</div></div>`;
+        html += `<div class="item"><div class="item-title"><span class="item-title-text">${escapeHtml(cleanedTitle)}${renderDocumentTemplateLink(header[i])}</span>${renderCellHelpButton(i, rule)}</div><div class="item-value" style="${style}" data-col-index="${i}">${renderCellDisplayMarkup(i, serverRow[i] ?? '', rule.editable, btnClass, rule)}</div></div>`;
       });
       html += '</div></section>';
     });
