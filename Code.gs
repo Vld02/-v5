@@ -608,6 +608,31 @@ function canLoadAthleteDirectory_(fio) {
  * Другие столбцы листа «Результат» клиенту не передаются.
  * @returns {Array<{fio:string,birthDate:string,snils:string}>}
  */
+/**
+ * Проверяет право пользователя открывать панель заполнения тренировки.
+ * ФИО и группа берутся только из уже найденной сервером строки авторизации.
+ * Достаточно совпадения с любым из двух независимых списков.
+ * @param {string} fio Подтверждённое ФИО пользователя.
+ * @param {string} group Подтверждённая тренировочная группа пользователя.
+ * @returns {boolean}
+ */
+function canFillTraining_(fio, group) {
+  const access = TRAINING_CONFIG.fillAccess || {};
+  const normalizedFio = normalizeTrainingName(fio);
+  const normalizedGroup = normalizeTrainingName(group);
+  const allowedFios = Array.isArray(access.fios) ? access.fios : [];
+  const allowedGroups = Array.isArray(access.groups) ? access.groups : [];
+
+  const fioAllowed = Boolean(normalizedFio) && allowedFios.some(value =>
+    normalizeTrainingName(value) === normalizedFio
+  );
+  const groupAllowed = Boolean(normalizedGroup) && allowedGroups.some(value =>
+    normalizeTrainingName(value) === normalizedGroup
+  );
+
+  return fioAllowed || groupAllowed;
+}
+
 function getAthleteDirectoryForClient_() {
   const sheet = getSheet(CONFIG.RESULT_SHEET_NAME);
   if (!sheet) throw new Error('Лист с результатами не найден.');
@@ -666,10 +691,15 @@ function prepareRowForClient(row, header, backgrounds, allowedCols, sourceRowInd
     birthDate: birthDateCol >= 0 ? formatAuthPasswordValue_(row[birthDateCol]).trim() : '',
     snils: snilsCol >= 0 ? normalizeSnils(row[snilsCol]) : ''
   };
+  const trainingGroupCol = header.indexOf(TRAINING_CONFIG.athleteGroupHeader);
+  const trainingGroup = trainingGroupCol >= 0
+    ? formatCellValue(row[trainingGroupCol]).trim()
+    : '';
 
   const response = {
     sourceRowIndex,
     authIdentity,
+    canFillTraining: canFillTraining_(authIdentity.fio, trainingGroup),
     header: allowedCols.map(i => header[i]),
     row: allowedCols.map(i => formatCellValue(row[i])),
     colors: allowedCols.map(i => backgrounds[i]),
